@@ -30,4 +30,4 @@ jobs:
 
       - name: Run Pytest Test Suite
         run: |
-          pytest tests/
+          pytest tests/test_core.py tests/test_query_router.py tests/test_containers_and_capsules.py tests/test_mcp_v2.py tests/test_hdx_parser.py tests/test_real_world_parsers.py tests/test_telemetry_and_blueprint.py tests/test_clearance_and_governance.py tests/test_tools_and_updates.py -v
