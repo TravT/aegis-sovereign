@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aegis-sovereign-appliance"
+version = "1.0.0"
+description = "Air-Gapped Sovereign Knowledge Engine, Hybrid RAG & Token Optimization Condenser"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Business Source License 1.1 / Commercial" }
+authors = [
+    { name = "Aegis Sovereign Intelligence Systems" }
+]
+keywords = [
+    "rag", "token-optimization", "graphrag", "hybrid-search", "sovereign-ai", "air-gapped", "privacy"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Legal Industry",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Security :: Cryptography",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "qdrant-client>=1.12.0",
+    "fastembed>=0.3.0",
+    "pyyaml>=6.0",
+    "watchdog>=4.0.0",
+    "cryptography>=42.0.0",
+    "zstandard>=0.22.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+]
+
+[project.scripts]
+sovereign-server = "core.server:run_server"
+sovereign-mcp = "core.mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "desktop*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-v --tb=short"

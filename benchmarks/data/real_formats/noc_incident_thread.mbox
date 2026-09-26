@@ -1,0 +1,54 @@
+From noc-shift@telco-sovereign.br Thu Sep 24 08:10:00 2026
+Message-ID: <inc-2026-8841-msg1@telco-sovereign.br>
+Date: Thu, 24 Sep 2026 08:10:00 -0300
+From: NOC Shift Lead <noc-shift@telco-sovereign.br>
+To: ran-tier3@telco-sovereign.br, field-ops@telco-sovereign.br
+Subject: [CRITICAL] Incident INC-2026-8841: ALM-26235 RF Unit Optical Module Fault on gNodeB BBU5900
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Team,
+We have opened Priority-1 Incident INC-2026-8841 following a sudden drop in 5G NR RRC connection establishment counter VS.NR.RRC.ConnEstab.Succ on sector Curitiba-Sul.
+Active fault alarm ALM-26235 (RF Unit Optical Module Fault) triggered on BBU5900 UBBPfw1 Slot 2 toward AAU5613.
+Please run MML command DSP OPTMODULE immediately and confirm SFP28 Rx optical power levels.
+
+From ran-tier3@telco-sovereign.br Thu Sep 24 08:18:22 2026
+Message-ID: <inc-2026-8841-msg2@telco-sovereign.br>
+In-Reply-To: <inc-2026-8841-msg1@telco-sovereign.br>
+References: <inc-2026-8841-msg1@telco-sovereign.br>
+Date: Thu, 24 Sep 2026 08:18:22 -0300
+From: RAN Tier-3 Principal Engineer <ran-tier3@telco-sovereign.br>
+To: noc-shift@telco-sovereign.br, field-ops@telco-sovereign.br
+Subject: Re: [CRITICAL] Incident INC-2026-8841: ALM-26235 RF Unit Optical Module Fault on gNodeB BBU5900
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="===============884102=="
+
+--===============884102==
+Content-Type: text/plain; charset="utf-8"
+
+Executed DSP OPTMODULE: CN=0, SRN=0, SN=2, MODULEID=0; on BBU5900 for INC-2026-8841.
+Rx optical power measured at -18.4 dBm (below the -15.5 dBm threshold specified for ALM-26235), which also triggered secondary alarm ALM-29201 (NR DU Cell Unavailable).
+We are executing MOD NRDUCELL: NRDUCELLID=101, MAXTXPWR=349, BANDWIDTH=BW_100M; to fail over to standby eCPRI port 1 while field ops cleans the LC fiber ferrule.
+
+--===============884102==
+Content-Type: text/plain; name="bbu5900_dsp_optmodule_slot2.log"
+Content-Disposition: attachment; filename="bbu5900_dsp_optmodule_slot2.log"
+
+DSP OPTMODULE: CN=0, SRN=0, SN=2, MODULEID=0;
+RETCODE = 0  Operation succeeded.
+Rx Optical Power = -18.42 dBm, Tx Optical Power = -2.10 dBm, Bias Current = 41.2 mA
+--===============884102==--
+
+From field-ops@telco-sovereign.br Thu Sep 24 08:42:10 2026
+Message-ID: <inc-2026-8841-msg3@telco-sovereign.br>
+In-Reply-To: <inc-2026-8841-msg2@telco-sovereign.br>
+References: <inc-2026-8841-msg1@telco-sovereign.br> <inc-2026-8841-msg2@telco-sovereign.br>
+Date: Thu, 24 Sep 2026 08:42:10 -0300
+From: Field Optical Operations <field-ops@telco-sovereign.br>
+To: ran-tier3@telco-sovereign.br, noc-shift@telco-sovereign.br
+Subject: [RESOLVED] Incident INC-2026-8841: ALM-26235 Cleared on BBU5900 / AAU5613
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+LC single-mode fiber connector cleaned and SFP28 transceiver reseated on AAU5613 for INC-2026-8841.
+Post-remediation DSP OPTMODULE confirms Rx power restored to -4.8 dBm. LST ALMAF shows ALM-26235 and ALM-29201 cleared.

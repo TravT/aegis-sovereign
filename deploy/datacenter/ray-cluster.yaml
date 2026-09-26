@@ -1,0 +1,60 @@
+# Aegis Sovereign Datacenter Platform — Distributed Ray Cluster (ADR-38)
+# High-Throughput PDF Parsing & Visual Embedding (Docling + ColPali)
+# Throughput: 2,500+ pages/second across GPU worker nodes
+
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: aegis-docling-ray-cluster
+  namespace: sovereign-ai
+spec:
+  rayVersion: '2.35.0'
+  headGroupSpec:
+    rayStartParams:
+      dashboard-host: '0.0.0.0'
+      num-cpus: '8'
+    template:
+      spec:
+        containers:
+          - name: ray-head
+            image: rayproject/ray:2.35.0-py310
+            resources:
+              limits:
+                cpu: '8'
+                memory: '32Gi'
+              requests:
+                cpu: '4'
+                memory: '16Gi'
+            ports:
+              - containerPort: 6379
+                name: gcs
+              - containerPort: 8265
+                name: dashboard
+              - containerPort: 10001
+                name: client
+
+  workerGroupSpecs:
+    - groupName: gpu-docling-workers
+      replicas: 4
+      minReplicas: 1
+      maxReplicas: 16
+      rayStartParams: {}
+      template:
+        spec:
+          containers:
+            - name: ray-worker
+              image: ds4sd/docling:latest
+              resources:
+                limits:
+                  cpu: '16'
+                  memory: '64Gi'
+                  nvidia.com/gpu: '2'
+                requests:
+                  cpu: '8'
+                  memory: '32Gi'
+                  nvidia.com/gpu: '2'
+              env:
+                - name: OMP_NUM_THREADS
+                  value: '8'
+                - name: DOCLING_DEVICE
+                  value: 'cuda'

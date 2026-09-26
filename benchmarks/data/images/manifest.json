@@ -1,0 +1,170 @@
+[
+  {
+    "id": "alice01a",
+    "file_name": "alice01a.png",
+    "path": "/home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/images/alice01a.png",
+    "title": "Frontispiece: King and Queen Inspecting Tart",
+    "description": "King and Queen of Hearts on throne inspecting tart in courtroom with White Rabbit herald",
+    "chapter": 11,
+    "tags": [
+      "courtroom",
+      "king of hearts",
+      "queen of hearts",
+      "tarts",
+      "herald",
+      "trial"
+    ],
+    "width": 440,
+    "height": 633,
+    "source_url": "https://www.gutenberg.org/files/114/114-h/images/alice01a.gif"
+  },
+  {
+    "id": "alice02a",
+    "file_name": "alice02a.png",
+    "path": "/home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/images/alice02a.png",
+    "title": "White Rabbit Checking Pocket Watch",
+    "description": "White Rabbit wearing waistcoat looking at pocket watch while hurrying past Alice",
+    "chapter": 1,
+    "tags": [
+      "white rabbit",
+      "waistcoat",
+      "pocket watch",
+      "rabbit hole",
+      "hurrying"
+    ],
+    "width": 320,
+    "height": 480,
+    "source_url": "https://www.gutenberg.org/files/114/114-h/images/alice02a.gif"
+  },
+  {
+    "id": "alice04a",
+    "file_name": "alice04a.png",
+    "path": "/home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/images/alice04a.png",
+    "title": "Alice with Drink Me Bottle",
+    "description": "Alice holding and examining the glass bottle with printed label DRINK ME",
+    "chapter": 1,
+    "tags": [
+      "alice",
+      "drink me",
+      "bottle",
+      "table",
+      "shrink"
+    ],
+    "width": 301,
+    "height": 448,
+    "source_url": "https://www.gutenberg.org/files/114/114-h/images/alice04a.gif"
+  },
+  {
+    "id": "alice11a",
+    "file_name": "alice11a.png",
+    "path": "/home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/images/alice11a.png",
+    "title": "Alice Cramped in the White Rabbit's House",
+    "description": "Alice grown giant, cramped inside the White Rabbit's house with an arm out the window and leg up the chimney",
+    "chapter": 4,
+    "tags": [
+      "alice",
+      "white rabbit house",
+      "giant",
+      "cramped",
+      "window",
+      "growth"
+    ],
+    "width": 640,
+    "height": 448,
+    "source_url": "https://www.gutenberg.org/files/114/114-h/images/alice11a.gif"
+  },
+  {
+    "id": "alice15a",
+    "file_name": "alice15a.png",
+    "path": "/home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/images/alice15a.png",
+    "title": "Caterpillar on Mushroom Smoking Hookah",
+    "description": "Caterpillar sitting atop a large mushroom smoking a long hookah pipe looking at Alice",
+    "chapter": 5,
+    "tags": [
+      "caterpillar",
+      "mushroom",
+      "smoking pipe",
+      "hookah",
+      "advice"
+    ],
+    "width": 363,
+    "height": 480,
+    "source_url": "https://www.gutenberg.org/files/114/114-h/images/alice15a.gif"
+  },
+  {
+    "id": "alice21a",
+    "file_name": "alice21a.png",
+    "path": "/home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/images/alice21a.png",
+    "title": "Duchess Kitchen with Cook, Baby, and Cheshire Cat",
+    "description": "Cook stirring pepper cauldron, Duchess nursing screaming baby, Cheshire Cat grinning on hearth",
+    "chapter": 6,
+    "tags": [
+      "duchess",
+      "kitchen",
+      "cook",
+      "pepper",
+      "cheshire cat",
+      "baby",
+      "pig"
+    ],
+    "width": 640,
+    "height": 530,
+    "source_url": "https://www.gutenberg.org/files/114/114-h/images/alice21a.gif"
+  },
+  {
+    "id": "alice24a",
+    "file_name": "alice24a.png",
+    "path": "/home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/images/alice24a.png",
+    "title": "Cheshire Cat in Tree Fading to Smile",
+    "description": "Cheshire Cat perching on a bough of a tree smiling mysteriously as its body fades",
+    "chapter": 6,
+    "tags": [
+      "cheshire cat",
+      "tree",
+      "grin",
+      "smiling cat",
+      "branch",
+      "fading"
+    ],
+    "width": 640,
+    "height": 435,
+    "source_url": "https://www.gutenberg.org/files/114/114-h/images/alice24a.gif"
+  },
+  {
+    "id": "alice25a",
+    "file_name": "alice25a.png",
+    "path": "/home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/images/alice25a.png",
+    "title": "The Mad Tea Party",
+    "description": "The Mad Hatter, March Hare, and Dormouse crowded together having tea under a tree with Alice",
+    "chapter": 7,
+    "tags": [
+      "mad hatter",
+      "march hare",
+      "dormouse",
+      "mad tea party",
+      "tea table",
+      "cups"
+    ],
+    "width": 640,
+    "height": 487,
+    "source_url": "https://www.gutenberg.org/files/114/114-h/images/alice25a.gif"
+  },
+  {
+    "id": "alice29a",
+    "file_name": "alice29a.png",
+    "path": "/home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/images/alice29a.png",
+    "title": "Queen of Hearts Shouting 'Off With Her Head!'",
+    "description": "Furious Queen of Hearts shouting 'Off with her head!' and pointing finger at Alice in croquet ground",
+    "chapter": 8,
+    "tags": [
+      "queen of hearts",
+      "off with her head",
+      "croquet ground",
+      "cards",
+      "king of hearts"
+    ],
+    "width": 406,
+    "height": 480,
+    "source_url": "https://www.gutenberg.org/files/114/114-h/images/alice29a.gif"
+  }
+]

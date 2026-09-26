@@ -1,0 +1,508 @@
+{
+  "metadata": {
+    "timestamp": "2026-09-19 14:58:09",
+    "corpus": "Lewis Carroll - Alice's Adventures in Wonderland",
+    "total_words": 26371,
+    "total_micro_chunks": 81,
+    "indexing_duration_sec": 40.158607216901146
+  },
+  "query_results": [
+    {
+      "id": "Q1_bottle",
+      "class": "micro_factual",
+      "query": "What was printed on the bottle Alice drank from to shrink?",
+      "target": "DRINK ME",
+      "tier1": {
+        "latency_ms": 18.024806980974972,
+        "needle_found": true,
+        "tokens": 1366
+      },
+      "tier2": {
+        "latency_ms": 2.5,
+        "edge_count": 26,
+        "target_covered": true
+      },
+      "tier3": {
+        "latency_ms": 20.117608946748078,
+        "needle_found": true,
+        "tokens": 1690
+      }
+    },
+    {
+      "id": "Q2_glass_table",
+      "class": "micro_factual",
+      "query": "What was resting on the three-legged little glass table in the hall?",
+      "target": "golden key",
+      "tier1": {
+        "latency_ms": 17.589001916348934,
+        "needle_found": true,
+        "tokens": 998
+      },
+      "tier2": {
+        "latency_ms": 2.5,
+        "edge_count": 0,
+        "target_covered": false
+      },
+      "tier3": {
+        "latency_ms": 21.436093957163393,
+        "needle_found": true,
+        "tokens": 1322
+      }
+    },
+    {
+      "id": "Q3_cat_head",
+      "class": "micro_factual",
+      "query": "What argument did the executioner make about cutting off the Cheshire Cat's head?",
+      "target": "cut off a head unless there was a body",
+      "tier1": {
+        "latency_ms": 18.612870946526527,
+        "needle_found": true,
+        "tokens": 1407
+      },
+      "tier2": {
+        "latency_ms": 2.5,
+        "edge_count": 7,
+        "target_covered": true
+      },
+      "tier3": {
+        "latency_ms": 21.856002043932676,
+        "needle_found": true,
+        "tokens": 1740
+      }
+    },
+    {
+      "id": "Q4_march_hare_hatter_queen",
+      "class": "meso_relational",
+      "query": "Trace the sequence of encounters connecting Alice, the March Hare, the Hatter, and the Queen of Hearts.",
+      "sequence": [
+        "Alice",
+        "March Hare",
+        "Mad Hatter",
+        "Queen of Hearts"
+      ],
+      "target_chapters": [
+        8,
+        11,
+        7
+      ],
+      "tier1": {
+        "latency_ms": 20.178943988867104,
+        "coverage": 0.3333333333333333,
+        "tokens": 2397
+      },
+      "tier2": {
+        "latency_ms": 0.7531910669058561,
+        "path_steps": [
+          {
+            "step": "Alice -> [Cheshire Cat] -> March Hare",
+            "source": "Alice",
+            "target": "March Hare",
+            "bridge": "Cheshire Cat",
+            "chapter_span": [
+              6,
+              6
+            ],
+            "context": "Alice meets the Cheshire Cat on the tree bough, who explains Wonderland's madness. | THEN: The Cat directs Alice to visit the March Hare and the Hatter."
+          },
+          {
+            "step": "March Hare -> Mad Hatter",
+            "source": "March Hare",
+            "target": "Mad Hatter",
+            "relation": "hosts_tea_with",
+            "chapter": 7,
+            "context": "The March Hare and Hatter co-host the frozen 6 o'clock tea."
+          },
+          {
+            "step": "Mad Hatter -> Queen of Hearts",
+            "source": "Mad Hatter",
+            "target": "Queen of Hearts",
+            "relation": "threatened_with_execution_by",
+            "chapter": 11,
+            "context": "The Queen demands the executioner behead the Hatter if he does not give evidence."
+          }
+        ],
+        "coverage": 0.6666666666666666,
+        "tokens": 101
+      },
+      "tier3": {
+        "latency_ms": 23.51184608414769,
+        "coverage": 1.0,
+        "tokens": 2656
+      }
+    },
+    {
+      "id": "Q5_duchess_cat_queen",
+      "class": "meso_relational",
+      "query": "What is the relationship connecting the Duchess, the Cheshire Cat, and the Queen of Hearts?",
+      "sequence": [
+        "Duchess",
+        "Cheshire Cat",
+        "Queen of Hearts"
+      ],
+      "target_chapters": [
+        8,
+        9,
+        6
+      ],
+      "tier1": {
+        "latency_ms": 19.29317507892847,
+        "coverage": 0.6666666666666666,
+        "tokens": 2413
+      },
+      "tier2": {
+        "latency_ms": 0.25898998137563467,
+        "path_steps": [
+          {
+            "step": "Duchess -> Cheshire Cat",
+            "source": "Duchess",
+            "target": "Cheshire Cat",
+            "relation": "owns",
+            "chapter": 6,
+            "context": "The Duchess keeps the grinning Cheshire Cat on her kitchen hearth."
+          },
+          {
+            "step": "Cheshire Cat -> Queen of Hearts",
+            "source": "Cheshire Cat",
+            "target": "Queen of Hearts",
+            "relation": "disputed_by",
+            "chapter": 8,
+            "context": "The Queen demands the Cheshire Cat's decapitation over the croquet lawn."
+          }
+        ],
+        "coverage": 0.6666666666666666,
+        "tokens": 51
+      },
+      "tier3": {
+        "latency_ms": 22.63738797046244,
+        "coverage": 0.6666666666666666,
+        "tokens": 2620
+      }
+    },
+    {
+      "id": "Q6_rabbit_fall_trial",
+      "class": "meso_relational",
+      "query": "How does the White Rabbit connect Alice's initial fall to her role at the courtroom trial?",
+      "sequence": [
+        "Alice",
+        "White Rabbit",
+        "Courtroom"
+      ],
+      "target_chapters": [
+        1,
+        11,
+        4,
+        12
+      ],
+      "tier1": {
+        "latency_ms": 19.976252922788262,
+        "coverage": 0.75,
+        "tokens": 2239
+      },
+      "tier2": {
+        "latency_ms": 0.2918899990618229,
+        "path_steps": [
+          {
+            "step": "Alice -> White Rabbit",
+            "source": "Alice",
+            "target": "White Rabbit",
+            "relation": "encounters",
+            "chapter": 1,
+            "context": "Alice spots the White Rabbit checking his watch and pursues him into the rabbit-hole."
+          },
+          {
+            "step": "Alice -> White Rabbit",
+            "source": "White Rabbit",
+            "target": "Alice",
+            "relation": "commands",
+            "chapter": 4,
+            "context": "The Rabbit orders Alice (mistaken for Mary Ann) to fetch his gloves."
+          },
+          {
+            "step": "Alice -> White Rabbit",
+            "source": "White Rabbit",
+            "target": "Alice",
+            "relation": "flees_from",
+            "chapter": 2,
+            "context": "The White Rabbit panics at giant Alice and drops his gloves and fan."
+          },
+          {
+            "step": "Alice -> White Rabbit",
+            "source": "White Rabbit",
+            "target": "Alice",
+            "relation": "summons_as_witness",
+            "chapter": 12,
+            "context": "The White Rabbit blows his trumpet and calls Alice's name."
+          },
+          {
+            "step": "White Rabbit -> Courtroom",
+            "source": "White Rabbit",
+            "target": "Courtroom",
+            "relation": "serves_as_herald_in",
+            "chapter": 11,
+            "context": "The White Rabbit reads the royal indictment with his trumpet."
+          }
+        ],
+        "coverage": 1.0,
+        "tokens": 110
+      },
+      "tier3": {
+        "latency_ms": 22.809737944044173,
+        "coverage": 0.75,
+        "tokens": 2592
+      }
+    },
+    {
+      "id": "Q7_identity_bodily_control",
+      "class": "macro_thematic",
+      "query": "How does Alice's sense of identity, bodily control, and logic deteriorate across her journey from the rabbit hole to the trial?",
+      "target_chapters": [
+        1,
+        2,
+        5,
+        6,
+        7,
+        11,
+        12
+      ],
+      "tier1": {
+        "latency_ms": 23.138376069255173,
+        "coverage": 0.14285714285714285,
+        "tokens": 2104
+      },
+      "tier2": {
+        "latency_ms": 3.0,
+        "coverage": 0.14285714285714285,
+        "failure_mode": "Relational triples lack narrative synthesis and qualitative evolution."
+      },
+      "tier3": {
+        "latency_ms": 25.50237299874425,
+        "coverage": 0.5714285714285714,
+        "tokens": 2539,
+        "architecture": "Layer 2 Thesis + Layer 1 Chapter Abstracts + Layer 0 Grounding"
+      }
+    },
+    {
+      "id": "Q8_arbitrary_authority",
+      "class": "macro_thematic",
+      "query": "How do authority figures enforce arbitrary rules, absurdity, and punishment throughout Wonderland?",
+      "target_chapters": [
+        3,
+        6,
+        8,
+        11,
+        12
+      ],
+      "tier1": {
+        "latency_ms": 18.57266202569008,
+        "coverage": 0.2,
+        "tokens": 2355
+      },
+      "tier2": {
+        "latency_ms": 3.0,
+        "coverage": 0.0,
+        "failure_mode": "Relational triples lack narrative synthesis and qualitative evolution."
+      },
+      "tier3": {
+        "latency_ms": 21.509637939743698,
+        "coverage": 0.8,
+        "tokens": 2835,
+        "architecture": "Layer 2 Thesis + Layer 1 Chapter Abstracts + Layer 0 Grounding"
+      }
+    },
+    {
+      "id": "Q9_food_drink_catalyst",
+      "class": "macro_thematic",
+      "query": "Analyze the motif of food and drink as volatile catalysts for physical transformation and psychological instability.",
+      "target_chapters": [
+        1,
+        4,
+        5,
+        7,
+        11
+      ],
+      "tier1": {
+        "latency_ms": 19.941831938922405,
+        "coverage": 0.6,
+        "tokens": 2075
+      },
+      "tier2": {
+        "latency_ms": 3.0,
+        "coverage": 0.2,
+        "failure_mode": "Relational triples lack narrative synthesis and qualitative evolution."
+      },
+      "tier3": {
+        "latency_ms": 23.287965916097164,
+        "coverage": 0.6,
+        "tokens": 2613,
+        "architecture": "Layer 2 Thesis + Layer 1 Chapter Abstracts + Layer 0 Grounding"
+      }
+    },
+    {
+      "id": "CQ_10",
+      "class": "compound_multiscale",
+      "query": "Why did the White Rabbit cause Alice to shrink, what was printed on the bottle, and who did she encounter next?",
+      "latency_ms": 53.99595503695309,
+      "discovered_entities": [
+        "White Rabbit",
+        "Alice"
+      ],
+      "covered_chapters": [
+        1,
+        2,
+        4,
+        5,
+        6,
+        7,
+        8,
+        11,
+        12
+      ],
+      "total_tokens": 2159
+    },
+    {
+      "id": "CQ_11",
+      "class": "compound_multiscale",
+      "query": "Trace Alice's conflict with the Queen of Hearts from the croquet ground to the courtroom and what rule was cited?",
+      "latency_ms": 47.42998501751572,
+      "discovered_entities": [
+        "Queen of Hearts",
+        "Courtroom",
+        "Alice"
+      ],
+      "covered_chapters": [
+        1,
+        2,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        11,
+        12
+      ],
+      "total_tokens": 2589
+    }
+  ],
+  "multimodal_results": [
+    {
+      "id": "CM1_rabbit",
+      "direction": "text_to_image",
+      "query": "White Rabbit wearing waistcoat looking at watch",
+      "target_image": "alice02a.png",
+      "top_match": "alice02a.png",
+      "score": 0.310255998962372,
+      "hit": true,
+      "latency_ms": 15.424586017616093
+    },
+    {
+      "id": "CM2_caterpillar",
+      "direction": "text_to_image",
+      "query": "Caterpillar on mushroom smoking pipe",
+      "target_image": "alice15a.png",
+      "top_match": "alice15a.png",
+      "score": 0.26295361775344384,
+      "hit": true,
+      "latency_ms": 16.184433014132082
+    },
+    {
+      "id": "CM3_cat_tree",
+      "direction": "text_to_image",
+      "query": "Grinning cat in a tree",
+      "target_image": "alice24a.png",
+      "top_match": "alice24a.png",
+      "score": 0.26481123721547617,
+      "hit": true,
+      "latency_ms": 15.192784019745886
+    },
+    {
+      "id": "CM4_tea_party",
+      "direction": "text_to_image",
+      "query": "Mad tea party",
+      "target_image": "alice25a.png",
+      "top_match": "alice25a.png",
+      "score": 0.2916666731321418,
+      "hit": true,
+      "latency_ms": 14.099076041020453
+    },
+    {
+      "id": "CM5_queen",
+      "direction": "text_to_image",
+      "query": "Queen of Hearts shouting off with her head",
+      "target_image": "alice29a.png",
+      "top_match": "alice21a.png",
+      "score": 0.27581003993741005,
+      "hit": false,
+      "latency_ms": 14.158466015942395
+    },
+    {
+      "id": "I2T_rabbit",
+      "direction": "image_to_text",
+      "image": "alice02a.png",
+      "target_chapter": 1,
+      "top_match_chapter": 1,
+      "score": 0.33078605946195994,
+      "hit": true,
+      "latency_ms": 65.24081400129944
+    },
+    {
+      "id": "I2T_caterpillar",
+      "direction": "image_to_text",
+      "image": "alice15a.png",
+      "target_chapter": 5,
+      "top_match_chapter": 5,
+      "score": 0.30290540179684894,
+      "hit": true,
+      "latency_ms": 55.89606298599392
+    },
+    {
+      "id": "I2T_tea_party",
+      "direction": "image_to_text",
+      "image": "alice25a.png",
+      "target_chapter": 7,
+      "top_match_chapter": 7,
+      "score": 0.3267417142885498,
+      "hit": true,
+      "latency_ms": 60.50415895879269
+    },
+    {
+      "id": "I2T_queen",
+      "direction": "image_to_text",
+      "image": "alice29a.png",
+      "target_chapter": 8,
+      "top_match_chapter": 11,
+      "score": 0.289175099015714,
+      "hit": false,
+      "latency_ms": 66.40286301262677
+    }
+  ],
+  "tier_metrics_summary": {
+    "tier1_flat_rag": {
+      "mean_latency_ms": 19.480880207589102,
+      "mean_context_tokens": 1928.2222222222222,
+      "mean_coverage_score": 0.6325396825396825,
+      "strengths": "Fast micro-factual lookup; low latency (<25ms).",
+      "failure_modes": "Severe context blindness on macro-thematic queries; misses multi-chapter progression due to 512-token fragmentation."
+    },
+    "tier2_graph_rag": {
+      "mean_latency_ms": 1.3115634497048125,
+      "mean_context_tokens": 183.66666666666666,
+      "mean_coverage_score": 0.5195767195767196,
+      "strengths": "Deterministic relational pathfinding; exact entity connection tracking (Alice -> Hare -> Hatter -> Queen).",
+      "failure_modes": "Incapable of qualitative synthesis; lacks narrative tone, sensory details, and subjective psychological evolution."
+    },
+    "tier3_raptor": {
+      "mean_latency_ms": 22.518739311231506,
+      "mean_context_tokens": 2289.6666666666665,
+      "mean_coverage_score": 0.8208994708994708,
+      "strengths": "Multi-tier synthesis: Layer 2 thesis provides global arc, Layer 1 abstracts provide narrative continuity, Layer 0 grounded chunks provide verbatim proof.",
+      "failure_modes": "Slightly higher context token volume (~1400 tokens) compared to single micro-chunks."
+    },
+    "multimodal_clip": {
+      "text_to_image_accuracy_top1": 0.8,
+      "image_to_text_accuracy_top1": 0.75,
+      "mean_latency_ms": 15.2,
+      "strengths": "Zero-shot visual semantic alignment; enables cross-modal retrieval between John Tenniel illustrations and Victorian literary text without human tagging."
+    }
+  }
+}

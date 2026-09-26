@@ -1,0 +1,60 @@
+---
+# Aegis Sovereign Knowledge Appliance — Zero-Touch Bare-Metal Provisioning Playbook
+# ==================================================================================
+# Target: Tier 2 Departmental Appliance & Tier 3 Datacenter Bare-Metal Nodes
+# Enforces LUKS2 dm-crypt NVMe encryption, kernel inotify tuning, AVX-512 SIMD check,
+# and air-gapped Qdrant + Sovereign Enginesystemd/Docker orchestration.
+
+- name: Provision Aegis Sovereign Knowledge Appliance (Zero-Touch Bare-Metal)
+  hosts: aegis_appliance_nodes
+  become: true
+  vars:
+    aegis_install_dir: "/opt/aegis-sovereign-appliance"
+    aegis_data_vault_dir: "/var/lib/aegis-vault"
+    aegis_loopback_port: 8765
+    qdrant_grpc_port: 6334
+    sysctl_tuning:
+      fs.inotify.max_user_watches: 1048576
+      fs.inotify.max_user_instances: 2048
+      vm.max_map_count: 262144
+      vm.swappiness: 10
+      net.core.somaxconn: 4096
+
+  tasks:
+    - name: Verify CPU SIMD Hardware Capabilities (AVX2 / AVX-512 VNNI)
+      ansible.builtin.shell: |
+        grep -E -q "avx2|avx512_vnni" /proc/cpuinfo
+      changed_when: false
+
+    - name: Apply Sovereign Kernel & mmap Zero-Copy Tuning (sysctl)
+      ansible.posix.sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+      loop: "{{ sysctl_tuning | dict2items }}"
+
+    - name: Create Encrypted Vault & Appliance Directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+      loop:
+        - "{{ aegis_install_dir }}"
+        - "{{ aegis_data_vault_dir }}/qdrant_int8"
+        - "{{ aegis_data_vault_dir }}/sqlite_fts5_graph"
+        - "{{ aegis_data_vault_dir }}/audit_worm_ledger"
+
+    - name: Synchronize Air-Gapped Appliance Stack Artifacts
+      ansible.builtin.copy:
+        src: "../../deploy/appliance/docker-compose.yml"
+        dest: "{{ aegis_install_dir }}/docker-compose.yml"
+        mode: "0640"
+
+    - name: Launch Air-Gapped Sovereign Stack via Docker Compose v2
+      ansible.builtin.command:
+        cmd: docker compose up -d --remove-orphans
+        chdir: "{{ aegis_install_dir }}"
+      changed_when: true

@@ -1,0 +1,989 @@
+{
+  "benchmark_suite": "huawei_26_1_0_real_corpus_zipped_vs_unzipped",
+  "timestamp": "2026-09-25T01:31:14Z",
+  "total_benchmark_wall_s": 22.41,
+  "experiment_1_zipped_vs_unzipped": {
+    "benchmark_1a_upcf_releasedoc_19mb": {
+      "archive_name": "UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip",
+      "compressed_size_bytes": 19200891,
+      "compressed_size_mb": 18.31,
+      "path_a_unzipped_ext4": {
+        "extract_ms": 70.89,
+        "parse_unzipped_ms": 880.45,
+        "cleanup_ms": 4.13,
+        "total_wall_ms": 955.47,
+        "files_created": 12,
+        "dirs_created": 4,
+        "total_inodes_allocated": 16,
+        "logical_size_bytes": 20477656,
+        "disk_allocated_bytes": 20504576,
+        "ext4_slack_bytes": 26920,
+        "ssd_bytes_written": 20504576,
+        "xlsx_rows_parsed": 7178,
+        "docx_paragraphs_parsed": 3854,
+        "peak_rss_mb": 45.36,
+        "temp_dir_cleaned": true
+      },
+      "path_b_aegis_in_memory_stream": {
+        "extract_ms": 0.0,
+        "parse_in_memory_ms": 931.08,
+        "cleanup_ms": 0.0,
+        "total_wall_ms": 931.08,
+        "files_created": 0,
+        "dirs_created": 0,
+        "total_inodes_allocated": 0,
+        "logical_size_bytes": 20477656,
+        "disk_allocated_bytes": 0,
+        "ext4_slack_bytes": 0,
+        "ssd_bytes_written": 0,
+        "xlsx_rows_parsed": 7178,
+        "docx_paragraphs_parsed": 3854,
+        "peak_rss_mb": 51.91
+      },
+      "speedup_factor_x": 1.03,
+      "ssd_write_saved_mb": 19.55
+    },
+    "benchmark_1b_usc_hwics_2500_slice_plus_metadata": {
+      "archive_name": "HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.zip",
+      "compressed_size_bytes": 345749885,
+      "compressed_size_mb": 329.73,
+      "total_hwics_entries": 29860,
+      "slice_entries_tested": 2500,
+      "path_a_unzipped_ext4": {
+        "extract_ms": 1690.81,
+        "parse_unzipped_ms": 1194.43,
+        "cleanup_ms": 112.43,
+        "total_wall_ms": 2997.67,
+        "files_created": 2501,
+        "dirs_created": 84,
+        "total_inodes_allocated": 2585,
+        "slice_logical_bytes": 104811428,
+        "slice_disk_allocated_bytes": 109953024,
+        "slice_ext4_slack_bytes": 5141596,
+        "slice_ext4_slack_pct": 4.91,
+        "total_ssd_bytes_written": 463269888,
+        "total_ssd_mb_written": 441.81,
+        "navi_topics_parsed": 21541,
+        "images_xml_entries_parsed": 7846,
+        "alarm_htmls_parsed": 759,
+        "peak_rss_mb": 434.85,
+        "temp_dir_cleaned": true
+      },
+      "path_b_aegis_in_memory_stream": {
+        "load_container_ms": 0.0,
+        "parse_in_memory_ms": 1718.35,
+        "cleanup_ms": 0.0,
+        "total_wall_ms": 1718.35,
+        "files_created": 0,
+        "dirs_created": 0,
+        "total_inodes_allocated": 0,
+        "slice_logical_bytes": 104811428,
+        "slice_disk_allocated_bytes": 0,
+        "slice_ext4_slack_bytes": 0,
+        "total_ssd_bytes_written": 0,
+        "total_ssd_mb_written": 0.0,
+        "navi_topics_parsed": 21541,
+        "images_xml_entries_parsed": 7846,
+        "alarm_htmls_parsed": 759,
+        "peak_rss_mb": 447.04
+      },
+      "full_29860_entries_ext4_projection": {
+        "full_logical_bytes": 587267455,
+        "full_logical_mb": 560.06,
+        "full_ext4_4k_allocated_bytes": 650604544,
+        "full_ext4_4k_allocated_mb": 620.46,
+        "full_ext4_slack_bytes": 63337089,
+        "full_ext4_slack_mb": 60.4,
+        "full_ext4_slack_amplification_pct": 10.79
+      },
+      "speedup_factor_x": 1.74,
+      "ssd_write_saved_mb": 441.81
+    }
+  },
+  "experiment_2_deep_corpus_inventory": {
+    "total_packages_processed": 4,
+    "total_hwics_containers": 2,
+    "total_compressed_bytes": 853758759,
+    "total_compressed_mb": 814.21,
+    "total_uncompressed_bytes": 1336223854,
+    "total_uncompressed_mb": 1274.32,
+    "total_ext4_4k_allocated_mb": 1392.02,
+    "total_ext4_4k_slack_mb": 117.69,
+    "total_ext4_slack_amplification_pct": 9.24,
+    "total_archive_entries": 58395,
+    "total_html_topics": 40707,
+    "total_png_figures": 16235,
+    "total_xml_files": 172,
+    "total_pid_bookmap_dita_maps": 133,
+    "total_navi_xml_raptor_topics": 40762,
+    "total_excel_spreadsheets": 169,
+    "total_word_docx_manuals": 66,
+    "unique_xlsx_alarms_extracted": 823,
+    "unique_xlsx_events_extracted": 39,
+    "unique_html_alarms_extracted": 1439,
+    "alarms_with_ladder_or_root_diagrams": 825,
+    "full_4_package_stream_inventory_ms": 13736.21,
+    "packages_inventory": [
+      {
+        "package_name": "UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip",
+        "container_type": "ZIP ReleaseDoc Bundle (.xlsx / .docx)",
+        "compressed_mb": 18.31,
+        "uncompressed_mb": 19.53,
+        "total_entries": 16,
+        "xlsx_spreadsheets": 9,
+        "xlsx_rows_extracted": 7178,
+        "docx_manuals": 3,
+        "docx_paragraphs_extracted": 3854,
+        "docx_tables_extracted": 58
+      },
+      {
+        "package_name": "USC 26.1.0_ReleaseDoc_EN (VM).zip",
+        "container_type": "ZIP ReleaseDoc Bundle (.xlsx / .docx)",
+        "compressed_mb": 135.65,
+        "uncompressed_mb": 141.43,
+        "total_entries": 119,
+        "xlsx_spreadsheets": 29,
+        "xlsx_rows_extracted": 33125,
+        "docx_manuals": 63,
+        "docx_paragraphs_extracted": 94611,
+        "docx_tables_extracted": 2034
+      },
+      {
+        "package_name": "HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.zip",
+        "inner_hwics_name": "HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.hwics",
+        "container_type": "Huawei Hedex .hwics Container inside .zip",
+        "product_label": "USC 26.1.0",
+        "profile_metadata": {
+          "buildVersion": "V600R001C10SPC300",
+          "upgradeVersion": "3",
+          "libId": "2008148953_EN",
+          "libVersion": "02",
+          "libName": "USC 26.1.0 Product Documentation (VM Container)",
+          "productType": "USC",
+          "productVersion": "26.1.0",
+          "issueDate": "2026-07-24",
+          "language": "en",
+          "srcType": "0",
+          "libType": "0",
+          "navi": "resources/navi.xml",
+          "homePage": "resources/hedex-homepage.html",
+          "hedexVersion": "V100R002C00",
+          "libLicense": "0",
+          "topicNumber": "21604",
+          "autoUpdateFromMe": "0",
+          "autoUpdateToMe": "0",
+          "controlledWordVersion": "V3.0",
+          "hasSuggestFile": "true"
+        },
+        "compressed_mb": 329.73,
+        "uncompressed_mb": 560.06,
+        "total_entries": 29860,
+        "html_topics": 21542,
+        "png_diagrams": 7847,
+        "xml_maps": 55,
+        "dita_pid_bookmaps": 36,
+        "embedded_spreadsheets": 61,
+        "navi_xml_raptor_summary": {
+          "total_topics": 21541,
+          "raptor_l2_thesis_nodes": 1,
+          "raptor_l1_abstract_nodes": 3718,
+          "raptor_l0_leaf_nodes": 17823,
+          "max_depth": 15,
+          "top_domains": [
+            {
+              "title": "Getting Started",
+              "url": "toctopics/en-us_topic_0000002488319485.html",
+              "descendant_topics": 1735
+            },
+            {
+              "title": "Features",
+              "url": "toctopics/en-us_topic_0000002455160250.html",
+              "descendant_topics": 1699
+            },
+            {
+              "title": "Deployment",
+              "url": "toctopics/en-us_topic_0000002488199553.html",
+              "descendant_topics": 404
+            },
+            {
+              "title": "Operations and Maintenance",
+              "url": "toctopics/en-us_topic_0000002488319549.html",
+              "descendant_topics": 1283
+            },
+            {
+              "title": "OM Reference",
+              "url": "toctopics/en-us_topic_0000002455160282.html",
+              "descendant_topics": 16415
+            }
+          ]
+        },
+        "images_xml_manifest_count": 7846,
+        "alarm_html_pages_parsed": 759,
+        "alarms_with_ladder_or_root_diagrams": 392
+      },
+      {
+        "package_name": "UPCF 26.1.0 Product Documentation (Virtual Machine Container) 02 (Online Information Center).zip",
+        "inner_hwics_name": "UPCF 26.1.0 Product Documentation (Virtual Machine Container) 02 (Online Information Center).hwics",
+        "container_type": "Huawei Hedex .hwics Container inside .zip",
+        "product_label": "UPCF 26.1.0",
+        "profile_metadata": {
+          "buildVersion": "V600R001C10SPC300",
+          "upgradeVersion": "3",
+          "libId": "216079471_EN",
+          "libVersion": "02",
+          "libName": "UPCF 26.1.0 Product Documentation(Virtual Machine Container)",
+          "productType": "UPCF",
+          "productVersion": "26.1.0",
+          "issueDate": "2026-08-24",
+          "language": "en",
+          "srcType": "0",
+          "libType": "0",
+          "navi": "resources/navi.xml",
+          "homePage": "resources/hedex-homepage.html",
+          "hedexVersion": "V100R002C00",
+          "libLicense": "0",
+          "topicNumber": "19433",
+          "autoUpdateFromMe": "0",
+          "autoUpdateToMe": "0",
+          "controlledWordVersion": "V3.0",
+          "hasSuggestFile": "true"
+        },
+        "compressed_mb": 330.51,
+        "uncompressed_mb": 553.3,
+        "total_entries": 28400,
+        "html_topics": 19165,
+        "png_diagrams": 8388,
+        "xml_maps": 117,
+        "dita_pid_bookmaps": 97,
+        "embedded_spreadsheets": 70,
+        "navi_xml_raptor_summary": {
+          "total_topics": 19221,
+          "raptor_l2_thesis_nodes": 1,
+          "raptor_l1_abstract_nodes": 3168,
+          "raptor_l0_leaf_nodes": 16053,
+          "max_depth": 13,
+          "top_domains": [
+            {
+              "title": "Basic Knowledge",
+              "url": "toctopics/en-us_topic_0000002506878944.html",
+              "descendant_topics": 207
+            },
+            {
+              "title": "Getting Started",
+              "url": "toctopics/en-us_topic_0000002506878976.html",
+              "descendant_topics": 1801
+            },
+            {
+              "title": "Network Deployment",
+              "url": "toctopics/en-us_topic_0000002538598861.html",
+              "descendant_topics": 502
+            },
+            {
+              "title": "Features",
+              "url": "toctopics/en-us_topic_0000002506879010.html",
+              "descendant_topics": 1868
+            },
+            {
+              "title": "O&M",
+              "url": "toctopics/en-us_topic_0000002538518937.html",
+              "descendant_topics": 1453
+            },
+            {
+              "title": "Reference (eg: MML, Para., counters, etc)",
+              "url": "toctopics/en-us_topic_0000002538518957.html",
+              "descendant_topics": 13384
+            }
+          ]
+        },
+        "images_xml_manifest_count": 8387,
+        "alarm_html_pages_parsed": 680,
+        "alarms_with_ladder_or_root_diagrams": 433
+      }
+    ],
+    "featured_alarm_dossiers": [
+      {
+        "alarm_id": "ALM-1003",
+        "numeric_id": "1003",
+        "alarm_name": "Module Fault",
+        "title": "ALM-1003 Module Fault",
+        "severity": "Major",
+        "auto_clear": "Yes",
+        "entry_path": "resources/csp/alarm_cgplite/alarms/1003.html",
+        "figures": [
+          {
+            "caption": "Figure 1 Root alarm",
+            "relative_src": "figure/en-us_image_0269895191.png",
+            "archive_entry": "resources/csp/alarm_cgplite/alarms/figure/en-us_image_0269895191.png"
+          },
+          {
+            "caption": "Figure 2 Alarm mechanism",
+            "relative_src": "figure/en-us_image_0269895193.png",
+            "archive_entry": "resources/csp/alarm_cgplite/alarms/figure/en-us_image_0269895193.png"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ME ID",
+            "meaning": "Identifies the managed element (ME) where the faulty module resides. For details, see the description of each ME"
+          },
+          {
+            "name": "Faulty module number",
+            "meaning": "Identifies the faulty module."
+          },
+          {
+            "name": "Faulty module type",
+            "meaning": "Indicates the type of the faulty module, such as SCU, CDB, BSU, or DPU."
+          },
+          {
+            "name": "Position",
+            "meaning": "Indicates the position of the pod running the faulty module. The value contains the pod name and node name."
+          }
+        ],
+        "possible_causes": [
+          "Operations, such as resetting and switchover, have been performed on the OM Portal , causing the module to become faulty temporarily.",
+          "The module stops unexpectedly.",
+          "The pod running the faulty module is faulty.",
+          "The data on the arbitration PMU is inconsistent with the data in the OMU data file.",
+          "The pod CPU is level-4 overloaded. By default, the CPU is level-4 overloaded when the CPU usage reaches 95%.",
+          "The file loading onto the pod fails."
+        ],
+        "procedure_steps": [],
+        "product_package": "UPCF 26.1.0",
+        "virtual_uri": "archive://UPCF 26.1.0 Product Documentation (Virtual Machine Container) 02 (Online Information Center).zip#UPCF 26.1.0 Product Documentation (Virtual Machine Container) 02 (Online Information Center).hwics!/resources/csp/alarm_cgplite/alarms/1003.html",
+        "xlsx_cross_link": {
+          "alarm_id": "ALM-1003",
+          "numeric_id": "1003",
+          "alarm_name": "Module Fault",
+          "alarm_level": "2",
+          "alarm_type": "6",
+          "location_info": "ME ID=%lu,Faulty module number=%lu,Faulty module type=%lu,Position=%s",
+          "alarm_explain": "This alarm is generated when the module is stopped abnormally or is killed.",
+          "source_xlsx": "USC 26.1.0 Alarm List.xlsx",
+          "virtual_uri": "archive://USC 26.1.0_ReleaseDoc_EN (VM).zip#04. NorthBound/USC 26.1.0 Alarm List.xlsx"
+        }
+      },
+      {
+        "alarm_id": "ALM-125001",
+        "numeric_id": "125001",
+        "alarm_name": "CGPBroker Failed to Register the Backupinfo",
+        "title": "ALM-125001 CGPBroker Failed to Register the Backupinfo",
+        "severity": "Major",
+        "auto_clear": "Yes",
+        "entry_path": "resources/alarm_cgplite/alarms/125001.html",
+        "figures": [],
+        "parameters": [
+          {
+            "name": "ME ID",
+            "meaning": "Identifies an ME."
+          },
+          {
+            "name": "Alarm Cause",
+            "meaning": "Indicates the alarm cause."
+          }
+        ],
+        "possible_causes": [
+          "The BackupMgr service is abnormal.",
+          "The network is disconnected."
+        ],
+        "procedure_steps": [],
+        "product_package": "USC 26.1.0",
+        "virtual_uri": "archive://HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.zip#HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.hwics!/resources/alarm_cgplite/alarms/125001.html",
+        "xlsx_cross_link": {
+          "alarm_id": "ALM-125001",
+          "numeric_id": "125001",
+          "alarm_name": "CGPBroker Failed to Register the Backupinfo",
+          "alarm_level": "2",
+          "alarm_type": "6",
+          "location_info": "ME ID=%lu,Alarm cause=%s",
+          "alarm_explain": "This alarm is generated when CGPBroker fails to register the backupinfo for 10 times.",
+          "source_xlsx": "USC 26.1.0 Alarm List.xlsx",
+          "virtual_uri": "archive://USC 26.1.0_ReleaseDoc_EN (VM).zip#04. NorthBound/USC 26.1.0 Alarm List.xlsx"
+        }
+      },
+      {
+        "alarm_id": "ALM-2375",
+        "numeric_id": "2375",
+        "alarm_name": "Number of Confirmed Patches on the Modules of the Same Type Inconsistent",
+        "title": "ALM-2375 Number of Confirmed Patches on the Modules of the Same Type Inconsistent",
+        "severity": "Major",
+        "auto_clear": "Yes",
+        "entry_path": "resources/alarm_cgplite/alarms/2375.html",
+        "figures": [],
+        "parameters": [
+          {
+            "name": "ME ID",
+            "meaning": "Identifies the ME for which this alarm is generated. For details, see the description of each ME."
+          },
+          {
+            "name": "Module type",
+            "meaning": "Indicates the type of the module for which the alarm is generated."
+          }
+        ],
+        "possible_causes": [
+          "The maintenance personnel runs the commands LOD PATCH , ACT PATCH , and CON PATCH to load, activate, or confirm patches on the modules of the same type. However, the operations (loading, activating, and confirming) performed on the modules are different; therefore, the number of confirmed patches on the modules of the same type is inconsistent.",
+          "The number of patches on the modules of the same type is different.",
+          "Certain modules run improperly. As a result, patches cannot be installed on such modules."
+        ],
+        "procedure_steps": [],
+        "product_package": "USC 26.1.0",
+        "virtual_uri": "archive://HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.zip#HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.hwics!/resources/alarm_cgplite/alarms/2375.html",
+        "xlsx_cross_link": {
+          "alarm_id": "ALM-2375",
+          "numeric_id": "2375",
+          "alarm_name": "Number of Confirmed Patches on the Modules of the Same Type Inconsistent",
+          "alarm_level": "2",
+          "alarm_type": "7",
+          "location_info": "ME ID=%lu,Module type=%s",
+          "alarm_explain": "This alarm is generated when the system periodically (every 30 minutes) detects that the number of confirmed patches on the modules of the same type is inconsistent.",
+          "source_xlsx": "USC 26.1.0 Alarm List.xlsx",
+          "virtual_uri": "archive://USC 26.1.0_ReleaseDoc_EN (VM).zip#04. NorthBound/USC 26.1.0 Alarm List.xlsx"
+        }
+      },
+      {
+        "alarm_id": "ALM-12000",
+        "numeric_id": "12000",
+        "alarm_name": "Master/Slave Switchover",
+        "title": "12000 Master/Slave Switchover",
+        "severity": "Major",
+        "auto_clear": "Yes",
+        "entry_path": "resources/be/om/troubleshooting/alarms/12000.html",
+        "figures": [],
+        "parameters": [],
+        "possible_causes": [],
+        "procedure_steps": [],
+        "product_package": "USC 26.1.0",
+        "virtual_uri": "archive://HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.zip#HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.hwics!/resources/be/om/troubleshooting/alarms/12000.html",
+        "xlsx_cross_link": {
+          "event_id": "12000",
+          "event_name": "Master/Slave Switchover",
+          "event_level": "2",
+          "event_type": "6",
+          "location_info": "None",
+          "event_explain": "This alarm is generated when a slave node is selected or specified as the master node.",
+          "source_xlsx": "USCDB 26.1.0 Event List.xlsx",
+          "virtual_uri": "archive://USC 26.1.0_ReleaseDoc_EN (VM).zip#04. NorthBound/USCDB 26.1.0 Event List.xlsx"
+        }
+      },
+      {
+        "alarm_id": "ALM-1010",
+        "numeric_id": "1010",
+        "alarm_name": "Management Plane Packet Error and Loss",
+        "title": "ALM-1010 Management Plane Packet Error and Loss",
+        "severity": "Major",
+        "auto_clear": "Yes",
+        "entry_path": "resources/csp/alarm_cgplite/alarms/1010.html",
+        "figures": [
+          {
+            "caption": "Figure 1 Detecting the packet error and loss ratio if the PMU process has been running for 5 or less minutes",
+            "relative_src": "figure/en-us_image_0269895195.png",
+            "archive_entry": "resources/csp/alarm_cgplite/alarms/figure/en-us_image_0269895195.png"
+          },
+          {
+            "caption": "Figure 2 Detecting the packet error and loss ratio if the PMU process has been running for more than 30 minutes",
+            "relative_src": "figure/en-us_image_0269895198.png",
+            "archive_entry": "resources/csp/alarm_cgplite/alarms/figure/en-us_image_0269895198.png"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Destination port name",
+            "meaning": "Identifies the destination pod port of the management planes whose packet error and loss ratio reached the alarm threshold."
+          },
+          {
+            "name": "Source port name",
+            "meaning": "Identifies the source pod port of the management planes whose packet error and loss ratio reached the alarm threshold."
+          },
+          {
+            "name": "Packet error and loss ratio (0.1%)",
+            "meaning": "Indicates the packet error and loss ratio."
+          },
+          {
+            "name": "Destination position",
+            "meaning": "Describes the position of the pod where the destination port resides."
+          },
+          {
+            "name": "Source position",
+            "meaning": "Describes the position of the pod where the source port resides."
+          }
+        ],
+        "possible_causes": [
+          "The management planes of the server running the destination pod are abnormal.",
+          "The Base port of the destination pod is faulty.",
+          "The management planes of the server running the source pod are abnormal.",
+          "The Base port of the source pod is faulty.",
+          "The CPU of the source pod or destination pod is overloaded.",
+          "A virtual port is faulty."
+        ],
+        "procedure_steps": [],
+        "product_package": "UPCF 26.1.0",
+        "virtual_uri": "archive://UPCF 26.1.0 Product Documentation (Virtual Machine Container) 02 (Online Information Center).zip#UPCF 26.1.0 Product Documentation (Virtual Machine Container) 02 (Online Information Center).hwics!/resources/csp/alarm_cgplite/alarms/1010.html",
+        "xlsx_cross_link": {
+          "alarm_id": "ALM-1010",
+          "numeric_id": "1010",
+          "alarm_name": "Management Plane Packet Error and Loss",
+          "alarm_level": "2",
+          "alarm_type": "8",
+          "location_info": "Destination port name=%lu,Source port name=%lu,Packet error and loss ratio(0.1%)=%lu,Destination position=%s,Source position=%s",
+          "alarm_explain": "The DOCM module of the IMU or PMU periodically detects the plane. When the packet error and loss ratio of any BASE plane exceeds the threshold, the system generates this alarm.",
+          "source_xlsx": "USC 26.1.0 Alarm List.xlsx",
+          "virtual_uri": "archive://USC 26.1.0_ReleaseDoc_EN (VM).zip#04. NorthBound/USC 26.1.0 Alarm List.xlsx"
+        }
+      },
+      {
+        "alarm_id": "ALM-2376",
+        "numeric_id": "2376",
+        "alarm_name": "Automatic Installation Failure of Patch",
+        "title": "ALM-2376 Automatic Installation Failure of Patch",
+        "severity": "Major",
+        "auto_clear": "Yes",
+        "entry_path": "resources/alarm_cgplite/alarms/2376.html",
+        "figures": [],
+        "parameters": [
+          {
+            "name": "ME ID",
+            "meaning": "Identifies the ME for which the patch fails to be installed automatically."
+          },
+          {
+            "name": "Patch package name",
+            "meaning": "Indicates the name of the patch package that must be installed automatically."
+          },
+          {
+            "name": "Patch package state",
+            "meaning": "Indicates whether a patch package is installed successfully. \"Success\" indicates a successful installation and \"Fail\" indicates a failed installation."
+          },
+          {
+            "name": "Cold patch name",
+            "meaning": "Indicates the name of the cold patch that must be installed automatically. If no cold patch is available, this field is empty."
+          },
+          {
+            "name": "Cold patch state",
+            "meaning": "Indicates whether a cold patch package is installed successfully. \"Success\" indicates a successful installation, \"Fail\" indicates a failed installation, and \"None\" indicates that no cold patch is available."
+          },
+          {
+            "name": "Hot patch name",
+            "meaning": "Indicates the name of the hot patch that must be installed automatically. If no hot patch is available, this field is empty."
+          },
+          {
+            "name": "Hot patch state",
+            "meaning": "Indicates whether a hot patch package is installed successfully. \"Success\" indicates a successful installation, \"Fail\" indicates a failed installation, and \"None\" indicates that no hot patch is available."
+          }
+        ],
+        "possible_causes": [
+          "The patch package fails to be installed due to system reasons.",
+          "The hot patch fails to be installed due to system reasons.",
+          "The cold patch fails to be installed due to system reasons."
+        ],
+        "procedure_steps": [],
+        "product_package": "USC 26.1.0",
+        "virtual_uri": "archive://HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.zip#HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.hwics!/resources/alarm_cgplite/alarms/2376.html",
+        "xlsx_cross_link": {
+          "alarm_id": "ALM-2376",
+          "numeric_id": "2376",
+          "alarm_name": "Automatic Installation Failure of Patch",
+          "alarm_level": "2",
+          "alarm_type": "6",
+          "location_info": "None",
+          "alarm_explain": "This alarm is generated when the system detects that a patch that must be automatically installed is not successfully installed during version installation or upgrade.",
+          "source_xlsx": "USCDB 26.1.0 Alarm List.xlsx",
+          "virtual_uri": "archive://USC 26.1.0_ReleaseDoc_EN (VM).zip#04. NorthBound/USCDB 26.1.0 Alarm List.xlsx"
+        }
+      }
+    ],
+    "sample_performance_counters": [
+      {
+        "function_set_id": "1931088777",
+        "function_set_name": "PCF Performance Measurement",
+        "subset_id": "1727209145",
+        "subset_name": "Interworking Between PCF and SMF",
+        "period_min": "5/15/30/60/1440",
+        "object_type_id": "1931083777",
+        "object_name": "PCFHLB",
+        "counter_id": "1727317513",
+        "source_xlsx": "HUAWEI UPCF 26.1.0.5 Performance Counter List.xlsx",
+        "virtual_uri": "archive://UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip#04 NMS Adaptation List File/HUAWEI UPCF 26.1.0.5 Performance Counter List.xlsx"
+      },
+      {
+        "function_set_id": "1931088777",
+        "function_set_name": "PCF Performance Measurement",
+        "subset_id": "1727209145",
+        "subset_name": "Interworking Between PCF and SMF",
+        "period_min": "5/15/30/60/1440",
+        "object_type_id": "1931083777",
+        "object_name": "PCFHLB",
+        "counter_id": "1727317514",
+        "source_xlsx": "HUAWEI UPCF 26.1.0.5 Performance Counter List.xlsx",
+        "virtual_uri": "archive://UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip#04 NMS Adaptation List File/HUAWEI UPCF 26.1.0.5 Performance Counter List.xlsx"
+      },
+      {
+        "function_set_id": "1931088777",
+        "function_set_name": "PCF Performance Measurement",
+        "subset_id": "1727209145",
+        "subset_name": "Interworking Between PCF and SMF",
+        "period_min": "5/15/30/60/1440",
+        "object_type_id": "1931083777",
+        "object_name": "PCFHLB",
+        "counter_id": "1727317515",
+        "source_xlsx": "HUAWEI UPCF 26.1.0.5 Performance Counter List.xlsx",
+        "virtual_uri": "archive://UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip#04 NMS Adaptation List File/HUAWEI UPCF 26.1.0.5 Performance Counter List.xlsx"
+      },
+      {
+        "function_set_id": "1931088777",
+        "function_set_name": "PCF Performance Measurement",
+        "subset_id": "1727209145",
+        "subset_name": "Interworking Between PCF and SMF",
+        "period_min": "5/15/30/60/1440",
+        "object_type_id": "1931083777",
+        "object_name": "PCFHLB",
+        "counter_id": "1727317516",
+        "source_xlsx": "HUAWEI UPCF 26.1.0.5 Performance Counter List.xlsx",
+        "virtual_uri": "archive://UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip#04 NMS Adaptation List File/HUAWEI UPCF 26.1.0.5 Performance Counter List.xlsx"
+      },
+      {
+        "function_set_id": "1931088777",
+        "function_set_name": "PCF Performance Measurement",
+        "subset_id": "1727209145",
+        "subset_name": "Interworking Between PCF and SMF",
+        "period_min": "5/15/30/60/1440",
+        "object_type_id": "1931083777",
+        "object_name": "PCFHLB",
+        "counter_id": "1727317517",
+        "source_xlsx": "HUAWEI UPCF 26.1.0.5 Performance Counter List.xlsx",
+        "virtual_uri": "archive://UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip#04 NMS Adaptation List File/HUAWEI UPCF 26.1.0.5 Performance Counter List.xlsx"
+      },
+      {
+        "function_set_id": "1931088777",
+        "function_set_name": "PCF Performance Measurement",
+        "subset_id": "1727209145",
+        "subset_name": "Interworking Between PCF and SMF",
+        "period_min": "5/15/30/60/1440",
+        "object_type_id": "1931083777",
+        "object_name": "PCFHLB",
+        "counter_id": "1727317518",
+        "source_xlsx": "HUAWEI UPCF 26.1.0.5 Performance Counter List.xlsx",
+        "virtual_uri": "archive://UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip#04 NMS Adaptation List File/HUAWEI UPCF 26.1.0.5 Performance Counter List.xlsx"
+      }
+    ],
+    "sample_docx_manuals": [
+      {
+        "package": "UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip",
+        "path": "03 Upgrade Guide/HUAWEI UPCF 26.1.0.5 Patch Installation Guide(Virtual Machine Container).docx",
+        "title": "HUAWEI UPCF 26.1.0.5 Patch Installation Guide(Virtual Machine Container)",
+        "size_bytes": 9938851,
+        "paragraphs": 1266,
+        "tables": 16,
+        "embedded_images": 94,
+        "sample_excerpt": "HUAWEI UPCF | 26.1.0.5 | Patch Installation Guide | Issue | 01 | Date | 2026-08-24 | HUAWEI TECHNOLOGIES CO., LTD.",
+        "virtual_uri": "archive://UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip#03 Upgrade Guide/HUAWEI UPCF 26.1.0.5 Patch Installation Guide(Virtual Machine Container).docx"
+      },
+      {
+        "package": "UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip",
+        "path": "03 Upgrade Guide/HUAWEI UPCF 26.1.0.5 Upgrade Guide(Virtual Machine Container).docx",
+        "title": "HUAWEI UPCF 26.1.0.5 Upgrade Guide(Virtual Machine Container)",
+        "size_bytes": 8490096,
+        "paragraphs": 2326,
+        "tables": 30,
+        "embedded_images": 77,
+        "sample_excerpt": "HUAWEI UPCF | 26.1.0.5 | Upgrade Guide | Issue | 01 | Date | 2026-08-24 | HUAWEI TECHNOLOGIES CO., LTD.",
+        "virtual_uri": "archive://UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip#03 Upgrade Guide/HUAWEI UPCF 26.1.0.5 Upgrade Guide(Virtual Machine Container).docx"
+      },
+      {
+        "package": "UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip",
+        "path": "01 Patch Description/HUAWEI UPCF 26.1.0.5 Patch Notes.docx",
+        "title": "HUAWEI UPCF 26.1.0.5 Patch Notes",
+        "size_bytes": 387262,
+        "paragraphs": 262,
+        "tables": 12,
+        "embedded_images": 9,
+        "sample_excerpt": "HUAWEI UPCF | 26.1.0.5 | Patch Notes | Issue | 01 | Date | 2026-08-24 | HUAWEI TECHNOLOGIES CO., LTD.",
+        "virtual_uri": "archive://UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip#01 Patch Description/HUAWEI UPCF 26.1.0.5 Patch Notes.docx"
+      },
+      {
+        "package": "USC 26.1.0_ReleaseDoc_EN (VM).zip",
+        "path": "13. Guide to Installing the MAE Mediation Package/iMaster MAE V100R026C10 Mediation Operation Guide (Using Commands).docx",
+        "title": "iMaster MAE V100R026C10 Mediation Operation Guide (Using Commands)",
+        "size_bytes": 747687,
+        "paragraphs": 658,
+        "tables": 14,
+        "embedded_images": 9,
+        "sample_excerpt": "iMaster MAE | V100R026C10 | Mediation Operation Guide (Using Commands) | Issue | 01 | Date | 2026-01-20 | HUAWEI TECHNOLOGIES CO., LTD.",
+        "virtual_uri": "archive://USC 26.1.0_ReleaseDoc_EN (VM).zip#13. Guide to Installing the MAE Mediation Package/iMaster MAE V100R026C10 Mediation Operation Guide (Using Commands).docx"
+      },
+      {
+        "package": "USC 26.1.0_ReleaseDoc_EN (VM).zip",
+        "path": "13. Guide to Installing the MAE Mediation Package/iMaster MAE V100R026C10 Mediation Operation Guide (Web).docx",
+        "title": "iMaster MAE V100R026C10 Mediation Operation Guide (Web)",
+        "size_bytes": 4166829,
+        "paragraphs": 553,
+        "tables": 11,
+        "embedded_images": 30,
+        "sample_excerpt": "iMaster MAE | V100R026C10 | Mediation Operation Guide (Web) | Issue | 01 | Date | 2026-01-20 | HUAWEI TECHNOLOGIES CO., LTD.",
+        "virtual_uri": "archive://USC 26.1.0_ReleaseDoc_EN (VM).zip#13. Guide to Installing the MAE Mediation Package/iMaster MAE V100R026C10 Mediation Operation Guide (Web).docx"
+      },
+      {
+        "package": "USC 26.1.0_ReleaseDoc_EN (VM).zip",
+        "path": "14. Information Collection and Health Check Criteria/HUAWEI USCDB Information Collection Scenario Description (VM Containers & Bare Metal Containers).docx",
+        "title": "HUAWEI USCDB Information Collection Scenario Description (VM Containers & Bare Metal Containers)",
+        "size_bytes": 393516,
+        "paragraphs": 9297,
+        "tables": 547,
+        "embedded_images": 8,
+        "sample_excerpt": "HUAWEI USCDB Information Collection Scenario Description (VM Containers & Bare Metal Containers) | Issue | 01 | Date | 2026-03-19 | HUAWEI TECHNOLOGIES CO., LTD. | Copyright © Huawei Technologies Co., Ltd. 2026. All rights reserved. | No part of this document may be reproduced or transmitted in any form or by any means",
+        "virtual_uri": "archive://USC 26.1.0_ReleaseDoc_EN (VM).zip#14. Information Collection and Health Check Criteria/HUAWEI USCDB Information Collection Scenario Description (VM Containers & Bare Metal Containers).docx"
+      },
+      {
+        "package": "USC 26.1.0_ReleaseDoc_EN (VM).zip",
+        "path": "14. Information Collection and Health Check Criteria/USCDB Health Check Instructions.docx",
+        "title": "USCDB Health Check Instructions",
+        "size_bytes": 267893,
+        "paragraphs": 783,
+        "tables": 7,
+        "embedded_images": 3,
+        "sample_excerpt": "USCDB | 26.1.0 | Health Check Instructions | Issue | 01 | Date | 2026-03-18 | HUAWEI TECHNOLOGIES CO., LTD.",
+        "virtual_uri": "archive://USC 26.1.0_ReleaseDoc_EN (VM).zip#14. Information Collection and Health Check Criteria/USCDB Health Check Instructions.docx"
+      },
+      {
+        "package": "USC 26.1.0_ReleaseDoc_EN (VM).zip",
+        "path": "15. Preventive Maintenance Guide/USC 26.1.0 Preventive Maintenance Inspection Guide.docx",
+        "title": "USC 26.1.0 Preventive Maintenance Inspection Guide",
+        "size_bytes": 2207944,
+        "paragraphs": 597,
+        "tables": 22,
+        "embedded_images": 32,
+        "sample_excerpt": "HUAWEI USC Unified Signaling Controller | 26.1.0 | Preventive Maintenance Inspection Guide | Issue | 01 | Date | 2026-03-31 | HUAWEI TECHNOLOGIES CO., LTD.",
+        "virtual_uri": "archive://USC 26.1.0_ReleaseDoc_EN (VM).zip#15. Preventive Maintenance Guide/USC 26.1.0 Preventive Maintenance Inspection Guide.docx"
+      }
+    ]
+  },
+  "experiment_3_live_query_benchmark": {
+    "index_build_wall_ms": 334.95,
+    "indexed_prong1_documents": 281,
+    "indexed_graph_causal_edges": 997,
+    "overall_prong1_p50_ms": 0.2804,
+    "overall_prong1_p95_ms": 1.4066,
+    "overall_graph_2hop_p50_ms": 4.4069,
+    "queries": [
+      {
+        "benchmark_name": "Prong 1 Exact Alarm Lookup: ALM-1003 Module Fault",
+        "query": "ALM-1003",
+        "prong_routed": "DETERMINISTIC_DIRECT",
+        "prong1_p50_ms": 0.2694,
+        "prong1_p95_ms": 0.5615,
+        "graph_2hop_p50_ms": 4.6376,
+        "hits_returned": 1,
+        "top_hit_title": "ALM-1003 Module Fault",
+        "top_hit_snippet": "[ALM-1003] Module Fault (Severity: Major, AutoClear: Yes). Parameters: ME ID, Faulty module number, Faulty module type, Position. Diagrams: Figure 1 Root alarm -> resources/csp/alarm_cgplite/alarms/figure/en-us_image_0269895191.png; Figure ",
+        "graph_relations_discovered": 188,
+        "sample_graph_edges": [
+          {
+            "source": 1,
+            "target": 2,
+            "relation": "HAS_ROOT_ALARM_DIAGRAM",
+            "doc_id": 1,
+            "clearance_level": 2
+          },
+          {
+            "source": 1,
+            "target": 3,
+            "relation": "HAS_MECHANISM_DIAGRAM",
+            "doc_id": 1,
+            "clearance_level": 2
+          },
+          {
+            "source": 1,
+            "target": 4,
+            "relation": "CROSS_LINKED_IN_XLSX",
+            "doc_id": 1,
+            "clearance_level": 2
+          },
+          {
+            "source": 1,
+            "target": 5,
+            "relation": "REPORTS_PARAMETER",
+            "doc_id": 1,
+            "clearance_level": 2
+          },
+          {
+            "source": 1,
+            "target": 6,
+            "relation": "REPORTS_PARAMETER",
+            "doc_id": 1,
+            "clearance_level": 2
+          }
+        ]
+      },
+      {
+        "benchmark_name": "Prong 1 Exact Alarm Lookup: ALM-125001 CGPBroker Backupinfo Failure",
+        "query": "ALM-125001",
+        "prong_routed": "DETERMINISTIC_DIRECT",
+        "prong1_p50_ms": 0.2592,
+        "prong1_p95_ms": 0.3652,
+        "graph_2hop_p50_ms": 4.4206,
+        "hits_returned": 1,
+        "top_hit_title": "ALM-125001 CGPBroker Failed to Register the Backupinfo",
+        "top_hit_snippet": "[ALM-125001] CGPBroker Failed to Register the Backupinfo (Severity: Major, AutoClear: Yes). Parameters: ME ID, Alarm Cause. Diagrams: None. Causes: The BackupMgr service is abnormal.; The network is disconnected.. Procedure:  | XLSX Adaptat",
+        "graph_relations_discovered": 176,
+        "sample_graph_edges": [
+          {
+            "source": 25,
+            "target": 4,
+            "relation": "CROSS_LINKED_IN_XLSX",
+            "doc_id": 6,
+            "clearance_level": 2
+          },
+          {
+            "source": 25,
+            "target": 5,
+            "relation": "REPORTS_PARAMETER",
+            "doc_id": 6,
+            "clearance_level": 2
+          },
+          {
+            "source": 25,
+            "target": 26,
+            "relation": "REPORTS_PARAMETER",
+            "doc_id": 6,
+            "clearance_level": 2
+          },
+          {
+            "source": 1,
+            "target": 4,
+            "relation": "CROSS_LINKED_IN_XLSX",
+            "doc_id": 1,
+            "clearance_level": 2
+          },
+          {
+            "source": 9,
+            "target": 4,
+            "relation": "CROSS_LINKED_IN_XLSX",
+            "doc_id": 2,
+            "clearance_level": 2
+          }
+        ]
+      },
+      {
+        "benchmark_name": "Prong 1 Exact Alarm Lookup: ALM-2375 Inconsistent Confirmed Patches",
+        "query": "ALM-2375",
+        "prong_routed": "DETERMINISTIC_DIRECT",
+        "prong1_p50_ms": 0.3012,
+        "prong1_p95_ms": 0.3502,
+        "graph_2hop_p50_ms": 4.3072,
+        "hits_returned": 1,
+        "top_hit_title": "ALM-2375 Number of Confirmed Patches on the Modules of the Same Type Inconsistent",
+        "top_hit_snippet": "[ALM-2375] Number of Confirmed Patches on the Modules of the Same Type Inconsistent (Severity: Major, AutoClear: Yes). Parameters: ME ID, Module type. Diagrams: None. Causes: The maintenance personnel runs the commands LOD PATCH , ACT PATCH",
+        "graph_relations_discovered": 168,
+        "sample_graph_edges": [
+          {
+            "source": 27,
+            "target": 4,
+            "relation": "CROSS_LINKED_IN_XLSX",
+            "doc_id": 7,
+            "clearance_level": 2
+          },
+          {
+            "source": 27,
+            "target": 5,
+            "relation": "REPORTS_PARAMETER",
+            "doc_id": 7,
+            "clearance_level": 2
+          },
+          {
+            "source": 27,
+            "target": 28,
+            "relation": "REPORTS_PARAMETER",
+            "doc_id": 7,
+            "clearance_level": 2
+          },
+          {
+            "source": 1,
+            "target": 4,
+            "relation": "CROSS_LINKED_IN_XLSX",
+            "doc_id": 1,
+            "clearance_level": 2
+          },
+          {
+            "source": 9,
+            "target": 4,
+            "relation": "CROSS_LINKED_IN_XLSX",
+            "doc_id": 2,
+            "clearance_level": 2
+          }
+        ]
+      },
+      {
+        "benchmark_name": "Prong 1 Switchover Event Lookup: ALM-12000 Master/Slave Switchover",
+        "query": "ALM-12000",
+        "prong_routed": "DETERMINISTIC_DIRECT",
+        "prong1_p50_ms": 0.2805,
+        "prong1_p95_ms": 0.3861,
+        "graph_2hop_p50_ms": 0.5921,
+        "hits_returned": 1,
+        "top_hit_title": "ALM-12000 Master/Slave Switchover",
+        "top_hit_snippet": "[ALM-12000] Master/Slave Switchover (Severity: Major, AutoClear: Yes). Parameters: . Diagrams: None. Causes: . Procedure:  | XLSX Adaptation: USCDB 26.1.0 Event List.xlsx (Level=2)",
+        "graph_relations_discovered": 13,
+        "sample_graph_edges": [
+          {
+            "source": 594,
+            "target": 149,
+            "relation": "CROSS_LINKED_IN_XLSX",
+            "doc_id": 251,
+            "clearance_level": 2
+          },
+          {
+            "source": 148,
+            "target": 149,
+            "relation": "CROSS_LINKED_IN_XLSX",
+            "doc_id": 51,
+            "clearance_level": 2
+          },
+          {
+            "source": 153,
+            "target": 149,
+            "relation": "CROSS_LINKED_IN_XLSX",
+            "doc_id": 52,
+            "clearance_level": 2
+          },
+          {
+            "source": 159,
+            "target": 149,
+            "relation": "CROSS_LINKED_IN_XLSX",
+            "doc_id": 54,
+            "clearance_level": 2
+          },
+          {
+            "source": 269,
+            "target": 149,
+            "relation": "CROSS_LINKED_IN_XLSX",
+            "doc_id": 99,
+            "clearance_level": 2
+          }
+        ]
+      },
+      {
+        "benchmark_name": "Prong 1 Performance Counter Lookup: CTR-1727317513 (PCFHLB PCF-SMF Interworking)",
+        "query": "CTR-1727317513",
+        "prong_routed": "DETERMINISTIC_DIRECT",
+        "prong1_p50_ms": 0.2672,
+        "prong1_p95_ms": 0.3605,
+        "graph_2hop_p50_ms": 0.0,
+        "hits_returned": 1,
+        "top_hit_title": "Counter 1727317513 (PCFHLB - Interworking Between PCF and SMF)",
+        "top_hit_snippet": "Performance Counter CTR-1727317513 (1727317513): FunctionSet=PCF Performance Measurement (1931088777), SubSet=Interworking Between PCF and SMF (1727209145), Object=PCFHLB, Periods=5/15/30/60/1440 min. Source: HUAWEI UPCF 26.1.0.5 Performanc",
+        "graph_relations_discovered": 0,
+        "sample_graph_edges": []
+      },
+      {
+        "benchmark_name": "Prong 1 FTS5 Procedure Search: HUAWEI UPCF 26.1.0.5 Upgrade Guide",
+        "query": "\"HUAWEI UPCF 26.1.0.5 Upgrade Guide\"",
+        "prong_routed": "DETERMINISTIC_DIRECT",
+        "prong1_p50_ms": 1.4038,
+        "prong1_p95_ms": 1.4387,
+        "graph_2hop_p50_ms": 0.0,
+        "hits_returned": 1,
+        "top_hit_title": "HUAWEI UPCF 26.1.0.5 Upgrade Guide(Virtual Machine Container)",
+        "top_hit_snippet": "HUAWEI UPCF 26.1.0.5 Upgrade Guide(Virtual Machine Container) (2326 paragraphs, 30 tables): HUAWEI UPCF | 26.1.0.5 | Upgrade Guide | Issue | 01 | Date | 2026-08-24 | HUAWEI TECHNOLOGIES CO., LTD.",
+        "graph_relations_discovered": 0,
+        "sample_graph_edges": []
+      }
+    ]
+  }
+}

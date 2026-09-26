@@ -1,0 +1,1 @@
+{"name":"sovereign_node_status","description":"Inspects health, indexing stats, and operational metrics of the Sovereign Appliance node.","parameters":{"properties":{},"type":"object"}}

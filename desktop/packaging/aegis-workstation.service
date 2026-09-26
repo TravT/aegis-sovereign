@@ -1,0 +1,17 @@
+[Unit]
+Description=Aegis Sovereign Desktop In-Place Workstation Daemon (ADR-37)
+Documentation=https://github.com/aegis-sovereign/appliance
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=@APP_ROOT@
+ExecStart=@PYTHON_BIN@ -m desktop.daemon.daemon
+Restart=on-failure
+RestartSec=3s
+Nice=10
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=@APP_ROOT@
+
+[Install]
+WantedBy=default.target

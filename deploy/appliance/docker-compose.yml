@@ -1,0 +1,117 @@
+# Aegis Sovereign Knowledge Appliance — Complete Turnkey Stack (ADR-35 / ADR-36)
+# Fully air-gapped, zero cloud egress, standalone containerized deployment.
+
+services:
+  # 1. Vector Database
+  aegis-qdrant:
+    image: qdrant/qdrant:v1.12.1
+    container_name: aegis-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ${SOVEREIGN_DATA_DIR:-./data}/qdrant:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__LOG_LEVEL: INFO
+    networks:
+      - aegis-network
+
+  # 2. Sovereign Core (CDC Ingestion, Context Condenser, GraphRAG, REST API)
+  aegis-sovereign-core:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: aegis-sovereign-core:latest
+    container_name: aegis-sovereign-core
+    restart: unless-stopped
+    depends_on:
+      - aegis-qdrant
+    ports:
+      - "${SOVEREIGN_PORT:-8765}:${SOVEREIGN_PORT:-8765}"
+    environment:
+      SOVEREIGN_HOST: 0.0.0.0
+      SOVEREIGN_PORT: ${SOVEREIGN_PORT:-8765}
+      QDRANT_URL: http://aegis-qdrant:6333
+      SOVEREIGN_COLLECTION: ${SOVEREIGN_COLLECTION:-sovereign_chunks}
+      SOVEREIGN_GRAPH_DB_PATH: /data/rag/graph_store.db
+      SOVEREIGN_STATE_FILE: /data/rag/indexer_state.json
+      SOVEREIGN_ALERT_WEBHOOK_URL: ${SOVEREIGN_ALERT_WEBHOOK_URL:-}
+      SOVEREIGN_TELEGRAM_BOT_TOKEN: ${SOVEREIGN_TELEGRAM_BOT_TOKEN:-}
+      SOVEREIGN_TELEGRAM_CHAT_ID: ${SOVEREIGN_TELEGRAM_CHAT_ID:-}
+    volumes:
+      - ${SOVEREIGN_DATA_DIR:-./data}:/data
+      - ${SOVEREIGN_DOCS_DIR:-./docs}:/docs:ro
+    networks:
+      - aegis-network
+
+  # 3. Ghost Ingestion Broker
+  aegis-ghost-broker:
+    image: redis:7-alpine
+    container_name: aegis-ghost-broker
+    restart: unless-stopped
+    volumes:
+      - aegis-ghost-redis-data:/data
+    networks:
+      - aegis-network
+
+  # 4. Ghost Ingestion Database
+  aegis-ghost-db:
+    image: postgres:16-alpine
+    container_name: aegis-ghost-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-paperless}
+      POSTGRES_USER: ${POSTGRES_USER:-paperless}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_in_env_file}
+    volumes:
+      - aegis-ghost-pgdata:/var/lib/postgresql/data
+    networks:
+      - aegis-network
+
+  # 5. Headless Ghost OCR Daemon (Paperless-ngx)
+  aegis-paperless-ghost:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    container_name: aegis-paperless-ghost
+    restart: unless-stopped
+    depends_on:
+      - aegis-ghost-db
+      - aegis-ghost-broker
+      - aegis-sovereign-core
+    environment:
+      PAPERLESS_REDIS: redis://aegis-ghost-broker:6379
+      PAPERLESS_DBENGINE: postgresql
+      PAPERLESS_DBHOST: aegis-ghost-db
+      PAPERLESS_DBNAME: ${POSTGRES_DB:-paperless}
+      PAPERLESS_DBUSER: ${POSTGRES_USER:-paperless}
+      PAPERLESS_DBPASS: ${POSTGRES_PASSWORD:-change_in_env_file}
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:-change_in_env_file}
+      PAPERLESS_URL: http://127.0.0.1:8000
+      PAPERLESS_OCR_LANGUAGE: por+eng
+      PAPERLESS_OCR_LANGUAGES: por eng
+      PAPERLESS_OCR_MODE: skip_archive
+      PAPERLESS_POST_CONSUMPTION_SCRIPT: /hooks/post_consumption.sh
+      SOVEREIGN_CORE_URL: http://aegis-sovereign-core:8765/webhook/paperless
+      USERMAP_UID: 1000
+      USERMAP_GID: 1000
+    ports:
+      # Strictly loopback bound
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ${SOVEREIGN_DATA_DIR:-./data}/paperless/data:/usr/src/paperless/data
+      - ${SOVEREIGN_DATA_DIR:-./data}/paperless/media:/usr/src/paperless/media
+      - ${SOVEREIGN_DATA_DIR:-./data}/paperless/export:/usr/src/paperless/export
+      - ${SOVEREIGN_CONSUME_DIR:-./data/consume}:/usr/src/paperless/consume
+      - ../../ghost/hooks:/hooks:ro
+    networks:
+      - aegis-network
+
+networks:
+  aegis-network:
+    driver: bridge
+
+volumes:
+  aegis-ghost-redis-data:
+  aegis-ghost-pgdata:

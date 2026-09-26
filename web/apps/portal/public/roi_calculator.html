@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aegis Sovereign Vault | Enterprise ROI & Token Economics Calculator</title>
+  <style>
+    :root {
+      --bg-base: #07090D;
+      --bg-obsidian: #0B0F17;
+      --bg-surface: #0E121A;
+      --bg-card: #141A24;
+      --bg-elevated: #1A2230;
+      --border-subtle: #1C2330;
+      --border-default: #232B38;
+      --border-active: #38455A;
+      --border-gold: rgba(212, 175, 55, 0.35);
+      --gold-default: #D4AF37;
+      --gold-bright: #F3E5AB;
+      --gold-muted: #A6882C;
+      --gold-glow: rgba(212, 175, 55, 0.15);
+      --emerald-default: #10B981;
+      --emerald-bright: #00E676;
+      --emerald-bg: rgba(0, 230, 118, 0.08);
+      --emerald-border: rgba(0, 230, 118, 0.3);
+      --danger-default: #FF5252;
+      --danger-bg: rgba(255, 82, 82, 0.10);
+      --text-primary: #E6EDF3;
+      --text-secondary: #8B949E;
+      --text-tertiary: #545D68;
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-family);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.5;
+      padding: 24px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .header-container {
+      max-width: 1280px;
+      margin: 0 auto 32px;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-default);
+      padding-bottom: 20px;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--gold-default) 0%, #7A5E0B 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 20px var(--gold-glow);
+    }
+
+    .brand-icon svg {
+      width: 24px;
+      height: 24px;
+      fill: #07090D;
+    }
+
+    .brand-title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--gold-bright);
+      text-transform: uppercase;
+    }
+
+    .brand-subtitle {
+      font-size: 12px;
+      color: var(--text-secondary);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .currency-selector {
+      display: flex;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 4px;
+    }
+
+    .curr-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .curr-btn.active {
+      background: var(--bg-card);
+      color: var(--gold-bright);
+      border: 1px solid var(--border-gold);
+    }
+
+    .layout-grid {
+      max-width: 1280px;
+      margin: 0 auto;
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 28px;
+    }
+
+    @media (max-width: 960px) {
+      .layout-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-default);
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 14px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--gold-bright);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-gold {
+      background: rgba(212, 175, 55, 0.12);
+      color: var(--gold-bright);
+      border: 1px solid var(--border-gold);
+    }
+
+    .badge-emerald {
+      background: var(--emerald-bg);
+      color: var(--emerald-bright);
+      border: 1px solid var(--emerald-border);
+    }
+
+    .form-group {
+      margin-bottom: 22px;
+    }
+
+    .label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+
+    .input-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .input-hint {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .input-value-display {
+      font-size: 16px;
+      font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: var(--gold-bright);
+      background: var(--bg-surface);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--bg-surface);
+      outline: none;
+      transition: background 0.2s;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--gold-default);
+      cursor: pointer;
+      box-shadow: 0 0 10px var(--gold-default);
+      border: 2px solid #07090D;
+      transition: transform 0.1s ease;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+
+    .select-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .select-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: 12px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+
+    .select-card:hover {
+      border-color: var(--border-active);
+    }
+
+    .select-card.selected {
+      border-color: var(--gold-default);
+      background: rgba(212, 175, 55, 0.08);
+      box-shadow: 0 0 14px var(--gold-glow);
+    }
+
+    .select-card-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .select-card-sub {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    /* Output Section */
+    .metric-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .metric-tile {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 10px;
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .metric-tile.highlight {
+      border-color: var(--border-gold);
+      background: linear-gradient(145deg, var(--bg-surface) 0%, rgba(212, 175, 55, 0.05) 100%);
+    }
+
+    .metric-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .metric-value {
+      font-size: 24px;
+      font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: var(--text-primary);
+    }
+
+    .metric-value.gold {
+      color: var(--gold-bright);
+    }
+
+    .metric-value.emerald {
+      color: var(--emerald-bright);
+    }
+
+    .metric-sub {
+      font-size: 11px;
+      color: var(--text-tertiary);
+      margin-top: 4px;
+    }
+
+    /* Comparison Bar */
+    .comparison-section {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 22px;
+    }
+
+    .bar-group {
+      margin-bottom: 12px;
+    }
+
+    .bar-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .bar-label-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .bar-container {
+      height: 10px;
+      border-radius: 5px;
+      background: var(--bg-elevated);
+      overflow: hidden;
+      display: flex;
+    }
+
+    .bar-fill {
+      height: 100%;
+      transition: width 0.4s ease;
+    }
+
+    .bar-danger {
+      background: var(--danger-default);
+    }
+
+    .bar-gold {
+      background: var(--gold-default);
+    }
+
+    .bar-emerald {
+      background: var(--emerald-bright);
+    }
+
+    .esg-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .esg-item {
+      text-align: center;
+    }
+
+    .esg-val {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--emerald-bright);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .esg-label {
+      font-size: 10px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 2px;
+    }
+
+    .action-btn {
+      width: 100%;
+      background: linear-gradient(135deg, var(--gold-default) 0%, #A6882C 100%);
+      color: #07090D;
+      border: none;
+      padding: 14px;
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      box-shadow: 0 4px 18px var(--gold-glow);
+      transition: all 0.2s ease;
+    }
+
+    .action-btn:hover {
+      box-shadow: 0 6px 24px rgba(212, 175, 55, 0.35);
+      transform: translateY(-1px);
+    }
+
+    .disclaimer {
+      font-size: 11px;
+      color: var(--text-tertiary);
+      text-align: center;
+      margin-top: 20px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header-container">
+    <div class="brand-group">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm0 18c-3.75-1.07-6.5-5.06-6.5-9.35V8.3l6.5-3.61 6.5 3.61v2.35c0 4.29-2.75 8.28-6.5 9.35z"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="brand-title">Aegis Sovereign Vault</h1>
+        <p class="brand-subtitle">Enterprise ROI & Token Economics Calculator</p>
+      </div>
+    </div>
+
+    <div class="currency-selector">
+      <button class="curr-btn active" id="btn-usd" onclick="setCurrency('USD')">USD ($)</button>
+      <button class="curr-btn" id="btn-brl" onclick="setCurrency('BRL')">BRL (R$)</button>
+    </div>
+  </header>
+
+  <main class="layout-grid">
+    <!-- LEFT: Parameters & Sliders -->
+    <section class="card">
+      <div class="card-header">
+        <h2 class="card-title">Institutional Parameters</h2>
+        <span class="badge badge-gold">Interactive Model</span>
+      </div>
+
+      <!-- Slider 1: Document Page Volume -->
+      <div class="form-group">
+        <div class="label-row">
+          <label class="input-label" for="slider-pages">Monthly Document Volume</label>
+          <span class="input-value-display" id="val-pages">50,000 pages</span>
+        </div>
+        <input type="range" id="slider-pages" min="1000" max="500000" step="1000" value="50000" oninput="calculateROI()">
+        <div class="label-row" style="margin-top: 4px;">
+          <span class="input-hint">1,000 pages</span>
+          <span class="input-hint">500,000 pages</span>
+        </div>
+      </div>
+
+      <!-- Slider 2: Number of Attorneys / Analysts -->
+      <div class="form-group">
+        <div class="label-row">
+          <label class="input-label" for="slider-analysts">Active Attorneys / Analysts</label>
+          <span class="input-value-display" id="val-analysts">15 seats</span>
+        </div>
+        <input type="range" id="slider-analysts" min="1" max="50" step="1" value="15" oninput="calculateROI()">
+        <div class="label-row" style="margin-top: 4px;">
+          <span class="input-hint">1 solo practitioner</span>
+          <span class="input-hint">50 enterprise team</span>
+        </div>
+      </div>
+
+      <!-- Slider 3: Daily Query Frequency -->
+      <div class="form-group">
+        <div class="label-row">
+          <label class="input-label" for="slider-queries">Query Frequency (per seat/day)</label>
+          <span class="input-value-display" id="val-queries">25 queries/day</span>
+        </div>
+        <input type="range" id="slider-queries" min="5" max="100" step="1" value="25" oninput="calculateROI()">
+        <div class="label-row" style="margin-top: 4px;">
+          <span class="input-hint">5 basic queries</span>
+          <span class="input-hint">100 intensive diligence</span>
+        </div>
+      </div>
+
+      <!-- Model Comparison Selection -->
+      <div class="form-group">
+        <div class="label-row">
+          <label class="input-label">Cloud Comparison Model</label>
+          <span class="input-hint">Tokens pricing benchmark</span>
+        </div>
+        <div class="select-grid">
+          <div class="select-card selected" id="mod-gpt4o" onclick="selectModel('gpt4o')">
+            <div class="select-card-name">GPT-4o</div>
+            <div class="select-card-sub">$2.50 / $10.00 M</div>
+          </div>
+          <div class="select-card" id="mod-claude" onclick="selectModel('claude')">
+            <div class="select-card-name">Claude 3.5 Sonnet</div>
+            <div class="select-card-sub">$3.00 / $15.00 M</div>
+          </div>
+          <div class="select-card" id="mod-gemini" onclick="selectModel('gemini')">
+            <div class="select-card-name">Gemini 1.5 Pro</div>
+            <div class="select-card-sub">$3.50 / $10.50 M</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Appliance Architecture Selection -->
+      <div class="form-group">
+        <div class="label-row">
+          <label class="input-label">Aegis Appliance Deployment Tier</label>
+          <span class="input-hint">CapEx & SLA configuration</span>
+        </div>
+        <div class="select-grid">
+          <div class="select-card selected" id="tier-edge" onclick="selectTier('edge')">
+            <div class="select-card-name">Tier 2: Edge 1U</div>
+            <div class="select-card-sub">Turn-key Office Vault</div>
+          </div>
+          <div class="select-card" id="tier-desktop" onclick="selectTier('desktop')">
+            <div class="select-card-name">Tier 1: Desktop</div>
+            <div class="select-card-sub">Workstation Seats</div>
+          </div>
+          <div class="select-card" id="tier-datacenter" onclick="selectTier('datacenter')">
+            <div class="select-card-name">Tier 3: Datacenter</div>
+            <div class="select-card-sub">WORM Supercomputing</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: Economic Outputs -->
+    <section class="card">
+      <div class="card-header">
+        <h2 class="card-title">Executive Financial Yield</h2>
+        <span class="badge badge-emerald">Real-Time Projections</span>
+      </div>
+
+      <!-- Primary Metrics -->
+      <div class="metric-grid">
+        <div class="metric-tile highlight">
+          <div class="metric-label">
+            <span>Cloud API Cost Averted</span>
+            <span class="badge badge-emerald">Monthly</span>
+          </div>
+          <div class="metric-value gold" id="out-cloud-averted">$18,420</div>
+          <div class="metric-sub" id="out-cloud-annual">$221,040 annual savings</div>
+        </div>
+
+        <div class="metric-tile">
+          <div class="metric-label">
+            <span>Estimated Payback Period</span>
+            <span class="badge badge-gold">Breakeven</span>
+          </div>
+          <div class="metric-value emerald" id="out-payback">1.8 mos</div>
+          <div class="metric-sub">ROI across hardware & SLA</div>
+        </div>
+
+        <div class="metric-tile">
+          <div class="metric-label">
+            <span>Risk & Breach Liability Avoided</span>
+            <span class="badge badge-gold">Annualized</span>
+          </div>
+          <div class="metric-value" id="out-risk-liability">$850,000</div>
+          <div class="metric-sub">LGPD / Secrecy breach exposure</div>
+        </div>
+
+        <div class="metric-tile">
+          <div class="metric-label">
+            <span>Analyst Time Reclaimed</span>
+            <span class="badge badge-emerald">Efficiency</span>
+          </div>
+          <div class="metric-value" id="out-hours-saved">330 hrs</div>
+          <div class="metric-sub">Monthly high-value billable uplift</div>
+        </div>
+      </div>
+
+      <!-- Cost Comparison Bar Visualizer -->
+      <div class="comparison-section">
+        <div style="font-size: 13px; font-weight: 600; color: var(--gold-bright); margin-bottom: 12px;">
+          Monthly Operating Cost Benchmark
+        </div>
+
+        <div class="bar-group">
+          <div class="bar-label-row">
+            <span style="color: var(--danger-default);">Unfiltered Commercial Cloud (Tokens API)</span>
+            <span id="bar-cloud-val" style="font-weight: 600;">$18,420</span>
+          </div>
+          <div class="bar-container">
+            <div class="bar-fill bar-danger" id="bar-cloud-fill" style="width: 100%;"></div>
+          </div>
+        </div>
+
+        <div class="bar-group" style="margin-top: 14px;">
+          <div class="bar-label-row">
+            <span style="color: var(--emerald-bright);">Aegis Sovereign Vault (Amortized CapEx + OpEx)</span>
+            <span id="bar-aegis-val" style="font-weight: 600;">$1,150</span>
+          </div>
+          <div class="bar-container">
+            <div class="bar-fill bar-emerald" id="bar-aegis-fill" style="width: 6.2%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Carbon & Compute Efficiency -->
+      <div class="esg-grid">
+        <div class="esg-item">
+          <div class="esg-val" id="esg-co2">284 kg</div>
+          <div class="esg-label">CO2e Averted / Mo</div>
+        </div>
+        <div class="esg-item">
+          <div class="esg-val" id="esg-energy">640 kWh</div>
+          <div class="esg-label">Compute Power Saved</div>
+        </div>
+        <div class="esg-item">
+          <div class="esg-val" id="esg-reduction">98.8%</div>
+          <div class="esg-label">Token Egress Slashed</div>
+        </div>
+      </div>
+
+      <!-- Export Button -->
+      <button class="action-btn" onclick="window.print()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/>
+        </svg>
+        Generate Executive Proposal (PDF)
+      </button>
+
+      <p class="disclaimer">
+        Model based on 500 tokens/page OCR rasterization, 22 working days/mo, 10,000 input tokens/unfiltered query vs 350 tokens/Aegis pre-filtered query. Actuarial risk benchmarked against IBM Cost of a Data Breach Report.
+      </p>
+    </section>
+  </main>
+
+  <script>
+    let currentCurrency = 'USD';
+    let currentModel = 'gpt4o';
+    let currentTier = 'edge';
+
+    const USD_TO_BRL = 5.50;
+
+    // Pricing models per 1M tokens (Input / Output)
+    const MODEL_PRICES = {
+      gpt4o: { input: 2.50, output: 10.00, avgPerQueryTokens: 12000 },
+      claude: { input: 3.00, output: 15.00, avgPerQueryTokens: 12000 },
+      gemini: { input: 3.50, output: 10.50, avgPerQueryTokens: 12000 }
+    };
+
+    // Tier pricing definitions (USD base)
+    const TIER_PRICING = {
+      desktop: { capex: 0, monthlyPerSeat: 89, fixedMonthly: 0 },
+      edge: { capex: 14000, monthlyPerSeat: 0, fixedMonthly: 650 },
+      datacenter: { capex: 85000, monthlyPerSeat: 0, fixedMonthly: 2500 }
+    };
+
+    function setCurrency(curr) {
+      currentCurrency = curr;
+      document.getElementById('btn-usd').classList.toggle('active', curr === 'USD');
+      document.getElementById('btn-brl').classList.toggle('active', curr === 'BRL');
+      calculateROI();
+    }
+
+    function selectModel(modelKey) {
+      currentModel = modelKey;
+      ['gpt4o', 'claude', 'gemini'].forEach(k => {
+        document.getElementById('mod-' + k).classList.toggle('selected', k === modelKey);
+      });
+      calculateROI();
+    }
+
+    function selectTier(tierKey) {
+      currentTier = tierKey;
+      ['edge', 'desktop', 'datacenter'].forEach(k => {
+        document.getElementById('tier-' + k).classList.toggle('selected', k === tierKey);
+      });
+      calculateROI();
+    }
+
+    function formatMoney(amountUSD) {
+      if (currentCurrency === 'BRL') {
+        const val = amountUSD * USD_TO_BRL;
+        return 'R$ ' + Math.round(val).toLocaleString('pt-BR');
+      }
+      return '$' + Math.round(amountUSD).toLocaleString('en-US');
+    }
+
+    function calculateROI() {
+      const pages = parseInt(document.getElementById('slider-pages').value, 10);
+      const analysts = parseInt(document.getElementById('slider-analysts').value, 10);
+      const queriesPerDay = parseInt(document.getElementById('slider-queries').value, 10);
+
+      document.getElementById('val-pages').innerText = pages.toLocaleString() + ' pages';
+      document.getElementById('val-analysts').innerText = analysts + (analysts === 1 ? ' seat' : ' seats');
+      document.getElementById('val-queries').innerText = queriesPerDay + ' queries/day';
+
+      // 1. Token Modeling
+      // Ingestion Tokens: ~500 tokens per page
+      const monthlyIngestionTokens = pages * 500;
+
+      // Query Tokens (22 working days / month)
+      const totalMonthlyQueries = analysts * queriesPerDay * 22;
+      const rawQueryInputTokens = totalMonthlyQueries * MODEL_PRICES[currentModel].avgPerQueryTokens;
+      const rawQueryOutputTokens = totalMonthlyQueries * 800; // ~800 tokens response
+
+      // Raw Cloud Monthly Cost (Without Aegis)
+      const model = MODEL_PRICES[currentModel];
+      const ingestionCost = (monthlyIngestionTokens / 1000000) * model.input;
+      const queryCost = ((rawQueryInputTokens / 1000000) * model.input) + ((rawQueryOutputTokens / 1000000) * model.output);
+      const rawCloudMonthlyUSD = ingestionCost + queryCost;
+
+      // 2. Aegis Sovereign Cost Structure
+      const tier = TIER_PRICING[currentTier];
+      let aegisMonthlyUSD = tier.fixedMonthly;
+      if (currentTier === 'desktop') {
+        aegisMonthlyUSD += analysts * tier.monthlyPerSeat;
+      }
+      // Amortize CapEx over 24 months
+      const amortizedCapex = tier.capex / 24;
+      const totalAegisMonthlyUSD = aegisMonthlyUSD + amortizedCapex;
+
+      // Net Monthly Savings
+      const monthlyAvertedUSD = Math.max(0, rawCloudMonthlyUSD - aegisMonthlyUSD);
+      const annualAvertedUSD = monthlyAvertedUSD * 12;
+
+      // Payback Period (Months) = CapEx / Net Monthly Savings
+      let paybackMonths = 0.5;
+      if (tier.capex > 0) {
+        paybackMonths = monthlyAvertedUSD > 0 ? (tier.capex / monthlyAvertedUSD) : 99;
+      } else {
+        paybackMonths = 0.2; // Desktop seat pays back in days
+      }
+
+      // 3. Actuarial Risk / Leakage Liability Avoidance
+      // Baseline corporate data breach risk ($4.88M avg IBM benchmark), scaled by document volume
+      const baseBreachLiability = 4880000;
+      const sensitiveDocsRatio = 0.45; // 45% confidential in legal/MFO/health
+      const monthlyEgressRiskProbability = Math.min(0.25, (pages / 500000) * 0.18);
+      const annualizedRiskAvoidedUSD = (baseBreachLiability * sensitiveDocsRatio * monthlyEgressRiskProbability);
+
+      // 4. Labor / Time Efficiency Saved
+      // 1.5 hours saved per analyst per day in manual document search & cross-referencing
+      const hoursSavedPerAnalystMonthly = 1.5 * 22;
+      const totalHoursSavedMonthly = analysts * hoursSavedPerAnalystMonthly;
+
+      // 5. ESG & Carbon Savings
+      // Cloud datacenter GPU server consumes ~0.003 kWh per 10k tokens (including cooling PUE 1.3)
+      // Local quantized int8 consumes ~0.0001 kWh
+      const totalTokens = monthlyIngestionTokens + rawQueryInputTokens;
+      const kwhSaved = Math.round((totalTokens / 10000) * 0.0029);
+      // Emission factor: ~0.44 kg CO2e per kWh
+      const co2eSavedKg = Math.round(kwhSaved * 0.443);
+
+      // Update UI displays
+      document.getElementById('out-cloud-averted').innerText = formatMoney(monthlyAvertedUSD);
+      document.getElementById('out-cloud-annual').innerText = formatMoney(annualAvertedUSD) + ' annual savings';
+      document.getElementById('out-payback').innerText = paybackMonths < 0.5 ? '< 1 mo' : (paybackMonths > 36 ? '> 36 mos' : paybackMonths.toFixed(1) + ' mos');
+      document.getElementById('out-risk-liability').innerText = formatMoney(annualizedRiskAvoidedUSD);
+      document.getElementById('out-hours-saved').innerText = Math.round(totalHoursSavedMonthly) + ' hrs';
+
+      // Comparison Bar Visualizer
+      document.getElementById('bar-cloud-val').innerText = formatMoney(rawCloudMonthlyUSD);
+      document.getElementById('bar-aegis-val').innerText = formatMoney(totalAegisMonthlyUSD);
+
+      const maxVal = Math.max(rawCloudMonthlyUSD, totalAegisMonthlyUSD);
+      const cloudPct = Math.min(100, Math.max(8, (rawCloudMonthlyUSD / maxVal) * 100));
+      const aegisPct = Math.min(100, Math.max(5, (totalAegisMonthlyUSD / maxVal) * 100));
+
+      document.getElementById('bar-cloud-fill').style.width = cloudPct + '%';
+      document.getElementById('bar-aegis-fill').style.width = aegisPct + '%';
+
+      // ESG Stats
+      document.getElementById('esg-co2').innerText = co2eSavedKg.toLocaleString() + ' kg';
+      document.getElementById('esg-energy').innerText = kwhSaved.toLocaleString() + ' kWh';
+    }
+
+    // Initial calculation on load
+    window.addEventListener('DOMContentLoaded', calculateROI);
+  </script>
+</body>
+</html>

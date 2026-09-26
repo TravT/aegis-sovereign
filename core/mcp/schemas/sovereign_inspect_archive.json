@@ -1,0 +1,78 @@
+{
+  "name": "sovereign_inspect_archive",
+  "description": "Streams and inspects .hdx, .hwics, .zip, .xlsx, .docx, .tar.zst, or .epub containers purely in-memory (O_RDONLY, zero disk extraction) per ADR-07. Also supports section/offset slicing (section_filter, char_offset) and zero-reindex corpus path relocation / stale relationship cleanup (action='relocate_prefix' | 'purge_prefix' | 'corpus_stats').",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "inspect",
+          "relocate_prefix",
+          "purge_prefix",
+          "corpus_stats"
+        ],
+        "default": "inspect",
+        "description": "Operation mode: 'inspect' (default), 'relocate_prefix' (re-point archive:// URIs & rebuild clean graph edges without re-indexing), 'purge_prefix' (delete records & relationships for an old prefix), or 'corpus_stats'"
+      },
+      "archive_path": {
+        "type": "string",
+        "description": "Path to the archive container (.hdx, .hwics, .zip, .tar.zst, .epub) to inspect"
+      },
+      "virtual_uri": {
+        "type": "string",
+        "description": "Optional canonical virtual URI (archive://<archive_path>#<entry_name>) to resolve directly in-memory"
+      },
+      "section_filter": {
+        "type": "string",
+        "description": "Optional section heading filter (e.g. 'Possible Causes', 'Procedure', 'Parameters') to extract that exact section without Python slicing"
+      },
+      "char_offset": {
+        "type": "integer",
+        "default": 0,
+        "description": "Optional character start offset when reading a long archive entry"
+      },
+      "max_chars": {
+        "type": "integer",
+        "default": 4000,
+        "description": "Maximum characters to return from the resolved archive entry"
+      },
+      "old_prefix": {
+        "type": "string",
+        "description": "Old directory/URI prefix to relocate or purge (e.g. '/tmp/docs_rag_gemini')"
+      },
+      "new_prefix": {
+        "type": "string",
+        "description": "New directory/URI prefix to point existing indexed records and graph relationships to (e.g. '/home/tlima/Enterprise_Hub/docs/Hua_Docs')"
+      },
+      "clear_stale_relationships": {
+        "type": "boolean",
+        "default": true,
+        "description": "When relocating or purging, clear orphaned/stale GraphStore edges referencing the old path"
+      },
+      "enrich_deep_alarms": {
+        "type": "boolean",
+        "default": false,
+        "description": "When relocating Huawei .hwics packages, stream resources/alarms/*.html in-memory from new_prefix to persist full 18k-char Possible Causes & Procedures"
+      },
+      "extract_diagram_to_artifact": {
+        "type": "boolean",
+        "default": false,
+        "description": "When true, extracts embedded PNG signaling ladder / root-alarm diagrams (class='vsd' or direct .png virtual_uri) from the .hwics/.zip container in-memory and saves them to artifact_output_dir"
+      },
+      "artifact_output_dir": {
+        "type": "string",
+        "description": "Optional directory path to save extracted PNG diagrams (defaults to dev/aegis-sovereign-appliance/data/extracted_diagrams)"
+      },
+      "query": {
+        "type": "string",
+        "description": "Optional keyword or alarm code filter to match against archive entries"
+      },
+      "ingest": {
+        "type": "boolean",
+        "default": false,
+        "description": "Whether to ingest matched archive entries into the knowledge graph"
+      }
+    }
+  }
+}

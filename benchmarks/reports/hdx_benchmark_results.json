@@ -1,0 +1,154 @@
+{
+  "benchmark_suite": "Aegis Deep .HDX Telecom Vendor Package Ingestion & Prong-1/GraphRAG Benchmark",
+  "timestamp": "2026-09-24T18:10:00Z",
+  "hdx_package": {
+    "path": "benchmarks/data/sample_5g_ran_bbu5900.hdx",
+    "file_size_bytes": 7781,
+    "total_uncompressed_bytes": 12003,
+    "total_entries": 13,
+    "html_pages_count": 12,
+    "alarms_extracted": 4,
+    "mml_commands_extracted": 4,
+    "kpi_counters_extracted": 5,
+    "raptor_nodes_built": 6,
+    "indexed_router_records": 19,
+    "indexed_graph_edges": 21
+  },
+  "in_memory_security_verification": {
+    "o_rdonly_streamed": true,
+    "zero_disk_extraction_verified": true,
+    "temp_files_created": 0,
+    "parse_only_latency_ms": 11.185,
+    "full_ingest_latency_ms": 15.818
+  },
+  "prong1_deterministic_lookups": [
+    {
+      "query": "ALM-26235",
+      "expected_id_type": "telecom_alarm",
+      "actual_id_type": "telecom_alarm",
+      "route": "deterministic_direct",
+      "needs_synthesis": false,
+      "min_latency_ms": 0.2446,
+      "median_latency_ms": 0.2552,
+      "sub_1_5ms_verified": true,
+      "virtual_uri": "archive:///home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/sample_5g_ran_bbu5900.hdx#pages/03_alm_26235_optical_fault.html",
+      "breadcrumb": "5G RAN BBU5900 V100R019 > Alarm Reference > Hardware & Optical Alarms > ALM-26235 RF Unit Optical Module Fault"
+    },
+    {
+      "query": "ALM-29201",
+      "expected_id_type": "telecom_alarm",
+      "actual_id_type": "telecom_alarm",
+      "route": "deterministic_direct",
+      "needs_synthesis": false,
+      "min_latency_ms": 0.2055,
+      "median_latency_ms": 0.2071,
+      "sub_1_5ms_verified": true,
+      "virtual_uri": "archive:///home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/sample_5g_ran_bbu5900.hdx#pages/04_alm_29201_nrducell_unavail.html",
+      "breadcrumb": "5G RAN BBU5900 V100R019 > Alarm Reference > Hardware & Optical Alarms > ALM-29201 NR DU Cell Unavailable"
+    },
+    {
+      "query": "DSP OPTMODULE",
+      "expected_id_type": "mml_command",
+      "actual_id_type": "mml_command",
+      "route": "deterministic_direct",
+      "needs_synthesis": false,
+      "min_latency_ms": 0.2908,
+      "median_latency_ms": 0.2956,
+      "sub_1_5ms_verified": true,
+      "virtual_uri": "archive:///home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/sample_5g_ran_bbu5900.hdx#pages/07_mml_dsp_optmodule.html",
+      "breadcrumb": "5G RAN BBU5900 V100R019 > MML Command Reference > DSP OPTMODULE (Display Optical Transceiver Dynamic Status)"
+    },
+    {
+      "query": "MOD NRDUCELL",
+      "expected_id_type": "mml_command",
+      "actual_id_type": "mml_command",
+      "route": "deterministic_direct",
+      "needs_synthesis": false,
+      "min_latency_ms": 0.2891,
+      "median_latency_ms": 0.2953,
+      "sub_1_5ms_verified": true,
+      "virtual_uri": "archive:///home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/sample_5g_ran_bbu5900.hdx#pages/08_mml_mod_nrducell.html",
+      "breadcrumb": "5G RAN BBU5900 V100R019 > MML Command Reference > MOD NRDUCELL (Modify 5G NR DU Cell Configuration)"
+    },
+    {
+      "query": "VS.NR.RRC.ConnEstab.Succ",
+      "expected_id_type": "telecom_kpi",
+      "actual_id_type": "telecom_kpi",
+      "route": "deterministic_direct",
+      "needs_synthesis": false,
+      "min_latency_ms": 0.2819,
+      "median_latency_ms": 0.2858,
+      "sub_1_5ms_verified": true,
+      "virtual_uri": "archive:///home/tlima/Enterprise_Hub/dev/aegis-sovereign-appliance/benchmarks/data/sample_5g_ran_bbu5900.hdx#pages/11_kpi_rrc_conn_estab.html",
+      "breadcrumb": "5G RAN BBU5900 V100R019 > Performance Counter Reference (3GPP & Vendor KPIs) > RRC Connection Establishment & Signaling Counters"
+    }
+  ],
+  "compound_fused_routing": {
+    "query": "Why did ALM-26235 trigger and how to fix with DSP OPTMODULE?",
+    "route_type": "compound_fused",
+    "extracted_identifier": "ALM-26235",
+    "needs_synthesis": true,
+    "latency_ms": 0.847
+  },
+  "graph_rag_multi_hop_traversal": {
+    "root_alarm": "ALM-26235",
+    "traversal_latency_ms": 0.722,
+    "edges_traversed": 9,
+    "discovered_relations": [
+      {
+        "relation": "AFFECTS_NE",
+        "target_entity": "BBU5900",
+        "entity_type": "network_element",
+        "depth": 1
+      },
+      {
+        "relation": "CAUSED_BY",
+        "target_entity": "Optical_Rx_Power_Below_Threshold",
+        "entity_type": "alarm_cause",
+        "depth": 1
+      },
+      {
+        "relation": "CAUSED_BY",
+        "target_entity": "SFP28_Transceiver_Hardware_Failure",
+        "entity_type": "alarm_cause",
+        "depth": 1
+      },
+      {
+        "relation": "DIAGNOSED_BY_MML",
+        "target_entity": "DSP OPTMODULE",
+        "entity_type": "mml_command",
+        "depth": 1
+      },
+      {
+        "relation": "DIAGNOSED_BY_MML",
+        "target_entity": "LST ALMAF",
+        "entity_type": "mml_command",
+        "depth": 1
+      },
+      {
+        "relation": "REMEDIATED_BY_MML",
+        "target_entity": "MOD NRDUCELL",
+        "entity_type": "mml_command",
+        "depth": 1
+      },
+      {
+        "relation": "AFFECTS_NE",
+        "target_entity": "ALM-29201",
+        "entity_type": "telecom_alarm",
+        "depth": 2
+      },
+      {
+        "relation": "AFFECTS_NE",
+        "target_entity": "ALM-25888",
+        "entity_type": "telecom_alarm",
+        "depth": 2
+      },
+      {
+        "relation": "DIAGNOSED_BY_MML",
+        "target_entity": "ALM-26522",
+        "entity_type": "telecom_alarm",
+        "depth": 2
+      }
+    ]
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Aegis Sovereign HUD",
+  "version": "1.0.0",
+  "identifier": "io.aegis.sovereign.hud",
+  "build": {
+    "frontendDist": "../",
+    "devUrl": "http://127.0.0.1:8766"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "aegis-spotlight-hud",
+        "title": "Aegis Sovereign Command Bar",
+        "width": 860,
+        "height": 560,
+        "center": true,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": true,
+        "backgroundColor": "#07090D"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' http://127.0.0.1:8766 ws://127.0.0.1:8766; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "msi", "appimage"],
+    "externalBin": [
+      "binaries/sovereign-desktopd"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "Air-Gapped Sovereign Workstation Spotlight HUD & Hybrid RAG Engine",
+    "longDescription": "Zero-Copy Workstation Indexing, Two-Pronged Hybrid Retrieval (<1ms FTS5 + <30ms Qdrant INT8/Graph), and LGPD Art. 12 DLP Guardrails."
+  },
+  "plugins": {
+    "globalShortcut": {
+      "shortcuts": ["Alt+Space"]
+    }
+  }
+}

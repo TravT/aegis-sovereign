@@ -1,0 +1,219 @@
+{
+  "benchmark_suite": "Aegis Sovereign MCP v2 (7-Tool Empirical Benchmark + Real-World Format Parsers)",
+  "timestamp": "2026-09-24T18:52:22Z",
+  "total_mcp_tools_exposed": 7,
+  "total_scenarios_benchmarked": 9,
+  "iterations_per_scenario": 10,
+  "corpus_ingestion_summary": {
+    "total_ingest_latency_ms": 48.16,
+    "nfe_v400_xml": {
+      "file": "benchmarks/data/real_formats/nfe_v400_pharma_lote.xml",
+      "chave_acesso": "35260912345678000195550010000489121098273645",
+      "batches_extracted": [
+        "LOTE-202609B",
+        "LOTE-202608A"
+      ],
+      "anvisa_registrations": [
+        "1023504910024",
+        "1023501180019"
+      ],
+      "router_records": 13,
+      "graph_edges": 9,
+      "ingest_latency_ms": 10.566
+    },
+    "rfc5322_mbox": {
+      "file": "benchmarks/data/real_formats/noc_incident_thread.mbox",
+      "messages_count": 3,
+      "router_records": 6,
+      "graph_edges": 31,
+      "ingest_latency_ms": 6.309
+    },
+    "clinical_csv": {
+      "file": "benchmarks/data/real_formats/clinical_longevity_panel.csv",
+      "row_count": 3,
+      "detected_delimiter": ",",
+      "router_records": 20,
+      "graph_edges": 17,
+      "ingest_latency_ms": 8.278
+    },
+    "telecom_hdx": {
+      "file": "benchmarks/data/sample_5g_ran_bbu5900.hdx",
+      "alarms_extracted": 4,
+      "mml_commands_extracted": 4,
+      "kpi_counters_extracted": 5,
+      "router_records": 19,
+      "graph_edges": 21,
+      "ingest_latency_ms": 22.927
+    }
+  },
+  "overall_median_p50_ms": 2.137,
+  "overall_max_p95_ms": 7.203,
+  "tool_benchmarks": [
+    {
+      "scenario_id": "1A_prong1_deterministic_fast_path",
+      "tool_name": "sovereign_route_and_analyze",
+      "description": "Prong 1 B-Tree/FTS5 Deterministic Fast-Path for ALM-26235 & LOTE-202609B (<2ms engine target)",
+      "iterations": 10,
+      "p50_ms": 1.939,
+      "p95_ms": 3.599,
+      "mean_ms": 2.142,
+      "min_ms": 1.866,
+      "max_ms": 3.599,
+      "response_bytes": 8695,
+      "estimated_response_tokens": 2173,
+      "verified": true,
+      "key_capabilities_verified": [
+        "route_type == deterministic_direct",
+        "execution_mode == deterministic_direct_fast_path",
+        "Matched SEFAZ <rastro> batch LOTE-202609B & ANVISA cProdANVISA 1023504910024"
+      ]
+    },
+    {
+      "scenario_id": "1B_prong2_compound_fused_synthesis",
+      "tool_name": "sovereign_route_and_analyze",
+      "description": "Prong 2 Compound Fused Query with Local NanoRunner Synthesis & Citations",
+      "iterations": 10,
+      "p50_ms": 6.854,
+      "p95_ms": 7.203,
+      "mean_ms": 6.897,
+      "min_ms": 6.766,
+      "max_ms": 7.203,
+      "response_bytes": 24825,
+      "estimated_response_tokens": 6206,
+      "verified": true,
+      "key_capabilities_verified": [
+        "route_type == compound_fused",
+        "NanoRunner fast_summary with explicit execution_mode telemetry",
+        "Cross-correlates .hdx ALM-26235 manual + .mbox INC-2026-8841 thread"
+      ]
+    },
+    {
+      "scenario_id": "2_optimize_context_5_executive_knobs",
+      "tool_name": "sovereign_optimize_context",
+      "description": "Context Condenser with all 5 Executive Knobs (relational_audit, verbatim_footnotes, visual_plates, clearance, compliance_auditor)",
+      "iterations": 10,
+      "p50_ms": 4.365,
+      "p95_ms": 4.64,
+      "mean_ms": 4.399,
+      "min_ms": 4.32,
+      "max_ms": 4.64,
+      "response_bytes": 5201,
+      "estimated_response_tokens": 1300,
+      "verified": true,
+      "key_capabilities_verified": [
+        "Guaranteed >= 40% token savings (95.4% empirical compression)",
+        "All 5 Executive Knobs enforced & echoed in telemetry",
+        "Attached GraphRAG dossier + citations across NF-e XML & Clinical CSV"
+      ]
+    },
+    {
+      "scenario_id": "3_search_vault_hybrid_rrf",
+      "tool_name": "sovereign_search_vault",
+      "description": "Hybrid Dense + BM25 Sparse Reciprocal Rank Fusion (RRF) Search",
+      "iterations": 10,
+      "p50_ms": 4.706,
+      "p95_ms": 4.936,
+      "mean_ms": 4.731,
+      "min_ms": 4.647,
+      "max_ms": 4.936,
+      "response_bytes": 11370,
+      "estimated_response_tokens": 2842,
+      "verified": true,
+      "key_capabilities_verified": [
+        "Reciprocal Rank Fusion (dense + BM25 sparse_weight=1.6)",
+        "Retrieves both .mbox NOC thread and .hdx BBU5900 alarm reference"
+      ]
+    },
+    {
+      "scenario_id": "4A_entity_dossier_telecom_alarm",
+      "tool_name": "sovereign_get_entity_dossier",
+      "description": "Multi-Hop GraphRAG Entity Dossier for ALM-26235 (spanning .hdx + .mbox)",
+      "iterations": 10,
+      "p50_ms": 2.137,
+      "p95_ms": 2.345,
+      "mean_ms": 2.162,
+      "min_ms": 2.114,
+      "max_ms": 2.345,
+      "response_bytes": 9376,
+      "estimated_response_tokens": 2344,
+      "verified": true,
+      "key_capabilities_verified": [
+        "Multi-hop GraphRAG edges: AFFECTS_NE (BBU5900), DIAGNOSED_BY_MML (DSP OPTMODULE), REMEDIATED_BY_MML (MOD NRDUCELL)",
+        "Cross-format link: CORRELATED_WITH INC-2026-8841 from RFC-5322 .mbox archive"
+      ]
+    },
+    {
+      "scenario_id": "4B_entity_dossier_pharma_lote",
+      "tool_name": "sovereign_get_entity_dossier",
+      "description": "Multi-Hop GraphRAG Entity Dossier for LOTE-202609B (spanning SEFAZ NF-e v4.00 XML + Clinical CSV)",
+      "iterations": 10,
+      "p50_ms": 1.949,
+      "p95_ms": 2.155,
+      "mean_ms": 1.957,
+      "min_ms": 1.861,
+      "max_ms": 2.155,
+      "response_bytes": 8636,
+      "estimated_response_tokens": 2159,
+      "verified": true,
+      "key_capabilities_verified": [
+        "Traces LOTE-202609B -> NF-e Chave 35260912345678000195550010000489121098273645",
+        "Traces LOTE-202609B -> REGISTERED_ANVISA 1023504910024 & Emitter CNPJ 12.345.678/0001-95"
+      ]
+    },
+    {
+      "scenario_id": "5_inspect_archive_zero_copy_hdx",
+      "tool_name": "sovereign_inspect_archive",
+      "description": "Zero-Disk-Extraction In-Memory .hdx Streaming & archive:// Virtual URI Resolution",
+      "iterations": 10,
+      "p50_ms": 3.183,
+      "p95_ms": 3.376,
+      "mean_ms": 3.202,
+      "min_ms": 3.16,
+      "max_ms": 3.376,
+      "response_bytes": 10046,
+      "estimated_response_tokens": 2511,
+      "verified": true,
+      "key_capabilities_verified": [
+        "100% in-memory O_RDONLY streaming (zero temporary files on disk)",
+        "Canonical virtual URI: archive://...sample_5g_ran_bbu5900.hdx#pages/03_alm_26235_optical_fault.html",
+        "SHA-256 integrity hash + compression ratio zip-bomb guard"
+      ]
+    },
+    {
+      "scenario_id": "6_scan_onboarding_radar",
+      "tool_name": "sovereign_scan_onboarding_radar",
+      "description": "Read-Only 60-Second Auto-Discovery Onboarding Radar across Multi-Domain Directories",
+      "iterations": 10,
+      "p50_ms": 1.169,
+      "p95_ms": 1.349,
+      "mean_ms": 1.184,
+      "min_ms": 1.15,
+      "max_ms": 1.349,
+      "response_bytes": 1130,
+      "estimated_response_tokens": 282,
+      "verified": true,
+      "key_capabilities_verified": [
+        "Discovers and scores real_formats/ and benchmarks/data/ directories via os.scandir",
+        "Classifies domain categories & priority scores in <5ms"
+      ]
+    },
+    {
+      "scenario_id": "7_node_status_health_telemetry",
+      "tool_name": "sovereign_node_status",
+      "description": "Appliance Node Health, GraphRAG Entity/Relation Counts, and Plan Readiness",
+      "iterations": 10,
+      "p50_ms": 0.771,
+      "p95_ms": 0.927,
+      "mean_ms": 0.786,
+      "min_ms": 0.748,
+      "max_ms": 0.927,
+      "response_bytes": 958,
+      "estimated_response_tokens": 239,
+      "verified": true,
+      "key_capabilities_verified": [
+        "Reports live GraphStore entity/relation counts & query counters",
+        "Verifies ENTERPRISE plan tier & active vector collection status"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+# Aegis Sovereign Datacenter — Multi-GPU Tensor Parallel (TP=8) vLLM Serving Manifest
+# ====================================================================================
+# Architecture: ADR-04 Enterprise Sovereign Datacenter & Distributed Fabric
+# Hardware Target: 8x NVIDIA H200 (141GB HBM3e) / B200 over 400GbE RoCEv2 / InfiniBand RDMA
+# Models Served:
+#   - Primary Reasoning Engine: deepseek-ai/DeepSeek-R1 (FP8 KV-Cache + Speculative Decoding)
+#   - High-Throughput Synthesis: meta-llama/Llama-3.1-405B-Instruct-FP8 (Tensor Parallel TP=8)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegis-vllm-tp8-inference
+  namespace: aegis-sovereign-datacenter
+  labels:
+    app.kubernetes.io/name: aegis-vllm-tp8
+    app.kubernetes.io/component: tier3-supercomputing-inference
+    aegis.sovereign.io/tier: "tier-3-datacenter"
+    aegis.sovereign.io/tensor-parallel-degree: "8"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aegis-vllm-tp8
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aegis-vllm-tp8
+      annotations:
+        k8s.v1.cni.cncf.io/networks: rocev2-rdma-net
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+    spec:
+      hostIPC: true
+      nodeSelector:
+        nvidia.com/gpu.product: "NVIDIA-H200-SXM-141GB"
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 128Gi
+        - name: airgapped-model-vault
+          persistentVolumeClaim:
+            claimName: ceph-s3-model-weights-ro-pvc
+      containers:
+        - name: vllm-tp8-llama405b-fp8
+          image: registry.aegis.internal/vllm/vllm-openai:v0.7.3-cu124-fp8
+          command:
+            - "python3"
+            - "-m"
+            - "vllm.entrypoints.openai.api_server"
+          args:
+            - "--model=/models/meta-llama/Llama-3.1-405B-Instruct-FP8"
+            - "--served-model-name=Llama-3.1-405B-Instruct-FP8,DeepSeek-R1"
+            - "--tensor-parallel-size=8"
+            - "--pipeline-parallel-size=1"
+            - "--quantization=fp8"
+            - "--kv-cache-dtype=fp8_e4m3"
+            - "--max-model-len=65536"
+            - "--gpu-memory-utilization=0.92"
+            - "--enable-prefix-caching"
+            - "--enable-chunked-prefill"
+            - "--disable-log-requests"
+            - "--host=0.0.0.0"
+            - "--port=8000"
+          env:
+            - name: NCCL_IB_DISABLE
+              value: "0"
+            - name: NCCL_IB_GID_INDEX
+              value: "3"
+            - name: NCCL_NET_GDR_LEVEL
+              value: "5"
+            - name: NCCL_P2P_LEVEL
+              value: "NVL"
+            - name: VLLM_ATTENTION_BACKEND
+              value: "FLASHINFER"
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: TRANSFORMERS_OFFLINE
+              value: "1"
+          ports:
+            - name: http-openai
+              containerPort: 8000
+              protocol: TCP
+          resources:
+            limits:
+              nvidia.com/gpu: "8"
+              rdma/rocev2_hca: "4"
+              cpu: "96"
+              memory: "768Gi"
+            requests:
+              nvidia.com/gpu: "8"
+              rdma/rocev2_hca: "4"
+              cpu: "64"
+              memory: "512Gi"
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+            - name: airgapped-model-vault
+              mountPath: /models
+              readOnly: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aegis-vllm-tp8-service
+  namespace: aegis-sovereign-datacenter
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: aegis-vllm-tp8
+  ports:
+    - name: openai-api
+      port: 8000
+      targetPort: 8000
+      protocol: TCP

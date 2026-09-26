@@ -1,0 +1,113 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-cinzel: 'Cinzel', Georgia, serif;
+  --font-inter: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-jetbrains: 'JetBrains Mono', SFMono-Regular, monospace;
+
+  --bg-base: #07090D;
+  --bg-obsidian: #0B0F17;
+  --bg-surface: #0E121A;
+  --bg-card: #141A24;
+  --border: #232B38;
+  --gold: #D4AF37;
+  --gold-bright: #F3E5AB;
+  --emerald: #00E676;
+  --danger: #FF5252;
+  --warning: #FFA726;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: #E6EDF3;
+  font-family: var(--font-inter);
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Luxury scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #07090D;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #232B38;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #D4AF37;
+}
+
+/* Subtle glow utilities */
+.glow-gold {
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.25);
+}
+
+.glow-emerald {
+  box-shadow: 0 0 20px rgba(0, 230, 118, 0.25);
+}
+
+.glow-danger {
+  box-shadow: 0 0 20px rgba(255, 82, 82, 0.25);
+}
+
+/* Paper page rendering for evidence viewer */
+.paper-page {
+  width: 100%;
+  max-width: 680px;
+  background-color: #FAFAFA;
+  color: #1A1A1A;
+  padding: 40px;
+  border-radius: 4px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 13px;
+  line-height: 1.8;
+  position: relative;
+}
+
+.bbox-highlight {
+  background-color: rgba(255, 235, 59, 0.35);
+  border-bottom: 2px solid #FBC02D;
+  padding: 2px 4px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.bbox-highlight:hover {
+  background-color: rgba(255, 235, 59, 0.55);
+}
+
+.bbox-critical {
+  background-color: rgba(255, 82, 82, 0.25);
+  border-bottom: 2px solid #FF5252;
+  padding: 2px 4px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.bbox-critical:hover {
+  background-color: rgba(255, 82, 82, 0.45);
+}
+
+.bbox-active {
+  background-color: rgba(212, 175, 55, 0.45) !important;
+  outline: 2px solid #D4AF37 !important;
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.6) !important;
+  border-radius: 2px;
+}

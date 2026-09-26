@@ -1,0 +1,68 @@
+# Aegis Sovereign Knowledge Appliance — Ghost Ingestion Pipeline (ADR-35)
+# Headless OCR Daemon strictly bound to 127.0.0.1 (No external ingress, zero cloud telemetry)
+
+services:
+  aegis-broker:
+    image: redis:7-alpine
+    container_name: aegis-ghost-broker
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - aegis-ghost-redis-data:/data
+    networks:
+      - aegis-ghost-internal
+
+  aegis-db:
+    image: postgres:16-alpine
+    container_name: aegis-ghost-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-paperless}
+      POSTGRES_USER: ${POSTGRES_USER:-paperless}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_in_env_file}
+    volumes:
+      - aegis-ghost-pgdata:/var/lib/postgresql/data
+    networks:
+      - aegis-ghost-internal
+
+  aegis-paperless-ghost:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    container_name: aegis-paperless-ghost
+    restart: unless-stopped
+    depends_on:
+      - aegis-db
+      - aegis-broker
+    environment:
+      PAPERLESS_REDIS: redis://aegis-ghost-broker:6379
+      PAPERLESS_DBENGINE: postgresql
+      PAPERLESS_DBHOST: aegis-ghost-db
+      PAPERLESS_DBNAME: ${POSTGRES_DB:-paperless}
+      PAPERLESS_DBUSER: ${POSTGRES_USER:-paperless}
+      PAPERLESS_DBPASS: ${POSTGRES_PASSWORD:-change_in_env_file}
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:-change_in_env_file}
+      PAPERLESS_URL: http://127.0.0.1:8000
+      PAPERLESS_OCR_LANGUAGE: por+eng
+      PAPERLESS_OCR_LANGUAGES: por eng
+      PAPERLESS_OCR_MODE: skip_archive
+      PAPERLESS_POST_CONSUMPTION_SCRIPT: /hooks/post_consumption.sh
+      USERMAP_UID: 1000
+      USERMAP_GID: 1000
+    ports:
+      # Strictly bound to loopback to prevent exposure
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ${SOVEREIGN_DATA_DIR:-./data}/paperless/data:/usr/src/paperless/data
+      - ${SOVEREIGN_DATA_DIR:-./data}/paperless/media:/usr/src/paperless/media
+      - ${SOVEREIGN_DATA_DIR:-./data}/paperless/export:/usr/src/paperless/export
+      - ${SOVEREIGN_CONSUME_DIR:-./data/consume}:/usr/src/paperless/consume
+      - ./hooks:/hooks:ro
+    networks:
+      - aegis-ghost-internal
+
+networks:
+  aegis-ghost-internal:
+    driver: bridge
+
+volumes:
+  aegis-ghost-redis-data:
+  aegis-ghost-pgdata:

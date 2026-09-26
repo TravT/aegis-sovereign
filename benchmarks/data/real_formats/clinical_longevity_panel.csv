@@ -1,0 +1,4 @@
+patient_id,cpf,patient_name,physician_crm,cid10_diagnosis,apob_mg_dl,ferritin_ng_ml,hs_crp_mg_l,hba1c_pct,prescribed_lote,clinical_notes
+PAT-2026-001,418.920.331-45,Roberto Almeida Prado,CRM-SP 184920,CID-10 E11.9,68.4,142.0,0.42,5.3,LOTE-202609B,"Longevity cardiometabolic protocol: ApoB < 70 mg/dL target achieved, hs-CRP optimal (<0.5 mg/L), prescribed Semaglutida LOTE-202609B (ANVISA 1023504910024)."
+PAT-2026-002,729.104.882-19,Helena Vasconcelos,CRM-SP 184920,CID-10 E78.0,114.2,285.0,1.95,5.9,LOTE-202608A,"Elevated ApoB (114.2 mg/dL) and hs-CRP (1.95 mg/L); sleep architecture stabilized via Portaria 344 Lista B1 LOTE-202608A."
+PAT-2026-003,105.673.229-80,Marcos Vinicius Ferraz,CRM-PR 094112,CID-10 I10.0,79.1,98.5,0.68,5.1,LOTE-202609B,"VO2max 52 mL/kg/min, ferritin normalized (98.5 ng/mL), maintenance longevity panel."
