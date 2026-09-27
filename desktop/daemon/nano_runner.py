@@ -95,7 +95,7 @@ class NanoRunner:
         self.ollama_url = (
             ollama_url or os.getenv("SOVEREIGN_OLLAMA_URL", "http://127.0.0.1:11434")
         ).rstrip("/")
-        self.ollama_model = ollama_model or os.getenv("SOVEREIGN_OLLAMA_MODEL", "qwen2.5:3b")
+        self.ollama_model = ollama_model or os.getenv("SOVEREIGN_OLLAMA_MODEL", "qwen2.5:1.5b")
 
         if use_ollama is not None:
             self.use_ollama = bool(use_ollama)
@@ -345,7 +345,7 @@ class NanoRunner:
         chunks: List[Dict[str, Any]],
         citations: List[Citation],
         graph_dossier: Optional[Dict[str, Any]] = None,
-        timeout: float = 15.0,
+        timeout: float = 45.0,
     ) -> Optional[str]:
         """
         Executes live local neural synthesis via Ollama HTTP API (http://127.0.0.1:11434/api/generate).
@@ -364,7 +364,7 @@ class NanoRunner:
 
         context_blocks = []
         for chunk, cit in zip(chunks[:5], citations[:5]):
-            text = chunk.get("text", "").strip()
+            text = self._clean_chunk_text(chunk.get("text", "")).strip()
             context_blocks.append(
                 f"[{cit.id}] Title: {cit.doc_title} | Section: {cit.heading} | Score: {cit.score:.3f}\n"
                 f"Content: {text}"
@@ -379,11 +379,15 @@ class NanoRunner:
 
         evidence_str = "\n\n".join(context_blocks)
         prompt = (
-            f"You are the Aegis Sovereign Grounded Synthesis Engine (ADR-09).\n"
+            f"You are the Aegis Sovereign Grounded Synthesis Engine (ADR-09) on the Dell Enterprise Hub.\n"
             f"Rules:\n"
             f"1. {lang_instruction}\n"
             f"2. Answer ONLY using the verified evidence chunks below. Never invent or extrapolate facts.\n"
-            f"3. Cite every claim inline using bracketed citation numbers like [1], [2] (or [Doc #1]).\n\n"
+            f"3. If the user asks for 'first steps', 'procedure', or 'how to', structure the answer clearly into:\n"
+            f"   - Prerequisites & Conditions\n"
+            f"   - Step-by-Step Procedure\n"
+            f"   - Verification & MML Commands\n"
+            f"4. Cite every claim inline using bracketed citation numbers like [1], [2] (or [Doc #1]).\n\n"
             f"Verified Evidence Chunks:\n{evidence_str}\n\n"
             f"Query: {query}\n\n"
             f"Grounded Answer:"
@@ -421,6 +425,16 @@ class NanoRunner:
 
         return None
 
+    @staticmethod
+    def _clean_chunk_text(raw_text: str) -> str:
+        """Strip header breadcrumbs, virtual URIs, titles, and DITA sub-topic markers."""
+        text = re.sub(r"\[[A-Za-z0-9_\.\s\-]+>[^\]]+\]", "", raw_text)
+        text = re.sub(r"Virtual URI:\s*archive://[^\n]+", "", text)
+        text = re.sub(r"^Title:\s*[^\n]+", "", text, flags=re.MULTILINE)
+        text = re.sub(r"---\s*\[Sub-Topic:[^\]]+\]\s*---", "\n", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+
     def _deterministic_grounded_synthesis(
         self,
         query: str,
@@ -432,32 +446,109 @@ class NanoRunner:
         Synthesizes a high-precision, citation-grounded answer deterministically
         without external LLM dependencies. Matches key facts, entities, and clauses.
         """
-        lines = []
-        top_citation = citations[0]
-        lines.append(
-            f"Based on verified local documents, the following evidence directly addresses \"{query}\":"
+        q_lower = query.lower()
+        is_procedural = any(
+            w in q_lower for w in ("first step", "first steps", "step", "procedure", "commission", "commissioning", "how to", "configure", "remediate", "fix")
         )
-        lines.append("")
 
-        for idx, (chunk, cit) in enumerate(zip(chunks[:3], citations[:3]), start=1):
-            text = chunk.get("text", "").strip()
-            # Extract most relevant sentences matching query keywords
-            query_words = set(re.findall(r"\w+", query.lower()))
-            sentences = re.split(r"(?<=[.!?])\s+", text)
-            matching_sentences = []
-            for s in sentences:
-                s_words = set(re.findall(r"\w+", s.lower()))
-                if query_words.intersection(s_words):
-                    matching_sentences.append(s.strip())
-
-            if matching_sentences:
-                excerpt = " ".join(matching_sentences[:2])
-            else:
-                excerpt = sentences[0].strip() if sentences else text[:150]
-
-            lines.append(f"• **{cit.doc_title}** [{cit.heading}] ([Doc #{cit.id}]):")
-            lines.append(f"  \"{excerpt}\"")
+        lines = []
+        if is_procedural:
+            lines.append(f"### Procedural Synthesis: {query}")
             lines.append("")
+            lines.append("Based on verified Huawei & Enterprise documentation in the Sovereign Vault, here is the structured commissioning runbook:")
+            lines.append("")
+
+            prereq_items = []
+            procedure_steps = []
+            mml_commands = set()
+
+            for idx, (chunk, cit) in enumerate(zip(chunks[:4], citations[:4]), start=1):
+                clean_text = self._clean_chunk_text(chunk.get("text", ""))
+
+                # Extract MML commands
+                for mml in re.findall(r"\b(?:LST|DSP|MOD|ADD|RMV|SET|ACT|DEA|NGPING)\s+[A-Z0-9_]{3,20}\b", clean_text):
+                    mml_commands.add(f"`{mml}` [{cit.id}]")
+
+                # Match Prerequisites
+                p_match = re.search(r"\bPrerequisites\b\s*(.*?)(?=\b(?:Tools|Data|Procedure|Overview)\b|\Z)", clean_text, re.DOTALL | re.IGNORECASE)
+                if p_match:
+                    raw_prereq = p_match.group(1).strip()
+                    for item in re.split(r"(?<=\.)\s+|\n+", raw_prereq):
+                        item = item.strip()
+                        if len(item) > 20 and not any(k in item for k in ("Table", "Scenario No", "AG_FUP")):
+                            prereq_items.append(f"{item} [{cit.id}]")
+
+                # Match Procedure
+                all_procs = list(re.finditer(r"\bProcedure\b\s*", clean_text, re.IGNORECASE))
+                if all_procs:
+                    raw_proc = clean_text[all_procs[-1].end():].strip()
+                    for item in re.split(r"(?<=\.)\s+|\n+", raw_proc):
+                        item = item.strip()
+                        if len(item) > 20 and not any(k in item for k in ("Table", "Scenario No", "AG_FUP", "RETCODE", "Quota Name", "Total count", "END If")):
+                            procedure_steps.append(f"{item} [{cit.id}]")
+
+                # General matching if sections weren't explicitly demarcated
+                if not prereq_items and not procedure_steps:
+                    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", clean_text) if len(s.strip()) > 30]
+                    for s in sentences[:3]:
+                        if any(w in s.lower() for w in ("commission", "trace", "message", "check", "verify", "run", "log in", "create", "activate", "policy")):
+                            procedure_steps.append(f"{s} [{cit.id}]")
+
+            if prereq_items:
+                lines.append("#### 📋 1. Prerequisites & Initial Conditions")
+                seen = set()
+                for p in prereq_items[:5]:
+                    base = re.sub(r"\[\d+\]", "", p).strip()
+                    if base not in seen:
+                        seen.add(base)
+                        lines.append(f"- {p}")
+                lines.append("")
+
+            if procedure_steps:
+                lines.append("#### 🛠️ 2. Step-by-Step Commissioning Procedure")
+                seen = set()
+                step_no = 1
+                for s in procedure_steps[:6]:
+                    base = re.sub(r"\[\d+\]", "", s).strip()
+                    if base not in seen:
+                        seen.add(base)
+                        lines.append(f"{step_no}. {s}")
+                        step_no += 1
+                lines.append("")
+
+            if mml_commands:
+                lines.append("#### ⚙️ 3. Verification & Diagnostic MML Commands")
+                lines.append(f"- Verified MML operations referenced: {', '.join(sorted(list(mml_commands)[:6]))}")
+                lines.append("")
+
+            lines.append("#### 📚 Verified Source References")
+            for cit in citations[:3]:
+                lines.append(f"- **[{cit.id}] {cit.doc_title}**: `{cit.heading}` (Confidence: {cit.score:.2f})")
+
+        else:
+            lines.append(
+                f"Based on verified local documents, the following evidence directly addresses \"{query}\":"
+            )
+            lines.append("")
+
+            for idx, (chunk, cit) in enumerate(zip(chunks[:3], citations[:3]), start=1):
+                clean_text = self._clean_chunk_text(chunk.get("text", ""))
+                query_words = set(re.findall(r"\w+", query.lower()))
+                sentences = re.split(r"(?<=[.!?])\s+", clean_text)
+                matching_sentences = []
+                for s in sentences:
+                    s_words = set(re.findall(r"\w+", s.lower()))
+                    if query_words.intersection(s_words):
+                        matching_sentences.append(s.strip())
+
+                if matching_sentences:
+                    excerpt = " ".join(matching_sentences[:2])
+                else:
+                    excerpt = sentences[0].strip() if sentences else clean_text[:150]
+
+                lines.append(f"• **{cit.doc_title}** [{cit.heading}] ([Doc #{cit.id}]):")
+                lines.append(f"  \"{excerpt}\"")
+                lines.append("")
 
         # Incorporate graph entity relations if present
         if graph_dossier:

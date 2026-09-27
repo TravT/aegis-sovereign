@@ -31,19 +31,48 @@ for _venv_sp in (_APPLIANCE_ROOT.parent.parent / ".venv" / "lib").glob("python*/
 APPLIANCE_URL = os.getenv("SOVEREIGN_APPLIANCE_URL", "http://127.0.0.1:8765")
 PROTOCOL_VERSION = "2024-11-05"
 
-_PROD_VAULT_DIR = _APPLIANCE_ROOT.parent.parent / "docs" / ".aegis_vault"
+_CANONICAL_PROD_VAULT = Path("/home/tlima/Enterprise_Hub/docs/.aegis_vault")
+_PROD_VAULT_DIR = (
+    _CANONICAL_PROD_VAULT
+    if _CANONICAL_PROD_VAULT.exists()
+    else (
+        (_APPLIANCE_ROOT.parent.parent / "docs" / ".aegis_vault")
+        if (_APPLIANCE_ROOT.parent.parent / "docs" / ".aegis_vault").exists()
+        else (_APPLIANCE_ROOT / "data")
+    )
+)
 _LEGACY_DATA_DIR = _APPLIANCE_ROOT / "data"
 
-DEFAULT_ROUTER_DB = (
-    _PROD_VAULT_DIR / "sovereign_router.db"
-    if _PROD_VAULT_DIR.exists()
-    else _LEGACY_DATA_DIR / "sovereign_router.db"
-)
-DEFAULT_GRAPH_DB = (
-    _PROD_VAULT_DIR / "sovereign_graph.db"
-    if _PROD_VAULT_DIR.exists()
-    else _LEGACY_DATA_DIR / "sovereign_graph.db"
-)
+def _resolve_default_router_db() -> Path:
+    env_p = os.getenv("ROUTER_DB_PATH") or os.getenv("SOVEREIGN_ROUTER_DB") or os.getenv("SOVEREIGN_ROUTER_DB_PATH")
+    if env_p and Path(env_p).exists() and Path(env_p).stat().st_size > 0:
+        return Path(env_p)
+    if (_PROD_VAULT_DIR / "sovereign_router.db").exists() and (_PROD_VAULT_DIR / "sovereign_router.db").stat().st_size > 0:
+        return _PROD_VAULT_DIR / "sovereign_router.db"
+    if (_CANONICAL_PROD_VAULT / "sovereign_router.db").exists() and (_CANONICAL_PROD_VAULT / "sovereign_router.db").stat().st_size > 0:
+        return _CANONICAL_PROD_VAULT / "sovereign_router.db"
+    if (_LEGACY_DATA_DIR / "sovereign_router.db").exists():
+        return _LEGACY_DATA_DIR / "sovereign_router.db"
+    if (_PROD_VAULT_DIR / "sovereign_huawei_router.db").exists():
+        return _PROD_VAULT_DIR / "sovereign_huawei_router.db"
+    return _LEGACY_DATA_DIR / "sovereign_huawei_router.db"
+
+def _resolve_default_graph_db() -> Path:
+    env_p = os.getenv("GRAPH_DB_PATH") or os.getenv("SOVEREIGN_GRAPH_DB") or os.getenv("SOVEREIGN_GRAPH_DB_PATH")
+    if env_p and Path(env_p).exists() and Path(env_p).stat().st_size > 0:
+        return Path(env_p)
+    if (_PROD_VAULT_DIR / "sovereign_graph.db").exists() and (_PROD_VAULT_DIR / "sovereign_graph.db").stat().st_size > 0:
+        return _PROD_VAULT_DIR / "sovereign_graph.db"
+    if (_CANONICAL_PROD_VAULT / "sovereign_graph.db").exists() and (_CANONICAL_PROD_VAULT / "sovereign_graph.db").stat().st_size > 0:
+        return _CANONICAL_PROD_VAULT / "sovereign_graph.db"
+    if (_LEGACY_DATA_DIR / "sovereign_graph.db").exists():
+        return _LEGACY_DATA_DIR / "sovereign_graph.db"
+    if (_PROD_VAULT_DIR / "sovereign_huawei_graph.db").exists():
+        return _PROD_VAULT_DIR / "sovereign_huawei_graph.db"
+    return _LEGACY_DATA_DIR / "sovereign_huawei_graph.db"
+
+DEFAULT_ROUTER_DB = _resolve_default_router_db()
+DEFAULT_GRAPH_DB = _resolve_default_graph_db()
 # Backward-compatibility aliases
 DEFAULT_HUAWEI_ROUTER_DB = DEFAULT_ROUTER_DB
 DEFAULT_HUAWEI_GRAPH_DB = DEFAULT_GRAPH_DB
@@ -65,12 +94,12 @@ def _get_local_router_and_runner():
         from core.graph.store import GraphStore
         from core.security import PlanTier
         router_db_path = os.getenv(
-            "SOVEREIGN_ROUTER_DB",
-            str(DEFAULT_ROUTER_DB) if DEFAULT_ROUTER_DB.exists() else ":memory:",
+            "ROUTER_DB_PATH",
+            os.getenv("SOVEREIGN_ROUTER_DB", str(DEFAULT_ROUTER_DB) if DEFAULT_ROUTER_DB.exists() else ":memory:"),
         )
         graph_db_path = os.getenv(
-            "SOVEREIGN_GRAPH_DB",
-            str(DEFAULT_GRAPH_DB) if DEFAULT_GRAPH_DB.exists() else ":memory:",
+            "GRAPH_DB_PATH",
+            os.getenv("SOVEREIGN_GRAPH_DB", str(DEFAULT_GRAPH_DB) if DEFAULT_GRAPH_DB.exists() else ":memory:"),
         )
         gs = GraphStore(db_path=graph_db_path) if graph_db_path != ":memory:" else GraphStore()
         _LOCAL_ROUTER = SovereignQueryRouter(
@@ -1434,7 +1463,9 @@ def handle_tool_call(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any
                 total_docs = router._conn.execute("SELECT COUNT(*) FROM document_records").fetchone()[0]
                 if "error" in res:
                     res = {"status": "online"}
-                res["router_db_path"] = str(DEFAULT_HUAWEI_ROUTER_DB)
+                res["database_name"] = DEFAULT_ROUTER_DB.name
+                res["router_db_path"] = str(DEFAULT_ROUTER_DB)
+                res["graph_db_path"] = str(DEFAULT_GRAPH_DB)
                 res["total_router_records"] = total_docs
                 res["knowledge_graph"] = router.graph_store.get_entity_statistics() if router.graph_store else {}
                 res["fallback_execution"] = "in_process_local"

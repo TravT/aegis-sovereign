@@ -334,3 +334,88 @@ def test_09_cryptographic_ed25519_license_and_ai_harnesses(portal_server):
     assert ent_lic["signature_verified"] is True
     assert "RAPTOR Hierarchical Tree" in ent_lic["unlocked_features"]
 
+
+def test_10_health_endpoint_canonical_db_and_local_llm(portal_server):
+    """
+    Verifies that GET /health and GET /status report canonical database paths (sovereign_router.db
+    and sovereign_graph.db) and include local LLM controller diagnostics.
+    """
+    st, _, raw = _http_get_raw(f"{portal_server}/health")
+    assert st == 200
+    health = json.loads(raw.decode("utf-8"))
+    assert health["status"] == "online"
+    assert health.get("database_name") == "sovereign_router.db"
+    assert "sovereign_router.db" in health.get("router_db_path", "")
+    assert "sovereign_graph.db" in health.get("graph_db_path", "")
+    assert "local_llm" in health
+    llm_info = health["local_llm"]
+    assert llm_info.get("service") == "ollama"
+
+
+def test_11_llm_status_and_control_api(portal_server):
+    """
+    Verifies GET /llm/status and POST /llm/control for spinning up/down local LLM inference engines.
+    """
+    # 1. GET /llm/status
+    st, _, raw = _http_get_raw(f"{portal_server}/llm/status")
+    assert st == 200
+    llm_status = json.loads(raw.decode("utf-8"))
+    assert llm_status.get("service") == "ollama"
+    assert "status" in llm_status
+
+    # 2. POST /llm/control with status check
+    c_st, c_res = _http_post_json(f"{portal_server}/llm/control", {"action": "status"})
+    assert c_st == 200
+    assert "status" in c_res
+
+
+def test_12_archive_view_html_document_renderer(portal_server):
+    """
+    Verifies GET /archive/view?uri=... renders styled authentic manual HTML with dark obsidian styling.
+    """
+    # 1. Missing uri should return 400
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _http_get_raw(f"{portal_server}/archive/view")
+    assert exc_info.value.code == 400
+
+    # 2. Valid virtual URI from preset
+    v_uri = (
+        "archive:///home/tlima/Enterprise_Hub/docs/Hua_Docs/"
+        "HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.zip!"
+        "HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.hwics"
+        "#resources/alarms/20104.html"
+    )
+    enc_uri = urllib.parse.quote(v_uri)
+    st, ctype, body = _http_get_raw(f"{portal_server}/archive/view?uri={enc_uri}")
+    assert st == 200
+    assert "text/html" in ctype
+    html = body.decode("utf-8", errors="replace")
+    assert "Sovereign Vault Document Viewer" in html
+    assert "O_RDONLY Stream" in html
+    assert "Zero-Disk Verified" in html
+    assert "ALM-20104" in html or "20104" in html
+
+
+def test_13_pcf_commissioning_procedural_runbook_synthesis(portal_server):
+    """
+    Benchmarks unseen query 'what are the first steps on the commissioning of the PCF?'
+    verifying procedural runbook synthesis and structured sections.
+    """
+    st, res = _http_post_json(
+        f"{portal_server}/router/query",
+        {
+            "query": "what are the first steps on the commissioning of the PCF?",
+            "limit": 5,
+            "synthesize": True,
+        },
+    )
+    assert st == 200
+    assert res["needs_synthesis"] is True
+    assert res.get("fast_summary") is not None
+    fs = res["fast_summary"]
+    answer = fs.get("answer", "")
+    assert len(answer) > 50
+    # Procedural structure verification: should have sections/steps
+    assert any(marker in answer for marker in ("###", "Step", "Prerequisite", "Procedure", "Commissioning", "PCF"))
+
+

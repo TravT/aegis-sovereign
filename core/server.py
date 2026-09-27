@@ -16,6 +16,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import threading
@@ -73,33 +74,54 @@ from .license import (
 )
 
 _APPLIANCE_ROOT = Path(__file__).resolve().parent.parent
-_PROD_VAULT_DIR = _APPLIANCE_ROOT.parent.parent / "docs" / ".aegis_vault"
+_CANONICAL_PROD_VAULT = Path("/home/tlima/Enterprise_Hub/docs/.aegis_vault")
+_PROD_VAULT_DIR = (
+    _CANONICAL_PROD_VAULT
+    if _CANONICAL_PROD_VAULT.exists()
+    else (
+        (_APPLIANCE_ROOT.parent.parent / "docs" / ".aegis_vault")
+        if (_APPLIANCE_ROOT.parent.parent / "docs" / ".aegis_vault").exists()
+        else (_APPLIANCE_ROOT / "data")
+    )
+)
 _LEGACY_DATA_DIR = _APPLIANCE_ROOT / "data"
 WEB_PORTAL_INDEX = _APPLIANCE_ROOT / "web" / "portal" / "index.html"
 
-DEFAULT_ROUTER_DB = (
-    _PROD_VAULT_DIR / "sovereign_router.db"
-    if (_PROD_VAULT_DIR / "sovereign_router.db").exists() and (_PROD_VAULT_DIR / "sovereign_router.db").stat().st_size > 65536
-    else (
-        _PROD_VAULT_DIR / "sovereign_huawei_router.db"
-        if (_PROD_VAULT_DIR / "sovereign_huawei_router.db").exists()
-        else _LEGACY_DATA_DIR / "sovereign_huawei_router.db"
-    )
-)
-DEFAULT_GRAPH_DB = (
-    _PROD_VAULT_DIR / "sovereign_graph.db"
-    if (_PROD_VAULT_DIR / "sovereign_graph.db").exists() and (_PROD_VAULT_DIR / "sovereign_graph.db").stat().st_size > 65536
-    else (
-        _PROD_VAULT_DIR / "sovereign_huawei_graph.db"
-        if (_PROD_VAULT_DIR / "sovereign_huawei_graph.db").exists()
-        else _LEGACY_DATA_DIR / "sovereign_huawei_graph.db"
-    )
-)
+def _resolve_default_router_db() -> Path:
+    env_p = os.getenv("ROUTER_DB_PATH") or os.getenv("SOVEREIGN_ROUTER_DB") or os.getenv("SOVEREIGN_ROUTER_DB_PATH")
+    if env_p and Path(env_p).exists() and Path(env_p).stat().st_size > 0:
+        return Path(env_p)
+    if (_PROD_VAULT_DIR / "sovereign_router.db").exists() and (_PROD_VAULT_DIR / "sovereign_router.db").stat().st_size > 0:
+        return _PROD_VAULT_DIR / "sovereign_router.db"
+    if (_CANONICAL_PROD_VAULT / "sovereign_router.db").exists() and (_CANONICAL_PROD_VAULT / "sovereign_router.db").stat().st_size > 0:
+        return _CANONICAL_PROD_VAULT / "sovereign_router.db"
+    if (_LEGACY_DATA_DIR / "sovereign_router.db").exists():
+        return _LEGACY_DATA_DIR / "sovereign_router.db"
+    if (_PROD_VAULT_DIR / "sovereign_huawei_router.db").exists():
+        return _PROD_VAULT_DIR / "sovereign_huawei_router.db"
+    return _LEGACY_DATA_DIR / "sovereign_huawei_router.db"
+
+def _resolve_default_graph_db() -> Path:
+    env_p = os.getenv("GRAPH_DB_PATH") or os.getenv("SOVEREIGN_GRAPH_DB") or os.getenv("SOVEREIGN_GRAPH_DB_PATH")
+    if env_p and Path(env_p).exists() and Path(env_p).stat().st_size > 0:
+        return Path(env_p)
+    if (_PROD_VAULT_DIR / "sovereign_graph.db").exists() and (_PROD_VAULT_DIR / "sovereign_graph.db").stat().st_size > 0:
+        return _PROD_VAULT_DIR / "sovereign_graph.db"
+    if (_CANONICAL_PROD_VAULT / "sovereign_graph.db").exists() and (_CANONICAL_PROD_VAULT / "sovereign_graph.db").stat().st_size > 0:
+        return _CANONICAL_PROD_VAULT / "sovereign_graph.db"
+    if (_LEGACY_DATA_DIR / "sovereign_graph.db").exists():
+        return _LEGACY_DATA_DIR / "sovereign_graph.db"
+    if (_PROD_VAULT_DIR / "sovereign_huawei_graph.db").exists():
+        return _PROD_VAULT_DIR / "sovereign_huawei_graph.db"
+    return _LEGACY_DATA_DIR / "sovereign_huawei_graph.db"
+
+DEFAULT_ROUTER_DB = _resolve_default_router_db()
+DEFAULT_GRAPH_DB = _resolve_default_graph_db()
 DEFAULT_HUAWEI_ROUTER_DB = DEFAULT_ROUTER_DB
 DEFAULT_HUAWEI_GRAPH_DB = DEFAULT_GRAPH_DB
 DEFAULT_DIAGRAMS_DIR = (
     _PROD_VAULT_DIR / "extracted_diagrams"
-    if _PROD_VAULT_DIR.exists()
+    if (_PROD_VAULT_DIR / "extracted_diagrams").exists()
     else _LEGACY_DATA_DIR / "extracted_diagrams"
 )
 MONITORED_SOURCES_FILE = (
@@ -290,6 +312,150 @@ def _build_enriched_graph_dossier(
     }
 
 
+class LLMController:
+    """Manages ephemeral on-demand lifecycle of local LLMs (Ollama / llama-cpp) via Nomad API."""
+
+    def __init__(
+        self,
+        nomad_url: Optional[str] = None,
+        ollama_url: Optional[str] = None,
+        idle_timeout_seconds: float = 600.0,
+    ):
+        self.nomad_url = (nomad_url or os.getenv("NOMAD_ADDR", "http://127.0.0.1:4646")).rstrip("/")
+        self.ollama_url = (ollama_url or os.getenv("SOVEREIGN_OLLAMA_URL", "http://127.0.0.1:11434")).rstrip("/")
+        self.idle_timeout_seconds = idle_timeout_seconds
+        self.last_activity = time.time()
+        self._lock = threading.Lock()
+        self._daemon_started = False
+        self._start_idle_daemon()
+
+    def record_activity(self):
+        with self._lock:
+            self.last_activity = time.time()
+
+    def _start_idle_daemon(self):
+        if self._daemon_started:
+            return
+        self._daemon_started = True
+
+        def _watcher():
+            while True:
+                time.sleep(30.0)
+                try:
+                    status = self.get_status()
+                    if status.get("running"):
+                        idle_sec = time.time() - self.last_activity
+                        if idle_sec > self.idle_timeout_seconds:
+                            logger.info(
+                                "Auto-scaling LLM to standby after %.0fs idle", idle_sec
+                            )
+                            self.scale_engine("stop", engine=status.get("engine", "ollama"))
+                except Exception as e:
+                    logger.debug("LLM idle watcher exception: %s", e)
+
+        t = threading.Thread(target=_watcher, daemon=True, name="llm_idle_watcher")
+        t.start()
+
+    def get_status(self) -> Dict[str, Any]:
+        """Probes local Ollama / llama-cpp and Nomad job scale status."""
+        is_responding = False
+        model_name = "qwen2.5:1.5b"
+        available_models: List[str] = []
+
+        try:
+            req = urllib.request.Request(f"{self.ollama_url}/api/tags")
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                if resp.status == 200:
+                    is_responding = True
+                    data = json.loads(resp.read().decode("utf-8"))
+                    models = [m.get("name") for m in data.get("models", []) if m.get("name")]
+                    if models:
+                        available_models = models
+                        model_name = models[0]
+        except Exception:
+            is_responding = False
+
+        nomad_running = False
+        desired_count = 0
+        try:
+            req = urllib.request.Request(f"{self.nomad_url}/v1/job/ollama/scale")
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                tg = data.get("TaskGroups", {}).get("ai-stack", {})
+                desired_count = tg.get("Desired", 0)
+                running_count = tg.get("Running", 0)
+                nomad_running = desired_count > 0 or running_count > 0
+        except Exception:
+            nomad_running = is_responding
+
+        idle_seconds = int(time.time() - self.last_activity)
+        status_str = "online" if is_responding else ("starting" if (nomad_running and desired_count > 0) else "standby")
+
+        return {
+            "status": status_str,
+            "running": is_responding or nomad_running,
+            "engine": "ollama",
+            "service": "ollama",
+            "model": model_name,
+            "available_models": available_models,
+            "target_url": self.ollama_url,
+            "idle_seconds": idle_seconds,
+            "auto_stop_minutes": int(self.idle_timeout_seconds // 60),
+            "desired_count": desired_count,
+        }
+
+    def scale_engine(self, action: str, engine: str = "ollama", timeout_seconds: float = 30.0) -> Dict[str, Any]:
+        """Scales Nomad LLM job up (count=1) or down (count=0)."""
+        action = action.lower()
+        if action == "status":
+            return self.get_status()
+        if action not in ("start", "stop"):
+            raise ValueError(f"Invalid action {action!r}, must be 'start', 'stop', or 'status'")
+
+        target_count = 1 if action == "start" else 0
+        job_id = "ollama" if "ollama" in engine.lower() else "llama-cpp"
+        group_name = "ai-stack"
+
+        payload = {
+            "Count": target_count,
+            "Target": {"Group": group_name},
+            "Message": f"Scaling {action} from Sovereign Web Portal",
+        }
+
+        try:
+            req = urllib.request.Request(
+                f"{self.nomad_url}/v1/job/{job_id}/scale",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5.0) as resp:
+                pass
+        except Exception:
+            if action == "stop":
+                try:
+                    req_stop = urllib.request.Request(f"{self.nomad_url}/v1/job/{job_id}", method="DELETE")
+                    urllib.request.urlopen(req_stop, timeout=5.0)
+                except Exception:
+                    pass
+
+        self.record_activity()
+
+        if action == "start":
+            start_t = time.time()
+            while time.time() - start_t < timeout_seconds:
+                try:
+                    req = urllib.request.Request(f"{self.ollama_url}/api/tags")
+                    with urllib.request.urlopen(req, timeout=1.0) as resp:
+                        if resp.status == 200:
+                            return {"success": True, "status": "online", "engine": engine, "elapsed_s": round(time.time() - start_t, 2)}
+                except Exception:
+                    time.sleep(1.0)
+            return {"success": False, "status": "starting", "engine": engine, "message": "Scale command sent, warming up"}
+        else:
+            return {"success": True, "status": "standby", "engine": engine}
+
+
 class ApplianceManager:
     """Manages indexers, searchers, graph stores, classifiers, plan enforcers, and action dispatchers."""
     def __init__(
@@ -303,6 +469,7 @@ class ApplianceManager:
         archive_streamer: Optional[SovereignArchiveStreamer] = None,
         onboarding_radar: Optional[OnboardingRadar] = None,
         router_db_path: Optional[str] = None,
+        llm_controller: Optional[LLMController] = None,
     ):
         is_mock_searcher = searcher is not None and (
             hasattr(searcher, "_mock_name") or type(searcher).__name__ == "MagicMock"
@@ -310,8 +477,8 @@ class ApplianceManager:
         self.searcher = searcher or SovereignSearcher()
         if graph_store is not None:
             self.graph_store = graph_store
-        elif not is_mock_searcher and DEFAULT_HUAWEI_GRAPH_DB.exists():
-            self.graph_store = GraphStore(db_path=str(DEFAULT_HUAWEI_GRAPH_DB))
+        elif not is_mock_searcher and DEFAULT_GRAPH_DB.exists():
+            self.graph_store = GraphStore(db_path=str(DEFAULT_GRAPH_DB))
         else:
             self.graph_store = GraphStore()
         self.graph_indexer = graph_indexer or GraphIndexer(store=self.graph_store)
@@ -324,11 +491,13 @@ class ApplianceManager:
         )
         effective_router_db = (
             router_db_path
+            or os.getenv("ROUTER_DB_PATH")
+            or os.getenv("SOVEREIGN_ROUTER_DB")
             or os.getenv("SOVEREIGN_ROUTER_DB_PATH")
             or (
                 ":memory:"
                 if is_mock_searcher
-                else (str(DEFAULT_HUAWEI_ROUTER_DB) if DEFAULT_HUAWEI_ROUTER_DB.exists() else ":memory:")
+                else (str(DEFAULT_ROUTER_DB) if DEFAULT_ROUTER_DB.exists() else ":memory:")
             )
         )
         self.router_db_path = effective_router_db
@@ -344,6 +513,7 @@ class ApplianceManager:
         self.onboarding_radar = onboarding_radar or OnboardingRadar()
         self.action_evaluator = ActionEvaluator()
         self.action_dispatcher = action_dispatcher or ActionDispatcher()
+        self.llm_controller = llm_controller or LLMController()
 
         self._lock = threading.Lock()
         self.status: Dict[str, Any] = {
@@ -461,11 +631,14 @@ class ApplianceManager:
                 "plan_tier": self.plan_enforcer.plan.value,
                 "max_documents": self.plan_enforcer.max_documents,
                 "total_records": total_records,
-                "vault_path": str(_PROD_VAULT_DIR if _PROD_VAULT_DIR.exists() else _LEGACY_DATA_DIR),
+                "vault_path": str(_PROD_VAULT_DIR),
+                "database_name": Path(str(self.router_db_path)).name if self.router_db_path else "sovereign_router.db",
                 "router_db_path": str(self.router_db_path),
+                "graph_db_path": str(self.graph_store.db_path) if hasattr(self.graph_store, "db_path") and self.graph_store.db_path else str(DEFAULT_GRAPH_DB),
                 "knowledge_graph": graph_stats,
                 "vector_target": self.searcher.qdrant_target,
                 "collection": self.searcher.collection_name,
+                "local_llm": self.llm_controller.get_status(),
             }
 
     def optimize_context(
@@ -550,6 +723,7 @@ class ApplianceManager:
         plan: Optional[str] = None,
         limit: int = 5,
         force_synthesize: Optional[bool] = None,
+        prefer_neural: Optional[bool] = None,
     ) -> Dict[str, Any]:
         import re
         with self._lock:
@@ -682,14 +856,21 @@ class ApplianceManager:
                     "heading": r.get("heading") or r.get("source_tier") or "Primary Record",
                     "chunk_index": idx,
                     "score": float(r.get("score") or r.get("rrf_score") or 0.85),
-                    "text": (r.get("text") or r.get("content") or "")[:1500],
+                    "text": (r.get("text") or r.get("content") or "")[:3000],
                 })
+            use_ollama_flag = (
+                prefer_neural
+                if prefer_neural is not None
+                else self.llm_controller.get_status().get("running", False)
+            )
             synth = self.nano_runner.synthesize(
                 query=query,
                 chunks=norm_chunks,
                 graph_dossier=routed.get("graph_dossier"),
                 confidence_floor=0.35,
+                use_ollama=use_ollama_flag,
             )
+            self.llm_controller.record_activity()
             routed["fast_summary"] = synth.to_dict()
             routed["execution_mode"] = synth.execution_mode
         else:
@@ -1026,6 +1207,221 @@ class ApplianceManager:
         if hdx_metadata is not None:
             res["hdx_metadata"] = hdx_metadata
         return res
+
+    def get_llm_status(self) -> Dict[str, Any]:
+        """Returns the live status of the local LLM runtime (Nomad scale & Ollama readiness)."""
+        return self.llm_controller.get_status()
+
+    def control_llm(self, action: str, engine: str = "ollama") -> Dict[str, Any]:
+        """Starts or stops the local LLM runtime via Nomad API."""
+        return self.llm_controller.scale_engine(action=action, engine=engine)
+
+    def render_archive_document_html(self, virtual_uri: str) -> str:
+        """Extracts and renders an authentic HTML/OpenXML archive document with Dark Obsidian styling."""
+        entry = self.archive_streamer.resolve_virtual_uri(virtual_uri)
+        return self._format_entry_to_styled_html(entry, virtual_uri)
+
+    def _format_entry_to_styled_html(self, entry: Any, virtual_uri: str) -> str:
+        name_lower = entry.entry_name.lower()
+        title = entry.entry_name.split("/")[-1]
+
+        raw_body_html = ""
+        if hasattr(entry, "raw_bytes") and entry.raw_bytes and name_lower.endswith((".html", ".htm", ".xhtml")):
+            raw_body_html = entry.raw_bytes.decode("utf-8", errors="replace")
+        elif entry.content_text:
+            import html
+            paras = entry.content_text.split("\n\n")
+            formatted_paras = []
+            for p in paras:
+                p_str = p.strip()
+                if not p_str:
+                    continue
+                if p_str.startswith("|") and "|" in p_str[1:]:
+                    rows = p_str.split("\n")
+                    table_html = "<div class='table-wrap'><table>"
+                    for r_idx, row in enumerate(rows):
+                        cols = [c.strip() for c in row.split("|")[1:-1]]
+                        if not cols:
+                            continue
+                        tag = "th" if r_idx == 0 else "td"
+                        table_html += "<tr>" + "".join(f"<{tag}>{html.escape(c)}</{tag}>" for c in cols) + "</tr>"
+                    table_html += "</table></div>"
+                    formatted_paras.append(table_html)
+                elif p_str.startswith("#"):
+                    level = min(6, len(p_str) - len(p_str.lstrip("#")))
+                    heading_txt = p_str.lstrip("#").strip()
+                    formatted_paras.append(f"<h{level}>{html.escape(heading_txt)}</h{level}>")
+                else:
+                    formatted_paras.append(f"<p>{html.escape(p_str)}</p>")
+            raw_body_html = "\n".join(formatted_paras)
+        else:
+            raw_body_html = "<p><em>No readable content in this entry.</em></p>"
+
+        # Strip scripts that could break iframe / viewer
+        raw_body_html = re.sub(r"<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>", "", raw_body_html, flags=re.IGNORECASE)
+        # Rewrite relative image references (figure/...) to diagrams endpoint
+        raw_body_html = re.sub(
+            r'<img\s+([^>]*?)src=["\'](?:figure/|images/)?([^"\']+\.(?:png|jpg|jpeg|gif))["\']',
+            r'<img \1src="/diagrams/\2"',
+            raw_body_html,
+            flags=re.IGNORECASE,
+        )
+
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title} — Sovereign Vault Document Viewer</title>
+  <style>
+    :root {{
+      --bg: #07090D;
+      --card-bg: #0F1318;
+      --text: #E2E8F0;
+      --text-muted: #94A3B8;
+      --gold: #D4AF37;
+      --cyan: #38BDF8;
+      --emerald: #10B981;
+      --border: rgba(255, 255, 255, 0.08);
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "JetBrains Mono", Consolas, monospace;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.65;
+      padding: 1.5rem;
+      max-width: 1150px;
+      margin: 0 auto;
+    }}
+    .viewer-bar {{
+      position: sticky;
+      top: 0;
+      background: rgba(7, 9, 13, 0.94);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      padding: 0.8rem 1rem;
+      margin-bottom: 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 100;
+      border-radius: 8px;
+    }}
+    .viewer-title {{
+      font-weight: 600;
+      color: var(--gold);
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }}
+    .viewer-badges {{
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }}
+    .badge {{
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+    }}
+    .badge-gold {{ color: var(--gold); border-color: rgba(212, 175, 55, 0.3); background: rgba(212, 175, 55, 0.08); }}
+    .badge-cyan {{ color: var(--cyan); border-color: rgba(56, 189, 248, 0.3); background: rgba(56, 189, 248, 0.08); }}
+    .btn-action {{
+      background: rgba(212, 175, 55, 0.15);
+      color: var(--gold);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }}
+    .btn-action:hover {{ background: rgba(212, 175, 55, 0.25); }}
+    h1, h2, h3, h4 {{ color: var(--gold); margin-top: 1.8rem; margin-bottom: 0.8rem; }}
+    h1 {{ border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }}
+    p {{ margin: 0.8rem 0; }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }}
+    th, td {{
+      border: 1px solid var(--border);
+      padding: 0.65rem 0.85rem;
+      text-align: left;
+    }}
+    th {{
+      background: rgba(212, 175, 55, 0.1);
+      color: #FFF;
+      font-weight: 600;
+    }}
+    pre, code {{
+      font-family: var(--font-mono);
+      background: #131822;
+      color: var(--cyan);
+      border-radius: 4px;
+    }}
+    code {{ padding: 0.15rem 0.35rem; font-size: 0.88em; }}
+    pre {{
+      padding: 1rem;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+    }}
+    img {{
+      max-width: 100%;
+      height: auto;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      margin: 1rem 0;
+      background: #1E293B;
+      padding: 0.5rem;
+    }}
+    .uri-info {{
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      word-break: break-all;
+      background: var(--card-bg);
+      padding: 0.6rem 0.8rem;
+      border-radius: 6px;
+      margin-bottom: 1.5rem;
+      border: 1px solid var(--border);
+    }}
+  </style>
+</head>
+<body>
+  <div class="viewer-bar">
+    <div class="viewer-title">
+      <span>📖 {title}</span>
+    </div>
+    <div class="viewer-badges">
+      <span class="badge badge-gold">O_RDONLY Stream</span>
+      <span class="badge badge-cyan">Zero-Disk Verified</span>
+      <a href="/portal" class="btn-action">⬅ Back to Search Portal</a>
+    </div>
+  </div>
+
+  <div class="uri-info">
+    <strong>Virtual URI:</strong> {virtual_uri}
+  </div>
+
+  <main class="document-content">
+    {raw_body_html}
+  </main>
+</body>
+</html>"""
 
     def scan_onboarding_radar(
         self,
@@ -2139,6 +2535,21 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": f"Diagram '{rel_name}' not found"})
         elif parsed.path in ("/health", "/status"):
             self._send_json(200, self.manager.get_status())
+        elif parsed.path == "/llm/status":
+            self._send_json(200, self.manager.get_llm_status())
+        elif parsed.path == "/archive/view":
+            query_params = urllib.parse.parse_qs(parsed.query)
+            virtual_uri = query_params.get("uri", [""])[0]
+            if not virtual_uri:
+                self._send_json(400, {"error": "Missing 'uri' query parameter (e.g. ?uri=archive://...)"})
+                return
+            try:
+                html_out = self.manager.render_archive_document_html(virtual_uri)
+                self._send_bytes(200, "text/html; charset=utf-8", html_out.encode("utf-8", errors="replace"))
+            except KeyError as ke:
+                self._send_json(404, {"error": str(ke)})
+            except Exception as e:
+                self._send_json(500, {"error": f"Failed to render document: {e}"})
         elif parsed.path == "/graph/topology":
             query_params = urllib.parse.parse_qs(parsed.query)
             filter_term = query_params.get("filter", [""])[0]
@@ -2281,6 +2692,9 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
             force_synthesize = payload.get("synthesize")
             if force_synthesize is not None:
                 force_synthesize = bool(force_synthesize)
+            prefer_neural = payload.get("prefer_neural")
+            if prefer_neural is not None:
+                prefer_neural = bool(prefer_neural)
             try:
                 res = self.manager.route_and_execute(
                     query=query,
@@ -2288,10 +2702,20 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                     plan=plan,
                     limit=limit,
                     force_synthesize=force_synthesize,
+                    prefer_neural=prefer_neural,
                 )
                 self._send_json(200, res)
             except (PlanLimitExceededError, FeatureNotAllowedError, PermissionError) as pe:
                 self._send_json(403, {"error": str(pe), "code": "PLAN_RESTRICTION"})
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
+
+        elif parsed.path == "/llm/control":
+            action = payload.get("action", "start")
+            engine = payload.get("engine", "ollama")
+            try:
+                res = self.manager.control_llm(action=action, engine=engine)
+                self._send_json(200, res)
             except Exception as e:
                 self._send_json(500, {"error": str(e)})
 

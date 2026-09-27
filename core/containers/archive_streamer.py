@@ -41,6 +41,7 @@ class ArchiveEntry:
     compression_ratio: float
     content_text: str
     sha256_hash: str
+    raw_bytes: bytes = b""
 
 
 class _ArchiveEntryStream(Sequence[ArchiveEntry], Iterator[ArchiveEntry]):
@@ -381,6 +382,7 @@ class SovereignArchiveStreamer:
                             compression_ratio=final_ratio if len(content_bytes) > 0 else ratio,
                             content_text=clean_text,
                             sha256_hash=sha256_hex,
+                            raw_bytes=content_bytes,
                         )
                     ]
 
@@ -476,6 +478,7 @@ class SovereignArchiveStreamer:
                         compression_ratio=final_ratio if len(content_bytes) > 0 else ratio,
                         content_text=clean_text,
                         sha256_hash=sha256_hex,
+                        raw_bytes=content_bytes,
                     )
                 )
 
@@ -591,6 +594,7 @@ class SovereignArchiveStreamer:
                         compression_ratio=ratio,
                         content_text=clean_text,
                         sha256_hash=sha256_hex,
+                        raw_bytes=content_bytes,
                     )
                 )
 
