@@ -613,16 +613,116 @@ class NanoRunner:
     ) -> str:
         """
         Synthesizes a high-precision, citation-grounded answer deterministically
-        without external LLM dependencies. Matches key facts, entities, and clauses.
+        without external LLM dependencies.
+        Enforces distinct intent layouts:
+        1. Alarm & Fault Triage (Root Causes + Remediation + MML commands)
+        2. Commissioning & Configuration (Prerequisites + Step-by-Step + MML verification)
+        3. Architectural & Conceptual (Component breakdown + Functional hierarchy, DITA-filtered)
+        4. Analytical & General (High-signal citations + Direct Signposts)
         """
         q_lower = query.lower()
-        is_procedural = any(
-            w in q_lower for w in ("first step", "first steps", "step", "procedure", "commission", "commissioning", "how to", "configure", "remediate", "fix")
+        is_alarm_triage = any(
+            w in q_lower for w in ("alarm", "alm-", "why did", "occur", "fix", "remediate", "treat", "fault", "drop", "degrade", "packet loss", "root cause")
+        )
+        is_commissioning = any(
+            w in q_lower for w in ("commission", "commissioning", "first step", "first steps", "how to configure", "setup", "install")
+        )
+        is_architecture = any(
+            w in q_lower for w in ("how are", "what are", "what is", "architecture", "organized", "hierarchy", "pod", "relationship", "concept")
         )
 
         lines = []
-        if is_procedural:
-            lines.append(f"### Procedural Synthesis: {query}")
+
+        if is_alarm_triage:
+            lines.append(f"### 🚨 Fault Remediation & Alarm Triage: {query}")
+            lines.append("")
+            lines.append("Based on verified Huawei & Enterprise documentation in the Sovereign Vault, here is the structured fault diagnostic runbook:")
+            lines.append("")
+
+            cause_items = []
+            procedure_steps = []
+            mml_commands = set()
+
+            for idx, (chunk, cit) in enumerate(zip(chunks[:4], citations[:4]), start=1):
+                clean_text = self._clean_chunk_text(chunk.get("text", ""))
+                secs = chunk.get("structured_sections") or {}
+
+                # 1. Causes
+                raw_cause = secs.get("Possible Causes") or ""
+                if not raw_cause:
+                    c_match = re.search(r"\bPossible Causes\b\s*(.*?)(?=\b(?:Procedure|Impact|Overview|Tools|Data|Fault Handling)\b|\Z)", clean_text, re.DOTALL | re.IGNORECASE)
+                    if c_match:
+                        raw_cause = c_match.group(1).strip()
+                if raw_cause:
+                    for line in re.split(r"(?<=\.)\s+|\n+", raw_cause):
+                        line = line.strip()
+                        if len(line) > 15 and not any(k in line for k in ("Table", "Scenario No", "AG_FUP")):
+                            cause_items.append(f"{line} [{cit.id}]")
+
+                # 2. Procedure
+                raw_proc = secs.get("Procedure") or ""
+                if not raw_proc:
+                    all_procs = list(re.finditer(r"\bProcedure\b\s*", clean_text, re.IGNORECASE))
+                    if all_procs:
+                        raw_proc = clean_text[all_procs[-1].end():].strip()
+                if raw_proc:
+                    for item in re.split(r"(?<=\.)\s+|\n+", raw_proc):
+                        item = item.strip()
+                        if len(item) > 15 and not any(k in item for k in ("Table", "Scenario No", "AG_FUP", "RETCODE", "Quota Name", "Total count", "END If")):
+                            procedure_steps.append(f"{item} [{cit.id}]")
+
+                # 3. MML commands
+                for mml in re.findall(r"\b(?:LST|DSP|MOD|ADD|RMV|SET|ACT|DEA|NGPING|PING)\s+[A-Z0-9_]{3,20}\b", clean_text):
+                    mml_commands.add(f"`{mml}` [{cit.id}]")
+
+            # Fallback procedure matching if empty
+            if not procedure_steps:
+                sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", clean_text) if len(s.strip()) > 30]
+                for s in sentences[:4]:
+                    if any(w in s.lower() for w in ("run", "check", "verify", "tune", "inspect", "ping", "execute", "modify")):
+                        procedure_steps.append(f"{s} [{cit.id}]")
+
+            if cause_items:
+                lines.append("#### 🔍 1. Probable Root Causes (Why this occurred)")
+                seen = set()
+                for c in cause_items[:5]:
+                    base = re.sub(r"\[\d+\]", "", c).strip()
+                    if base not in seen:
+                        seen.add(base)
+                        lines.append(f"- {c}")
+                lines.append("")
+
+            if procedure_steps:
+                lines.append("#### 🛠️ 2. Step-by-Step Remediation Procedure")
+                seen = set()
+                step_no = 1
+                for s in procedure_steps[:6]:
+                    base = re.sub(r"\[\d+\]", "", s).strip()
+                    if base not in seen:
+                        seen.add(base)
+                        lines.append(f"{step_no}. {s}")
+                        step_no += 1
+                lines.append("")
+
+            if mml_commands:
+                lines.append("#### ⚙️ 3. Verification & Diagnostic MML Commands")
+                lines.append(f"- Verified MML operations referenced: {', '.join(sorted(list(mml_commands)[:6]))}")
+                lines.append("")
+
+            lines.append("#### 📚 Verified Source Signposts & Complete Manuals")
+            for cit in citations[:3]:
+                v_link = cit.viewer_url or f"/archive/view?uri={cit.virtual_uri}"
+                lines.append(f"- **[{cit.id}] {cit.doc_title}** — Chapter: `{cit.heading}` (Confidence: {cit.score:.2f})")
+                if v_link:
+                    lines.append(f"  [📖 Open Full Manual in Viewer Tab ↗]({v_link})")
+            lines.append("")
+            lines.append("> [!IMPORTANT]")
+            lines.append("> **Signpost Protocol Directive**: The procedural excerpts above capture verified initial commands and prerequisites.")
+            lines.append("> For the complete multi-stage operational runbook, parameter tables, and safety interlocks, open the authoritative manual in the Viewer tab above.")
+            lines.append("")
+
+        elif is_commissioning:
+            lines.append(f"### 📋 Commissioning & Configuration Runbook: {query}")
             lines.append("")
             lines.append("Based on verified Huawei & Enterprise documentation in the Sovereign Vault, here is the structured commissioning runbook:")
             lines.append("")
@@ -702,6 +802,44 @@ class NanoRunner:
             lines.append("> For the complete multi-stage operational runbook, parameter tables, and safety interlocks, open the authoritative manual in the Viewer tab above.")
             lines.append("")
 
+        elif is_architecture:
+            lines.append(f"### 🏛️ Architecture & Functional Organization: {query}")
+            lines.append("")
+            lines.append("Based on verified Huawei & Enterprise documentation in the Sovereign Vault, here is the structural breakdown:")
+            lines.append("")
+
+            for idx, (chunk, cit) in enumerate(zip(chunks[:3], citations[:3]), start=1):
+                clean_text = self._clean_chunk_text(chunk.get("text", ""))
+                # Filter out pure DITA navigation breadcrumb repetitions
+                lines_in_chunk = clean_text.splitlines()
+                substantive_paras = []
+                for p in lines_in_chunk:
+                    p = p.strip()
+                    words = p.split()
+                    if len(words) > 6:
+                        caps_ratio = sum(1 for w in words if w and w[0].isupper()) / len(words)
+                        if caps_ratio > 0.8 and not any(p.startswith(m) for m in ("ARCHITECTURAL", "Node", "Pod", "VM", "Container", "- ")):
+                            continue
+                    if len(p) > 25:
+                        substantive_paras.append(p)
+
+                excerpt = ""
+                if substantive_paras:
+                    arch_lines = [p for p in substantive_paras if any(kw in p.lower() for kw in ("pod", "node", "vm", "container", "tier", "fe", "sf", "be", "csp", "architecture"))]
+                    if arch_lines:
+                        excerpt = "\n  ".join(arch_lines[:4])
+                    else:
+                        excerpt = substantive_paras[0]
+                else:
+                    excerpt = clean_text[:200]
+
+                v_link = cit.viewer_url or f"/archive/view?uri={cit.virtual_uri}"
+                lines.append(f"• **{cit.doc_title}** [{cit.heading}] ([Doc #{cit.id}]):")
+                lines.append(f"  {excerpt}")
+                if v_link:
+                    lines.append(f"  [📖 Open Document in Viewer Tab ↗]({v_link})")
+                lines.append("")
+
         else:
             lines.append(
                 f"Based on verified local documents, the following evidence directly addresses \"{query}\":"
@@ -730,30 +868,46 @@ class NanoRunner:
                     lines.append(f"  [📖 Open Document in Viewer Tab ↗]({v_link})")
                 lines.append("")
 
-        # Incorporate graph entity relations if present
+        # Incorporate graph entity relations if present as a responsive markdown table
         if graph_dossier:
             entity = graph_dossier.get("entity") or {}
-            amounts = graph_dossier.get("amounts") or []
-            dates = graph_dossier.get("dates") or []
+            by_rel = graph_dossier.get("by_relation") or {}
             relations = graph_dossier.get("relations") or []
 
-            extra_facts = []
-            if entity.get("name"):
-                extra_facts.append(f"Primary Entity: {entity.get('name')} ({entity.get('entity_type', 'unknown')})")
-            if amounts:
-                amt_str = ", ".join([a.get("name", "") for a in amounts[:2]])
-                extra_facts.append(f"Key Amounts: {amt_str}")
-            if dates:
-                date_str = ", ".join([d.get("name", "") for d in dates[:2]])
-                extra_facts.append(f"Referenced Dates: {date_str}")
-            if relations:
-                rel_str = ", ".join([f"{r.get('relation_type')} → {r.get('target_name')}" for r in relations[:2]])
-                extra_facts.append(f"Cross-Document Relations: {rel_str}")
+            table_rows = []
+            rel_label_map = {
+                "DIAGNOSED_BY_MML": ("Diagnosed by MML", "Diagnostic Command / Tool"),
+                "REMEDIATED_BY_MML": ("Remediated by MML", "Remediation Command / Config"),
+                "MEASURED_BY_COUNTER": ("Measured by KPI", "Performance Counter"),
+                "AFFECTS_NE": ("Affects NE / Function", "Network Element / Subsystem"),
+                "CONFIGURED_BY_MML": ("Configured by MML", "Setup Command"),
+            }
 
-            if extra_facts:
-                lines.append("**Relational Knowledge Graph Context:**")
-                for fact in extra_facts:
-                    lines.append(f"  - {fact}")
+            for r_type, (label, role) in rel_label_map.items():
+                items = by_rel.get(r_type) or []
+                for itm in items[:3]:
+                    name = itm.get("name") or (itm.get("entity") or {}).get("name")
+                    if name:
+                        if "MML" in label or "Command" in role:
+                            name_fmt = f"`{name}`"
+                        else:
+                            name_fmt = name
+                        table_rows.append(f"| **{label}** | {name_fmt} | {role} |")
+
+            if not table_rows and relations:
+                for r in relations[:4]:
+                    r_type = r.get("relation_type") or r.get("relation") or "RELATION"
+                    t_name = r.get("target_name") or r.get("name") or "Entity"
+                    table_rows.append(f"| **{r_type}** | `{t_name}` | Cross-Document Knowledge Link |")
+
+            if table_rows:
+                lines.append("#### 🕸️ Connected Diagnostic Knowledge Graph")
+                lines.append("| Diagnostic Relation | Connected Entity / Command | Classification |")
+                lines.append("| :--- | :--- | :--- |")
+                lines.extend(table_rows[:6])
+                lines.append("")
+            elif entity.get("name"):
+                lines.append(f"**Relational Entity Focus:** `{entity.get('name')}` ({entity.get('entity_type', 'Entity')})")
                 lines.append("")
 
         lines.append(f"*(Grounded across {len(citations)} local citation(s). 100% Air-Gapped Workstation Execution.)*")

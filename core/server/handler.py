@@ -62,6 +62,25 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                 self._send_bytes(200, "text/html; charset=utf-8", html_bytes)
             else:
                 self._send_json(404, {"error": "Web portal index.html not found", "path": str(WEB_PORTAL_INDEX)})
+        elif parsed.path.startswith("/portal/css/") or parsed.path.startswith("/portal/js/"):
+            rel_subpath = parsed.path[len("/portal/"):].lstrip("/")
+            if ".." in rel_subpath or "\\" in rel_subpath:
+                self._send_json(403, {"error": "Path traversal blocked"})
+                return
+            target_file = (WEB_PORTAL_INDEX.parent / rel_subpath).resolve()
+            if not str(target_file).startswith(str(WEB_PORTAL_INDEX.parent.resolve())):
+                self._send_json(403, {"error": "Access forbidden outside portal directory"})
+                return
+            if target_file.exists() and target_file.is_file():
+                ctype = "text/plain"
+                if target_file.suffix == ".css":
+                    ctype = "text/css; charset=utf-8"
+                elif target_file.suffix == ".js":
+                    ctype = "application/javascript; charset=utf-8"
+                self._send_bytes(200, ctype, target_file.read_bytes())
+                return
+            self._send_json(404, {"error": f"Portal asset '{rel_subpath}' not found"})
+            return
         elif parsed.path.startswith("/diagrams/"):
             rel_name = urllib.parse.unquote(parsed.path[len("/diagrams/"):]).strip()
             if not rel_name or ".." in rel_name or "/" in rel_name or "\\" in rel_name:

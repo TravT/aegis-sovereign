@@ -453,3 +453,18 @@ def test_14_neural_ollama_synthesis_if_online(portal_server):
     assert res.get("execution_mode") in ("neural_ollama_local", "extractive_template_fallback")
 
 
+def test_15_static_modular_assets_served_correctly(portal_server):
+    """Verifies that modular CSS and JS assets are served with proper MIME types and 200 OK."""
+    assets = [
+        ("/portal/css/variables.css", "text/css"),
+        ("/portal/css/markdown.css", "text/css"),
+        ("/portal/js/markdown.js", "javascript"),
+        ("/portal/js/portal.js", "javascript"),
+    ]
+    for rel_path, expected_mime in assets:
+        status, content_type, body_bytes = _http_get_raw(f"{portal_server}{rel_path}")
+        assert status == 200, f"Expected 200 for {rel_path}, got {status}"
+        assert expected_mime in content_type, f"Expected {expected_mime} in {content_type} for {rel_path}"
+        assert len(body_bytes) > 100, f"Asset {rel_path} was unexpectedly empty"
+
+

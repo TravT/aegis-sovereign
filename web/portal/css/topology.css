@@ -1,0 +1,68 @@
+/* Tab 2: Interactive Topology Graph Styles */
+    .graph-workspace {
+      display: grid;
+      grid-template-columns: 1.48fr 0.72fr;
+      gap: 1.35rem;
+      align-items: start;
+    }
+
+    .graph-canvas-card {
+      background: radial-gradient(circle at 50% 50%, rgba(16, 24, 42, 0.95) 0%, rgba(5, 7, 11, 0.98) 100%);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 1.15rem;
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--shadow-glass);
+    }
+
+    .graph-zoom-toolbar {
+      position: absolute;
+      bottom: 1.15rem;
+      left: 1.15rem;
+      display: flex;
+      gap: 0.4rem;
+      background: rgba(8, 11, 18, 0.85);
+      border: 1px solid var(--border-subtle);
+      padding: 0.35rem;
+      border-radius: 10px;
+      backdrop-filter: blur(12px);
+    }
+
+    .graph-legend-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-bottom: 0.95rem;
+    }
+
+    .graph-legend-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      padding: 0.3rem 0.68rem;
+      border-radius: 8px;
+      background: rgba(16, 22, 34, 0.85);
+      border: 1px solid var(--border-subtle);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .graph-legend-pill:hover {
+      border-color: var(--gold);
+      transform: translateY(-1px);
+    }
+
+    .color-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .animated-edge {
+      stroke-dasharray: 6 8;
+      animation: flowDash 1.6s linear infinite;
+    }

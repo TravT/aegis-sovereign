@@ -1,0 +1,208 @@
+/* ==========================================================================
+   Aegis Sovereign Markdown & Executive Callout Typography
+   ========================================================================== */
+
+.nano-summary-body .md-h1, .nano-summary-body .md-h2, .nano-summary-body .md-h3, .nano-summary-body .md-h4 {
+  color: var(--gold-bright);
+  margin: 1.15rem 0 0.5rem 0;
+  font-weight: 600;
+}
+.nano-summary-body .md-h3 {
+  font-size: 1.08rem;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.25);
+  padding-bottom: 0.35rem;
+}
+.nano-summary-body .md-h4 {
+  font-size: 0.96rem;
+  color: var(--cyan-bright);
+  margin-top: 0.95rem;
+}
+.nano-summary-body .md-p {
+  margin: 0.65rem 0;
+  line-height: 1.68;
+}
+.nano-summary-body .md-ul, .nano-summary-body .md-ol {
+  margin: 0.5rem 0 0.85rem 1.4rem;
+  padding: 0;
+}
+.nano-summary-body .md-li, .nano-summary-body .md-oli {
+  margin: 0.38rem 0;
+  line-height: 1.58;
+}
+.nano-summary-body strong {
+  color: #F8FAFC;
+  font-weight: 600;
+}
+.nano-summary-body .md-inline-code {
+  font-family: var(--font-mono);
+  color: var(--gold-bright);
+  background: rgba(5, 7, 11, 0.7);
+  padding: 0.12rem 0.38rem;
+  border-radius: 4px;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+}
+
+/* Clickable Document & Viewer Links */
+.portal-doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.38);
+  color: #67E8F9;
+  padding: 0.28rem 0.72rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.18s ease;
+  margin: 0.3rem 0;
+}
+.portal-doc-link:hover {
+  background: rgba(6, 182, 212, 0.25);
+  border-color: #67E8F9;
+  color: #FFFFFF;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.3);
+}
+
+/* Interactive MML Command Pills */
+.mml-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.38);
+  color: #A7F3D0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.15rem 0.52rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.mml-pill:hover {
+  background: rgba(16, 185, 129, 0.28);
+  border-color: #34D399;
+  color: #FFFFFF;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
+}
+
+/* GitHub Alert Callouts */
+.callout-box {
+  border-radius: 8px;
+  padding: 0.85rem 1.15rem;
+  margin: 0.95rem 0;
+  border-left: 4px solid;
+  backdrop-filter: blur(8px);
+}
+.callout-box.callout-important {
+  border-left-color: #D4AF37;
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0.14) 0%, rgba(212, 175, 55, 0.03) 100%);
+}
+.callout-box.callout-note {
+  border-left-color: #06B6D4;
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.14) 0%, rgba(6, 182, 212, 0.03) 100%);
+}
+.callout-box.callout-warning {
+  border-left-color: #F43F5E;
+  background: linear-gradient(90deg, rgba(244, 63, 94, 0.14) 0%, rgba(244, 63, 94, 0.03) 100%);
+}
+.callout-box.callout-tip {
+  border-left-color: #10B981;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.14) 0%, rgba(16, 185, 129, 0.03) 100%);
+}
+.callout-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
+}
+.callout-important .callout-header { color: #F3E5AB; }
+.callout-note .callout-header { color: #67E8F9; }
+.callout-warning .callout-header { color: #FDA4AF; }
+.callout-tip .callout-header { color: #A7F3D0; }
+.callout-body {
+  font-size: 0.86rem;
+  line-height: 1.58;
+  color: var(--text-primary);
+}
+
+/* Responsive Markdown Tables */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  margin: 0.95rem 0;
+  background: rgba(10, 14, 23, 0.65);
+}
+.md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  text-align: left;
+}
+.md-table th {
+  background: rgba(16, 22, 35, 0.95);
+  color: var(--text-primary);
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  font-weight: 600;
+}
+.md-table td {
+  padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+.md-table tr:hover td {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+/* Fenced Code Blocks with Copy Button */
+.code-block-wrap {
+  background: rgba(5, 7, 11, 0.95);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  margin: 0.95rem 0;
+  overflow: hidden;
+}
+.code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.38rem 0.85rem;
+  background: rgba(16, 22, 35, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--gold);
+}
+.code-copy-btn {
+  background: rgba(212, 175, 55, 0.15);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  color: var(--gold-bright);
+  padding: 0.18rem 0.52rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  transition: all 0.15s ease;
+}
+.code-copy-btn:hover {
+  background: rgba(212, 175, 55, 0.35);
+  color: #FFFFFF;
+}
+.code-pre {
+  padding: 0.85rem 1rem;
+  margin: 0;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: #E2E8F0;
+  line-height: 1.55;
+}

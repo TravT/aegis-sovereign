@@ -1,0 +1,66 @@
+/* Tab 3: Monitored Sources Table & Storage Bar */
+    .sources-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      font-size: 0.86rem;
+    }
+
+    .sources-table th, .sources-table td {
+      padding: 0.9rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .sources-table th {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--gold-bright);
+      background: rgba(8, 11, 18, 0.92);
+    }
+
+    .sources-table tr:hover td {
+      background: rgba(23, 31, 48, 0.55);
+    }
+
+    .record-progress-track {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.07);
+      border-radius: 999px;
+      margin-top: 0.35rem;
+      overflow: hidden;
+    }
+
+    .record-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--emerald), var(--cyan));
+      border-radius: 999px;
+    }
+
+    /* Tab 4: License & AI Harnesses */
+    .license-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    .cert-luxury-card {
+      background: linear-gradient(135deg, rgba(212, 175, 55, 0.14) 0%, rgba(11, 15, 25, 0.95) 55%, rgba(16, 185, 129, 0.08) 100%);
+      border: 1px solid var(--border-gold);
+      border-radius: 14px;
+      padding: 1.15rem 1.3rem;
+      margin-bottom: 1.1rem;
+      box-shadow: var(--shadow-gold-glow);
+      position: relative;
+    }
+
+    .harness-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin-bottom: 1rem;
+    }

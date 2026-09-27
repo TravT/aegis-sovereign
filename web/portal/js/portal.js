@@ -1,0 +1,437 @@
+/**
+ * Aegis Sovereign Web Portal - Core Search, Dichotomy & Workspace Controller
+ */
+
+let currentRouterMode = "auto";
+let activeTab = "search";
+let lastDossierData = null;
+let currentSourceUri = "";
+let currentSectionFilter = "";
+
+function showPortalToast(msg) {
+      const banner = document.getElementById("portal-toast");
+      document.getElementById("portal-toast-msg").innerHTML = msg;
+      banner.style.display = "flex";
+    }
+
+    // Global Keyboard Shortcut (Cmd+K or /) to focus Spotlight Search
+    window.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        switchCommandTab("search");
+        const input = document.getElementById("portal-query-input");
+        if (input) { input.focus(); input.select(); }
+      } else if (e.key === "/" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        switchCommandTab("search");
+        const input = document.getElementById("portal-query-input");
+        if (input) { input.focus(); }
+      }
+    });
+
+    function setRouterMode(mode) {
+      currentRouterMode = mode;
+      ["auto", "prong1", "prong2"].forEach(m => {
+        const el = document.getElementById("mode-btn-" + m);
+        if (el) el.classList.toggle("active", m === mode);
+      });
+      updateLiveRoutePrediction(document.getElementById("portal-query-input").value);
+    }
+
+    function updateLiveRoutePrediction(val) {
+      const q = (val || "").trim();
+      const box = document.getElementById("live-route-predictor");
+      const label = document.getElementById("live-route-predictor-label");
+      if (!box || !label) return;
+
+      const isIdMatch = /^(ALM-\d+|ADR-\d+|DSP\s+[A-Z0-9_]+|LST\s+[A-Z0-9_]+|MOD\s+[A-Z0-9_]+|ADD\s+[A-Z0-9_]+|RMV\s+[A-Z0-9_]+|LOTE-[A-Z0-9_-]+|SKILL-[A-Z0-9_-]+)$/i.test(q);
+      const useProng1 = currentRouterMode === "prong1" || (currentRouterMode === "auto" && isIdMatch);
+
+      if (useProng1) {
+        box.className = "live-route-predictor";
+        label.textContent = "PRONG 1 • Deterministic B-Tree Identifier Match (<0.8ms • 0 LLM Tokens)";
+      } else {
+        box.className = "live-route-predictor prong2-pred";
+        label.textContent = "PRONG 2 • Neural NanoRunner Synthesis + Multi-Hop GraphRAG Dossier";
+      }
+    }
+
+    function switchCommandTab(tabName) {
+      ["search", "graph", "sources", "license"].forEach(t => {
+        const btn = document.getElementById("tab-btn-" + t);
+        const panel = document.getElementById("tab-panel-" + t);
+        if (btn) btn.classList.toggle("active", t === tabName);
+        if (panel) panel.classList.toggle("active", t === tabName);
+      });
+      if (tabName === "graph") {
+        loadGraphTopology(document.getElementById("graph-filter-input").value || "");
+      } else if (tabName === "sources") {
+        loadMonitoredSources();
+      } else if (tabName === "license") {
+        loadLicenseStatus();
+      }
+    }
+
+    async function refreshTelemetry() {
+      try {
+        const res = await fetch("/status");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.total_records !== undefined) {
+          document.getElementById("tel-records").textContent =
+            Number(data.total_records).toLocaleString() + " Indexed Records";
+        }
+        if (data.plan_tier) {
+          document.getElementById("tel-license-tier").textContent =
+            String(data.plan_tier).toUpperCase() + " (Ed25519)";
+        }
+        if (data.knowledge_graph) {
+          const kg = data.knowledge_graph;
+          if (kg.total_entities !== undefined) {
+            document.getElementById("tel-entities").textContent =
+              Number(kg.total_entities).toLocaleString() + " Graph Entities";
+          }
+          if (kg.total_relations !== undefined) {
+            document.getElementById("tel-edges").textContent =
+              Number(kg.total_relations).toLocaleString() + " Edges";
+          }
+        }
+      } catch (e) {
+        console.debug("Telemetry status check skipped:", e);
+      }
+    }
+
+    function runPreset(queryText) {
+      switchCommandTab("search");
+      const input = document.getElementById("portal-query-input");
+      input.value = queryText;
+      updateLiveRoutePrediction(queryText);
+      executePortalQuery();
+    }
+
+    async function executePortalQuery() {
+      const query = document.getElementById("portal-query-input").value.trim();
+      if (!query) return;
+
+      const btn = document.getElementById("portal-search-btn");
+      btn.textContent = "⏳ Routing...";
+
+      const preferNeural = document.getElementById("chk-prefer-neural") ? document.getElementById("chk-prefer-neural").checked : false;
+
+      try {
+        const resp = await fetch("/router/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: query, limit: 5, user_clearance: "restricted", prefer_neural: preferNeural })
+        });
+        const data = await resp.json();
+        renderPortalResponse(data);
+      } catch (err) {
+        console.error("Query failed:", err);
+      } finally {
+        btn.innerHTML = "<span>⚡ Route &amp; Execute</span>";
+      }
+    }
+
+    function buildConfidenceRingSvg(score, isProng1) {
+      const pct = Math.round(Number(score || 0.99) * 100);
+      const strokeCol = isProng1 ? "#10B981" : "#06B6D4";
+      const dash = Math.round((pct / 100) * 88);
+      return `
+        <div class="confidence-ring-wrap" title="Deterministic / Verified Confidence Score: ${pct}%">
+          <svg width="32" height="32" viewBox="0 0 36 36">
+            <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3.2"></circle>
+            <circle cx="18" cy="18" r="14" fill="none" stroke="${strokeCol}" stroke-width="3.2"
+                    stroke-dasharray="${dash} 100" stroke-linecap="round" transform="rotate(-90 18 18)"></circle>
+            <text x="18" y="21" text-anchor="middle" fill="#F8FAFC" font-size="8.8" font-family="JetBrains Mono, monospace" font-weight="700">${pct}%</text>
+          </svg>
+        </div>
+      `;
+    }
+
+    function renderPortalResponse(data) {
+      const routeType = data.route_type || data.route || "deterministic_direct";
+      const needsSynth = currentRouterMode === "prong2" ? true : (currentRouterMode === "prong1" ? false : Boolean(data.needs_synthesis));
+      const latency = Number(data.latency_ms || 0.8).toFixed(2);
+      const confLevel = data.confidence_level || (needsSynth ? "HIGH_VERIFIED" : "HIGH_DETERMINISTIC_EXACT");
+      const confScore = Number(data.confidence_score || 0.99).toFixed(2);
+
+      const banner = document.getElementById("route-banner");
+      const bannerTitle = document.getElementById("route-banner-title");
+      const bannerMetrics = document.getElementById("route-banner-metrics");
+
+      if (!needsSynth && routeType === "deterministic_direct") {
+        banner.className = "route-banner prong1";
+        bannerTitle.innerHTML =
+          `⚡ <strong>PRONG 1: DETERMINISTIC B-TREE / FTS5 FAST-PATH</strong> • Static Verified Lookup Active`;
+        bannerMetrics.innerHTML = `
+          <span class="metric-tag">Route: ${escapeHtml(routeType)}</span>
+          <span class="metric-tag">Latency: ${latency}ms</span>
+          <span class="metric-tag">0 LLM Tokens (98.2% Saved)</span>
+          <span class="metric-tag">Confidence: ${escapeHtml(confLevel)} (${confScore})</span>
+        `;
+      } else {
+        banner.className = "route-banner prong2";
+        bannerTitle.innerHTML =
+          `🧠 <strong>PRONG 2: SEMANTIC &amp; RELATIONAL SYNTHESIS</strong> • Minimal LLM Summary Active (${escapeHtml(routeType)})`;
+        bannerMetrics.innerHTML = `
+          <span class="metric-tag">Route: ${escapeHtml(routeType)}</span>
+          <span class="metric-tag">Latency: ${latency}ms</span>
+          <span class="metric-tag">Mode: ${escapeHtml(data.execution_mode || "neural_ollama_local")}</span>
+          <span class="metric-tag">Confidence: ${escapeHtml(confLevel)} (${confScore})</span>
+        `;
+      }
+
+      const synthBox = document.getElementById("nano-summary-container");
+      if (needsSynth && data.fast_summary) {
+        const fs = data.fast_summary;
+        const formattedAnswer = renderMarkdown(fs.answer || "");
+        synthBox.style.display = "block";
+        synthBox.innerHTML = `
+          <div class="nano-summary-box">
+            <div class="nano-summary-header">
+              <div class="nano-summary-title">
+                <span>🧠 Minimal LLM Executive Summary (NanoRunner)</span>
+              </div>
+              <div style="display: flex; gap: 0.45rem; flex-wrap: wrap;">
+                <span class="mode-badge">Mode: ${escapeHtml(fs.execution_mode || "extractive_template_fallback")}</span>
+                <span class="mode-badge">Confidence: ${escapeHtml(confLevel)} (${Math.round(confScore * 100)}%)</span>
+              </div>
+            </div>
+            <div class="nano-summary-body">${formattedAnswer}</div>
+          </div>
+        `;
+      } else {
+        synthBox.style.display = "none";
+        synthBox.innerHTML = "";
+      }
+
+      renderGraphDossier(data.graph_dossier);
+
+      const results = data.results || data.records || [];
+      const cardsContainer = document.getElementById("source-cards-container");
+      if (!results.length) {
+        cardsContainer.innerHTML = `
+          <div class="source-card">
+            <div class="source-title">No verified records matched in Sovereign Vault</div>
+            <p style="color: var(--text-secondary); margin-top: 0.5rem;">Safe Failure Guardrail prevented unverified hallucination.</p>
+          </div>
+        `;
+        return;
+      }
+
+      cardsContainer.innerHTML = results.map((r, idx) => {
+        const vUri = r.virtual_uri || r.source_uri || r.file_path || "";
+        const secs = r.structured_sections || {};
+        const desc = secs["Description"] || (r.content || "").slice(0, 600);
+        const causes = secs["Possible Causes"] || "";
+        const proc = secs["Procedure"] || "";
+        const params = secs["Parameters"] || "";
+        const isProng1Card = !needsSynth;
+
+        return `
+          <article class="source-card ${isProng1Card ? 'prong1-card' : 'prong2-card'}" id="source-card-${idx + 1}">
+            <div class="source-card-header">
+              <div class="source-title-wrap">
+                <div class="source-title">[${idx + 1}] ${escapeHtml(r.title || r.doc_identifier)}</div>
+                <div style="margin-top: 0.25rem; display: flex; gap: 0.45rem; align-items: center;">
+                  <span class="metric-tag">${escapeHtml(r.confidence_band || confLevel)}</span>
+                  <span class="metric-tag" style="color: ${isProng1Card ? 'var(--emerald-bright)' : 'var(--cyan-bright)'};">
+                    ${isProng1Card ? '⚡ PRONG 1 EXACT' : '🧠 PRONG 2 VERIFIED'}
+                  </span>
+                </div>
+              </div>
+              ${buildConfidenceRingSvg(confScore, isProng1Card)}
+            </div>
+            <div class="source-uri">
+              <a href="/archive/view?uri=${encodeURIComponent(vUri)}" target="_blank" class="source-link-btn" title="Open formatted document in new browser tab">
+                🔗 ${escapeHtml(vUri)} <span style="font-size: 0.72rem; color: #38BDF8;">↗ View in Document Viewer</span>
+              </a>
+              <span style="color: var(--text-secondary); font-size: 0.7rem;">O_RDONLY STREAM</span>
+            </div>
+
+            <div class="structured-grid">
+              <div class="sec-block">
+                <div class="sec-block-title">
+                  <span>📋 Description &amp; Specification</span>
+                </div>
+                <div class="sec-block-content">${escapeHtml(desc)}</div>
+              </div>
+              ${causes ? `
+              <div class="sec-block">
+                <div class="sec-block-title"><span>🔍 Possible Causes</span></div>
+                <div class="sec-block-content">${escapeHtml(causes)}</div>
+              </div>` : ""}
+              ${proc ? `
+              <div class="sec-block">
+                <div class="sec-block-title">
+                  <span>🛠️ Remediation Procedure</span>
+                  <button type="button" class="inspector-tab" style="padding: 0.12rem 0.45rem; font-size: 0.68rem;" onclick="copyMmlFromCard('${escapeHtml(proc.slice(0, 240).replace(/'/g, "\\'"))}')">📋 Copy MML</button>
+                </div>
+                <div class="sec-block-content" style="font-family: var(--font-mono); font-size: 0.81rem;">${escapeHtml(proc)}</div>
+              </div>` : ""}
+              ${params ? `
+              <div class="sec-block">
+                <div class="sec-block-title"><span>⚙️ Parameters</span></div>
+                <div class="sec-block-content">${escapeHtml(params)}</div>
+              </div>` : ""}
+            </div>
+
+            <div class="action-btn-row">
+              <a href="/archive/view?uri=${encodeURIComponent(vUri)}" target="_blank" class="action-btn primary-emerald" style="text-decoration: none;">
+                📖 Open Full Manual in Viewer Tab ↗
+              </a>
+              <button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', '', false)">
+                📄 Open in Side Drawer
+              </button>
+              <button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', 'Possible Causes', false)">
+                🔍 Jump to Causes
+              </button>
+              <button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', 'Procedure', false)">
+                🛠️ Jump to Procedure
+              </button>
+              <button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', '', true)">
+                🖼️ Render Diagram
+              </button>
+            </div>
+          </article>
+        `;
+      }).join("");
+
+      const topUri = results[0].virtual_uri || results[0].source_uri || "";
+      if (topUri) {
+        openSourceInInspector(topUri, "", false);
+      }
+    }
+
+    function renderGraphDossier(dossier) {
+      const container = document.getElementById("graph-dossier-container");
+      if (!dossier || (!dossier.neighbors || !dossier.neighbors.length)) {
+        container.innerHTML = "";
+        return;
+      }
+
+      const byRel = dossier.by_relation || {};
+      const groups = [
+        { key: "DIAGNOSED_BY_MML", label: "🩺 DIAGNOSED_BY_MML (Click to Run Prong 1)", isMml: true },
+        { key: "REMEDIATED_BY_MML", label: "🛠️ REMEDIATED_BY_MML (Click to Run Prong 1)", isMml: true },
+        { key: "MEASURED_BY_COUNTER", label: "📊 MEASURED_BY_COUNTER (3GPP / Vendor KPIs)", isMml: false },
+        { key: "HAS_DIAGRAM", label: "🖼️ HAS_DIAGRAM (Embedded Signaling Plates)", isDiag: true }
+      ];
+
+      const rootName = (dossier.entity && dossier.entity.name) ? dossier.entity.name : "Matched Entity";
+      const boxesHtml = groups.map(g => {
+        const items = byRel[g.key] || [];
+        if (!items.length) return "";
+        const pills = items.slice(0, 6).map(item => {
+          const rawName = item.name || (item.entity && item.entity.name) || "";
+          if (g.isMml) {
+            const cleanMml = rawName.split("(")[0].trim();
+            return `<button type="button" class="entity-pill mml-pill" title="Click to execute Prong 1 MML Lookup: ${escapeHtml(cleanMml)}" onclick="runPreset('${escapeHtml(cleanMml)}')">⚡ ${escapeHtml(rawName)}</button>`;
+          }
+          if (g.isDiag) {
+            const shortDiag = rawName.includes("#") ? rawName.split("#").pop() : rawName;
+            return `<button type="button" class="entity-pill diag-pill" onclick="inspectCurrentSource('', true)">🖼️ ${escapeHtml(shortDiag)}</button>`;
+          }
+          return `<span class="entity-pill">${escapeHtml(rawName)}</span>`;
+        }).join("");
+
+        return `
+          <div class="relation-box">
+            <div class="relation-label">${g.label}</div>
+            <div class="entity-pills">${pills}</div>
+          </div>
+        `;
+      }).filter(Boolean).join("");
+
+      if (!boxesHtml) {
+        container.innerHTML = "";
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="graph-dossier-panel">
+          <div class="graph-header">
+            <div class="graph-title">🕸️ Connected Knowledge Graph Dossier — ${escapeHtml(rootName)}</div>
+            <span class="metric-tag">${dossier.neighbors.length} Connected Nodes</span>
+          </div>
+          <div class="relation-groups">${boxesHtml}</div>
+        </div>
+      `;
+    }
+
+    async function openSourceInInspector(virtualUri, sectionFilter = "", extractDiagram = false) {
+      if (!virtualUri) return;
+      currentInspectedUri = virtualUri;
+
+      const metaEl = document.getElementById("inspector-meta");
+      const contentEl = document.getElementById("inspector-content");
+      const diagBox = document.getElementById("inspector-diagram-container");
+
+      metaEl.innerHTML = `Streaming <code>${escapeHtml(virtualUri)}</code> in-memory (O_RDONLY)...`;
+
+      try {
+        const resp = await fetch("/archive/inspect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            virtual_uri: virtualUri,
+            section_filter: sectionFilter,
+            extract_diagram_to_artifact: extractDiagram,
+            max_chars: 8000
+          })
+        });
+        const data = await resp.json();
+        metaEl.innerHTML = `
+          <div><strong>Virtual URI:</strong> <code>${escapeHtml(data.virtual_uri || virtualUri)}</code></div>
+          <div><strong>Entry:</strong> ${escapeHtml(data.entry_name || "N/A")} | <strong>Filter:</strong> ${escapeHtml(data.section_filter_applied || "Full Document")}</div>
+          <div><strong>SHA-256:</strong> <code>${escapeHtml((data.sha256_hash || "").slice(0, 24))}...</code> | <strong>O_RDONLY Zero-Disk:</strong> ${Boolean(data.zero_disk_extraction)}</div>
+        `;
+        contentEl.textContent = data.content_text || data.extracted_text || "No text content in entry.";
+
+        if (data.diagram_url) {
+          diagBox.style.display = "block";
+          diagBox.innerHTML = `
+            <div style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--gold-bright);">
+              🖼️ Extracted Signaling / Root Alarm Diagram (<code>${escapeHtml(data.diagram_url)}</code>)
+            </div>
+            <img src="${escapeHtml(data.diagram_url)}" alt="Extracted Huawei Signaling / Alarm Diagram" />
+          `;
+        } else if (!extractDiagram) {
+          diagBox.style.display = "none";
+        }
+      } catch (err) {
+        metaEl.textContent = "Error inspecting archive entry: " + err;
+      }
+    }
+
+    function inspectCurrentSource(sectionFilter = "", extractDiagram = false) {
+      if (!currentInspectedUri) return;
+      openSourceInInspector(currentInspectedUri, sectionFilter, extractDiagram);
+    }
+
+    function scrollToSource(index) {
+      const el = document.getElementById("source-card-" + index);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+
+    /* ===================================================================== */
+    /* TAB 2: INTERACTIVE TOPOLOGY GRAPH RENDERER (GET /graph/topology)      */
+    /* ===================================================================== */
+
+// Global Initializations
+document.addEventListener("DOMContentLoaded", () => {
+  const qInput = document.getElementById("portal-query-input");
+  if (qInput) {
+    qInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        executePortalQuery();
+      }
+    });
+  }
+  refreshTelemetry();
+  checkLlmStatus();
+  setInterval(refreshTelemetry, 25000);
+});
