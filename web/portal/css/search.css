@@ -479,3 +479,62 @@
       font-size: 0.78rem;
       color: #CBD5E1;
     }
+
+    /* Domain Scope Filter Selector Pills */
+    .domain-filter-strip {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.85rem;
+      flex-wrap: wrap;
+    }
+
+    .domain-filter-label {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .domain-filter-pills {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(5, 7, 11, 0.65);
+      border: 1px solid var(--border-subtle);
+      padding: 0.25rem 0.35rem;
+      border-radius: 8px;
+    }
+
+    .domain-filter-pill {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      padding: 0.32rem 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      user-select: none;
+    }
+
+    .domain-filter-pill:hover {
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .domain-filter-pill.active {
+      background: linear-gradient(135deg, rgba(212, 175, 55, 0.25) 0%, rgba(212, 175, 55, 0.08) 100%);
+      color: var(--gold-bright);
+      border-color: var(--gold);
+      font-weight: 600;
+      box-shadow: 0 0 12px rgba(212, 175, 55, 0.2);
+    }

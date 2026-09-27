@@ -221,3 +221,89 @@ export interface ActiveAlert {
   sourceDocId?: number;
   timestamp: string;
 }
+
+export type DomainScope = 'all' | 'homelab' | 'telecom';
+
+export interface RouterResultRecord {
+  id?: number | string;
+  title: string;
+  doc_identifier?: string;
+  confidence_band?: string;
+  virtual_uri?: string;
+  source_uri?: string;
+  file_path?: string;
+  content?: string;
+  text?: string;
+  snippet?: string;
+  structured_sections?: Record<string, string>;
+  diagram_url?: string;
+  bboxes?: BoundingBox[];
+}
+
+export interface RouterFastSummary {
+  answer?: string;
+  execution_mode?: 'neural_ollama_local' | 'extractive_template_fallback' | 'epistemic_refusal' | string;
+  citations?: Citation[];
+  confidence_score?: number;
+  confidence_level?: string;
+}
+
+export interface RouterNeighbor {
+  name: string;
+  relation: string;
+  target_type: string;
+  target_name?: string;
+}
+
+export interface RouterGraphDossier {
+  entity?: string;
+  name?: string;
+  category?: string;
+  neighbors: RouterNeighbor[];
+  relations?: Relation[];
+}
+
+export interface RouterSuggestion {
+  identifier: string;
+  title?: string;
+  short_title?: string;
+}
+
+export interface RouterQueryResult {
+  route_type?: string;
+  route?: string;
+  identifier?: string;
+  latency_ms?: number;
+  confidence_level?: string;
+  confidence_score?: number;
+  needs_synthesis?: boolean;
+  status?: string;
+  execution_mode?: string;
+  fast_summary?: RouterFastSummary;
+  results?: RouterResultRecord[];
+  records?: RouterResultRecord[];
+  suggestions?: RouterSuggestion[];
+  graph_dossier?: RouterGraphDossier | null;
+}
+
+export interface MonitoredSourceRecord {
+  path: string;
+  domain: string;
+  indexed_records?: number;
+  anti_loop_guard?: string;
+  anti_loop_active?: boolean;
+  added_at?: string;
+  status?: string;
+}
+
+export interface ArchiveInspectResult {
+  virtual_uri: string;
+  entry_name?: string;
+  section_filter_applied?: string;
+  sha256_hash?: string;
+  zero_disk_extraction?: boolean;
+  content_text?: string;
+  extracted_text?: string;
+  diagram_url?: string;
+}
+

@@ -5,7 +5,7 @@ Constants, path resolution, and common extractors for the Sovereign Server.
 import os
 import re
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Any
 
 DEFAULT_HOST = os.getenv("SOVEREIGN_HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.getenv("SOVEREIGN_PORT", "8765"))
@@ -124,3 +124,51 @@ def _extract_structured_sections(raw_text: str) -> Dict[str, str]:
     if not sections and clean.strip():
         sections["Description"] = clean.strip()[:2000]
     return sections
+
+
+def _detect_and_parse_markdown_tables(text: str) -> Dict[str, Any]:
+    """
+    Detects if text contains Markdown or spreadsheet tables (| ... | ... |).
+    Supports both standard markdown tables with separator lines (| --- | --- |)
+    and OpenXML spreadsheet extracts with consecutive pipe-delimited rows.
+    Returns dict with 'has_table': bool and 'table_headers': List[str].
+    """
+    if not text or "|" not in text:
+        return {"has_table": False, "table_headers": []}
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    headers: List[str] = []
+    has_table = False
+
+    for i in range(len(lines)):
+        line = lines[i]
+        if line.startswith("|") and line.endswith("|") and line.count("|") >= 2:
+            # Check 1: Next line is a markdown table separator: | --- | --- | or |:---|:---|
+            if i + 1 < len(lines):
+                next_line = lines[i + 1]
+                if next_line.startswith("|") and next_line.endswith("|") and ("-" in next_line or ":" in next_line):
+                    sep_cells = [c.strip() for c in next_line.strip("|").split("|")]
+                    non_empty_sep = [c for c in sep_cells if c]
+                    if len(non_empty_sep) >= 1 and all(re.match(r"^:?-{1,}:?$", c) for c in non_empty_sep):
+                        cols = [c.strip() for c in line.strip("|").split("|")]
+                        for col in cols:
+                            clean_col = re.sub(r"[*`_]", "", col).strip()
+                            if clean_col and clean_col not in headers:
+                                headers.append(clean_col)
+                        has_table = True
+                        break
+
+            # Check 2: Next line is another pipe-delimited row (OpenXML spreadsheet extract)
+            if i + 1 < len(lines):
+                next_line = lines[i + 1]
+                if next_line.startswith("|") and next_line.endswith("|") and next_line.count("|") >= 2:
+                    cols = [c.strip() for c in line.strip("|").split("|")]
+                    for col in cols:
+                        clean_col = re.sub(r"[*`_]", "", col).strip()
+                        if clean_col and clean_col not in headers:
+                            headers.append(clean_col)
+                    has_table = True
+                    break
+
+    return {"has_table": has_table, "table_headers": headers}
+

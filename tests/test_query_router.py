@@ -483,4 +483,124 @@ def test_13_telecom_hdx_alarm_mml_and_kpi_grammars(router):
     assert dec_compound.extracted_identifier.normalized_value == "ALM-26235"
 
 
+def test_14_domain_scope_filtering_homelab_vs_telecom(router):
+    """
+    Test 14: Validates Domain Scope Filtering (homelab vs telecom):
+    - A generic query like 'self heal' under domain_filter='homelab' returns ADR-30/ADR-20
+      and ZERO Huawei telecom records.
+    - Under domain_filter='telecom', it returns Huawei USC records and ZERO homelab ADR records.
+    """
+    # 1. Index homelab documents
+    router.index_document(
+        doc_identifier="ADR-30",
+        title="ADR-30: Smart Home Fleet and Gateway Governance",
+        content="Smart bulbs route locally via tuya_local TCP 6668 with automated IP self heal scripts/tuya_self_heal.py",
+        clearance_level=ClearanceLevel.PUBLIC,
+        metadata={"domain": "homelab_wiki"},
+    )
+    router.index_document(
+        doc_identifier="ADR-20",
+        title="ADR-20: Observability and Health Check Standardization",
+        content="Automated container health check daemon with self heal reboot policies for crashed microservices",
+        clearance_level=ClearanceLevel.PUBLIC,
+        metadata={"domain": "homelab_wiki"},
+    )
+
+    # 2. Index telecom document
+    router.index_document(
+        doc_identifier="archive:///home/tlima/Enterprise_Hub/docs/Hua_Docs/USC.zip#resources/self_heal.html",
+        title="USC 26.1.0: Self Heal Signaling Route Optimization",
+        content="Telecom signaling network self heal procedure when STP link degradation occurs in 5G Core",
+        clearance_level=ClearanceLevel.PUBLIC,
+        metadata={"domain": "telecom_vendor"},
+    )
+
+    # Test Homelab Scope
+    res_homelab = router.route_and_execute("self heal", domain_filter="homelab")
+    assert res_homelab["status"] == "success"
+    assert len(res_homelab["results"]) >= 2
+    matched_ids = [r["doc_identifier"] for r in res_homelab["results"]]
+    assert "ADR-30" in matched_ids
+    assert "ADR-20" in matched_ids
+    # Assert ZERO Huawei records
+    assert not any(
+        "USC" in r["title"] or "telecom" in str(r.get("metadata", {}).get("domain", ""))
+        for r in res_homelab["results"]
+    ), f"Found leaked telecom records in homelab query: {res_homelab['results']}"
+    assert res_homelab["domain_filter"] == "homelab"
+
+    # Test Telecom Scope
+    res_telecom = router.route_and_execute("self heal", domain_filter="telecom")
+    assert res_telecom["status"] == "success"
+    assert len(res_telecom["results"]) >= 1
+    # Assert Huawei USC record is returned
+    assert any("USC" in r["title"] for r in res_telecom["results"])
+    # Assert ZERO Homelab records
+    assert not any(
+        r["doc_identifier"].startswith("ADR-")
+        for r in res_telecom["results"]
+    ), f"Found leaked homelab records in telecom query: {res_telecom['results']}"
+    assert res_telecom["domain_filter"] == "telecom"
+
+    # Test Deterministic ID lookup with cross-domain filtering
+    # Querying ADR-30 under telecom scope must NOT return homelab ADR-30
+    adr_in_telecom = router.route_and_execute("ADR-30", domain_filter="telecom")
+    assert adr_in_telecom["status"] == "not_found" or len(adr_in_telecom["results"]) == 0
+
+    # Querying ADR-30 under homelab scope must return ADR-30
+    adr_in_homelab = router.route_and_execute("ADR-30", domain_filter="homelab")
+    assert adr_in_homelab["status"] == "success"
+    assert len(adr_in_homelab["results"]) == 1
+    assert adr_in_homelab["results"][0]["doc_identifier"] == "ADR-30"
+
+
+def test_15_modular_grammars_and_classifier_exports():
+    """
+    Test 15: Validates clean decomposition into grammars.py and classifier.py:
+    - Verifies direct imports and pattern functionality from core.router.grammars
+    - Verifies direct imports and taxonomy enums from core.router.classifier
+    - Verifies 100% backward compatibility of core.router
+    """
+    from core.router.grammars import (
+        HEX_PATTERN,
+        TICKET_PATTERN,
+        ALARM_ID_PATTERN,
+        MML_COMMAND_PATTERN,
+        KPI_COUNTER_PATTERN,
+        TELCO_SPEC_PATTERN,
+        ADR_PATTERN,
+        SKILL_PATTERN,
+        RESERVED_LEXICON,
+        CONCEPTUAL_LEXICON,
+        calculate_shannon_entropy,
+    )
+    from core.router.classifier import (
+        QueryRouteType,
+        RouteType,
+        ConfidenceLevel,
+        RouteDecision,
+        classify_query_intent,
+    )
+
+    # Grammars verification
+    assert ADR_PATTERN.search("ADR-40") is not None
+    assert ADR_PATTERN.search("ADR-30") is not None
+    assert SKILL_PATTERN.search("manage-sovereign-vault") is not None
+    assert "ARCHITECTURE" in CONCEPTUAL_LEXICON
+    assert "TOPOLOGY" in CONCEPTUAL_LEXICON
+    assert calculate_shannon_entropy("ALM-20104") > 2.0
+
+    # Classifier verification
+    assert RouteType == QueryRouteType
+    assert ConfidenceLevel.HIGH_DETERMINISTIC_EXACT.value == "HIGH_DETERMINISTIC_EXACT"
+    dec_adr = classify_query_intent("ADR-40")
+    assert dec_adr.route_type == QueryRouteType.DETERMINISTIC_DIRECT
+    assert dec_adr.extracted_identifier.id_type == "wiki_adr"
+
+    dec_skill = classify_query_intent("manage-sovereign-vault")
+    assert dec_skill.route_type == QueryRouteType.DETERMINISTIC_DIRECT
+    assert dec_skill.extracted_identifier.id_type == "agent_skill"
+
+
+
 

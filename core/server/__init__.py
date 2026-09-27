@@ -29,6 +29,7 @@ from .constants import (
     _resolve_default_router_db,
     _resolve_default_graph_db,
     _extract_structured_sections,
+    _detect_and_parse_markdown_tables,
 )
 from .llm_controller import LLMController
 from .viewer import DocumentViewer
@@ -81,6 +82,7 @@ __all__ = [
     "_resolve_default_router_db",
     "_resolve_default_graph_db",
     "_extract_structured_sections",
+    "_detect_and_parse_markdown_tables",
     "LLMController",
     "DocumentViewer",
     "build_graph_topology",

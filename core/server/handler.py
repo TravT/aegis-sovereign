@@ -262,6 +262,7 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
             prefer_neural = payload.get("prefer_neural")
             if prefer_neural is not None:
                 prefer_neural = bool(prefer_neural)
+            domain_filter = payload.get("domain_filter") or payload.get("domain") or "all"
             try:
                 res = self.manager.route_and_execute(
                     query=query,
@@ -270,6 +271,7 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                     limit=limit,
                     force_synthesize=force_synthesize,
                     prefer_neural=prefer_neural,
+                    domain_filter=domain_filter,
                 )
                 self._send_json(200, res)
             except (PlanLimitExceededError, FeatureNotAllowedError, PermissionError) as pe:

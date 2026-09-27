@@ -124,6 +124,22 @@
           </label>
         </div>
 
+        <!-- Domain Scope Filter Selector Pills -->
+        <div class="domain-filter-strip">
+          <span class="domain-filter-label">🌐 Domain Scope:</span>
+          <div class="domain-filter-pills" role="group" aria-label="Domain Scope Filter">
+            <button type="button" class="domain-filter-pill active" id="domain-pill-all" onclick="setDomainFilter('all')">
+              <span>🌐 All Vaults</span>
+            </button>
+            <button type="button" class="domain-filter-pill" id="domain-pill-homelab" onclick="setDomainFilter('homelab')">
+              <span>🏠 Homelab Operations</span>
+            </button>
+            <button type="button" class="domain-filter-pill" id="domain-pill-telecom" onclick="setDomainFilter('telecom')">
+              <span>📡 Telecom Vendor Catalog</span>
+            </button>
+          </div>
+        </div>
+
         <form class="search-bar-row" onsubmit="event.preventDefault(); executePortalQuery();">
           <div class="search-input-wrap">
             <span class="search-icon-prefix">
@@ -149,33 +165,46 @@
 
         <!-- Quick-Test Preset Chips -->
         <div class="presets-grid">
-          <!-- Prong 1 Group -->
+          <!-- Prong 1 Homelab Group -->
           <div class="preset-group prong1-box">
             <div class="preset-group-title">
-              <span>⚡ Prong 1 (Static Instant Lookup &lt;2ms • Zero LLM Tokens)</span>
+              <span>🏠 Prong 1 Homelab (&lt;2ms • Zero LLM Tokens)</span>
               <span>B-Tree / FTS5 Exact</span>
+            </div>
+            <div class="chip-list">
+              <button type="button" class="preset-chip" onclick="runPreset('ADR-40')">
+                <code>[ADR-40]</code> <span>Two-Pronged Architecture ADR</span>
+              </button>
+              <button type="button" class="preset-chip" onclick="runPreset('ADR-30')">
+                <code>[ADR-30]</code> <span>Smart Home Zigbee 3.0</span>
+              </button>
+              <button type="button" class="preset-chip" onclick="runPreset('manage-traefik')">
+                <code>[manage-traefik]</code> <span>Nomad Dynamic Ingress</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Prong 1 Telecom Group -->
+          <div class="preset-group prong1-box">
+            <div class="preset-group-title">
+              <span>📡 Prong 1 Telecom (&lt;2ms • Exact Catalog)</span>
+              <span>Alarms &amp; MML</span>
             </div>
             <div class="chip-list">
               <button type="button" class="preset-chip" onclick="runPreset('ALM-20104')">
                 <code>[ALM-20104]</code> <span>Link Bear Quality Drop</span>
               </button>
               <button type="button" class="preset-chip" onclick="runPreset('ALM-20333')">
-                <code>[ALM-20333]</code> <span>DB Load / STP Link Bear</span>
+                <code>[ALM-20333]</code> <span>STP Link Bear Quality</span>
               </button>
               <button type="button" class="preset-chip" onclick="runPreset('ALM-1003')">
                 <code>[ALM-1003]</code> <span>Module Fault + Root Diagram</span>
               </button>
               <button type="button" class="preset-chip" onclick="runPreset('DSP OPTMODULE')">
-                <code>[DSP OPTMODULE]</code> <span>MML Command Spec</span>
+                <code>[DSP OPTMODULE]</code> <span>MML Optical Spec</span>
               </button>
               <button type="button" class="preset-chip" onclick="runPreset('LOTE-202609B')">
                 <code>[LOTE-202609B]</code> <span>ANVISA Batch Trace</span>
-              </button>
-              <button type="button" class="preset-chip" onclick="runPreset('ADR-40')">
-                <code>[ADR-40]</code> <span>Server Two-Pronged Router ADR</span>
-              </button>
-              <button type="button" class="preset-chip" onclick="runPreset('SKILL-SOVEREIGN-VAULT')">
-                <code>[SKILL-SOVEREIGN-VAULT]</code> <span>7-Tool MCP Skill</span>
               </button>
             </div>
           </div>
@@ -187,17 +216,14 @@
               <span>NanoRunner + GraphRAG</span>
             </div>
             <div class="chip-list">
-              <button type="button" class="preset-chip" onclick="runPreset('what are the first steps on the commissioning of the PCF?')">
-                <code>[what are the first steps on the commissioning of the PCF?]</code>
+              <button type="button" class="preset-chip" onclick="runPreset('How is Traefik ingress routed in the homelab?')">
+                <code>[Homelab Traefik Ingress]</code> <span>Traefik v3 Ingress Invariants</span>
               </button>
               <button type="button" class="preset-chip" onclick="runPreset('How are the PODs of the USC and their functions organized?')">
-                <code>[How are the PODs of the USC and their functions organized?]</code>
+                <code>[USC POD Organization]</code> <span>How are the PODs of the USC and their functions organized?</span>
               </button>
-              <button type="button" class="preset-chip" onclick="runPreset('How is the Homelab server architecture and Traefik routing organized?')">
-                <code>[How is the Homelab server architecture and Traefik routing organized?]</code>
-              </button>
-              <button type="button" class="preset-chip" onclick="runPreset('How to configure a 5G Service on the UPCF and what are the levels?')">
-                <code>[How to configure a 5G Service on the UPCF and what are the levels?]</code>
+              <button type="button" class="preset-chip" onclick="runPreset('what are the first steps on the commissioning of the PCF?')">
+                <code>[what are the first steps on the commissioning of the PCF?]</code>
               </button>
               <button type="button" class="preset-chip" onclick="runPreset('Why did ALM-20104 trigger and how do we diagnose and fix it?')">
                 <code>[Why did ALM-20104 trigger and how do we diagnose and fix it?]</code>

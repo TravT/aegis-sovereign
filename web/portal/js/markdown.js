@@ -185,7 +185,7 @@ function renderMarkdown(md) {
     if (line.startsWith("|") && line.endsWith("|")) {
       flushLists();
       flushCallout();
-      if (/^\|[\s:--|]+\|$/.test(line)) {
+      if (/^\|[\s:\-|]+\|$/.test(line)) {
         continue;
       }
       const cells = line.slice(1, -1).split("|").map(c => c.trim());

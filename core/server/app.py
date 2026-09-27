@@ -41,6 +41,7 @@ from .constants import (
     DEFAULT_DIAGRAMS_DIR,
     _PROD_VAULT_DIR,
     _extract_structured_sections,
+    _detect_and_parse_markdown_tables,
 )
 from .llm_controller import LLMController
 from .viewer import DocumentViewer
@@ -330,6 +331,7 @@ class SovereignApplianceManager:
         limit: int = 5,
         force_synthesize: Optional[bool] = None,
         prefer_neural: Optional[bool] = None,
+        domain_filter: Optional[str] = "all",
     ) -> Dict[str, Any]:
         with self._lock:
             self.status["total_queries"] += 1
@@ -339,6 +341,7 @@ class SovereignApplianceManager:
             user_clearance=user_clearance,
             plan=plan,
             limit=limit,
+            domain_filter=domain_filter,
         )
         if "route" in routed and "route_type" not in routed:
             routed["route_type"] = routed["route"]
@@ -349,7 +352,12 @@ class SovereignApplianceManager:
 
         results = list(routed.get("results") or [])
         if route_type != "deterministic_direct" and not is_mock_searcher:
-            fts_hits = self.router._fallback_fts_search(query=query, clearance_int=clr_int, limit=limit)
+            fts_hits = self.router._fallback_fts_search(
+                query=query,
+                clearance_int=clr_int,
+                limit=limit,
+                domain_filter=domain_filter,
+            )
             seen_ids = {r.get("id") for r in results if r.get("id") is not None}
             for fh in fts_hits:
                 if fh.get("id") not in seen_ids:
@@ -403,6 +411,7 @@ class SovereignApplianceManager:
                 if alm_u not in detected_entities:
                     detected_entities.append(alm_u)
 
+            table_info = _detect_and_parse_markdown_tables(full_text)
             item = dict(r)
             item["virtual_uri"] = v_uri
             item["source_uri"] = v_uri
@@ -411,6 +420,11 @@ class SovereignApplianceManager:
             item["content"] = full_text
             item["text"] = full_text
             item["structured_sections"] = _extract_structured_sections(full_text)
+            item["has_table"] = table_info["has_table"]
+            item["table_headers"] = table_info["table_headers"]
+            meta["has_table"] = table_info["has_table"]
+            meta["table_headers"] = table_info["table_headers"]
+            item["metadata"] = meta
             if route_type == "deterministic_direct":
                 if routed.get("status") == "success":
                     item["score"] = 0.99
@@ -430,6 +444,11 @@ class SovereignApplianceManager:
 
         routed["results"] = enriched_results
         routed["records"] = enriched_results
+        has_table_overall = any(r.get("has_table") for r in enriched_results)
+        all_table_headers = list(dict.fromkeys(h for r in enriched_results for h in r.get("table_headers", [])))
+        routed["has_table"] = has_table_overall
+        routed["table_headers"] = all_table_headers
+        routed["domain_filter"] = domain_filter or "all"
 
         routed["graph_dossier"] = build_enriched_graph_dossier(
             graph_store=self.graph_store,

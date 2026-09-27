@@ -438,3 +438,16 @@
       overflow-y: auto;
       line-height: 1.65;
     }
+
+    .inspector-content-rendered {
+      background: rgba(5, 7, 11, 0.92);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 1rem;
+      font-size: 0.84rem;
+      color: #E2E8F0;
+      max-height: 520px;
+      overflow-y: auto;
+      overflow-x: auto;
+      line-height: 1.65;
+    }

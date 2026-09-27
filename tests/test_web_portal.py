@@ -501,4 +501,64 @@ def test_16_deterministic_miss_suggestions_and_topic_fallbacks_alm_20100(portal_
     assert "Did you mean" in res.get("message", "")
 
 
+def test_17_domain_scope_filter_and_table_metadata_api(portal_server):
+    """
+    Verifies domain_filter handling and Markdown table detection in POST /router/query
+    and POST /archive/inspect endpoints.
+    """
+    # 1. POST /router/query with domain_filter='telecom'
+    st, res = _http_post_json(
+        f"{portal_server}/router/query",
+        {
+            "query": "DSP OPTMODULE",
+            "domain_filter": "telecom",
+            "user_clearance": "restricted",
+            "limit": 3,
+        },
+        timeout=15,
+    )
+    assert st == 200
+    assert res.get("domain_filter") == "telecom"
+    assert "has_table" in res
+    assert isinstance(res["has_table"], bool)
+    assert "table_headers" in res
+    assert isinstance(res["table_headers"], list)
+
+    # 2. POST /router/query with domain_filter='homelab'
+    st_hl, res_hl = _http_post_json(
+        f"{portal_server}/router/query",
+        {
+            "query": "ADR-40",
+            "domain_filter": "homelab",
+            "user_clearance": "restricted",
+            "limit": 3,
+        },
+        timeout=15,
+    )
+    assert st_hl == 200
+    assert res_hl.get("domain_filter") == "homelab"
+    assert res_hl.get("status") == "success"
+
+    # 3. POST /archive/inspect table detection
+    _, q_res = _http_post_json(f"{portal_server}/router/query", {"query": "ALM-1003", "limit": 2})
+    v_uri = q_res["results"][0]["virtual_uri"]
+
+    st_ins, res_ins = _http_post_json(
+        f"{portal_server}/archive/inspect",
+        {
+            "virtual_uri": v_uri,
+            "section_filter": "Possible Causes",
+        },
+        timeout=15,
+    )
+    assert st_ins == 200
+    assert "has_table" in res_ins
+    assert isinstance(res_ins["has_table"], bool)
+    assert "table_headers" in res_ins
+    assert isinstance(res_ins["table_headers"], list)
+    if "metadata" in res_ins:
+        assert "has_table" in res_ins["metadata"]
+
+
+
 

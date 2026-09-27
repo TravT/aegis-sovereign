@@ -5,19 +5,18 @@ Aegis Sovereign Knowledge Appliance.
 
 Prong 1: Deterministic Fast-Path (<2ms) via SQLite B-Tree and secure external-content FTS5 with MAC pushdown.
 Prong 2: Multi-Tier Cognitive Retrieval with Graceful Fallback Cascade (Tier 1 RRF, Tier 2 GraphRAG, Tier 3 RAPTOR).
+Domain Scope Filtering: Strict separation and predicate pushdown for homelab vs telecom corpora.
 """
 
+import json
+import logging
+import math
 import os
 import re
-import math
-import json
-import time
 import sqlite3
-from enum import Enum
+import time
 from pathlib import Path
-from dataclasses import dataclass, field
-from collections import Counter
-from typing import List, Dict, Any, Optional, Union, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from core.security import (
     ClearanceLevel,
@@ -27,213 +26,56 @@ from core.security import (
     PlanLimitExceededError,
 )
 
-# ---------------------------------------------------------------------------
-# Structured Grammars for Fast-Path (Prong 1)
-# ---------------------------------------------------------------------------
-HEX_PATTERN = re.compile(r'\b(0x[0-9a-fA-F]{4,16})\b')
-TICKET_PATTERN = re.compile(r'\b([A-Z]{2,6}-\d{2,8}(?:-[A-Z0-9]{1,8})?|[A-Z]{2,6}-[A-Z0-9]{4,12}(?:-[A-Z0-9]{2,12})?)\b')
-STANDARD_SPEC_PATTERN = re.compile(
-    r'\b(3GPP\s+TS\s+\d{2}\.\d{3}|MS\s+\d\.\d{4}\.\d{4}\.\d{3}-\d|CRM-[A-Z]{2}\s+\d{4,7}|CID-10\s+[A-Z]\d{2}(?:\.\d)?)\b'
-)
-CPF_PATTERN = re.compile(r'\b(\d{3}\.\d{3}\.\d{3}-\d{2})\b')
-CNPJ_PATTERN = re.compile(r'\b(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})\b')
-QUOTED_PHRASE_PATTERN = re.compile(r'"([^"]{2,160})"')
-
-# Vertical Domain Grammars (ADR-06 & Chapter 24 Target 4)
-# 1. Pharmacy & ANVISA (pharmacies_and_smb_retail)
-LOTE_PATTERN = re.compile(r'\b(LOTE[-:\s]+([A-Z0-9][A-Z0-9\-]{3,20}))\b', re.IGNORECASE)
-ANVISA_MS_PATTERN = re.compile(r'\b((?:MS[\s-]*)?(1\.\d{4}\.\d{4}\.\d{3}-\d))\b', re.IGNORECASE)
-NFE_CHAVE_PATTERN = re.compile(r'\b(\d{44}|(?:\d{4}[\s-]){10}\d{4})\b')
-PORTARIA_344_PATTERN = re.compile(
-    r'\b(Lista\s+(A1|A2|A3|B1|B2|C1|C2|C3|C4|C5))\b',
-    re.IGNORECASE,
-)
-
-# 2. Medical & Boutique Clinics (boutique_medical_and_longevity_clinics)
-CID10_PATTERN = re.compile(
-    r'(?:(?i:\bCID[-\s]*10?:?\s*([A-TV-Z]\d{2}(?:\.\d)?)\b)|\b([A-TV-Z]\d{2}\.\d)(?!\.\d)\b)'
-)
-CRM_PATTERN = re.compile(r'\b(CRM[-/\s]*([A-Z]{2})[\s-]*(\d{4,7}))\b', re.IGNORECASE)
-
-# 3. Telco Engineering Manuals & Academic Libraries
-TELCO_SPEC_PATTERN = re.compile(
-    r'\b(3GPP\s+TS\s+\d{2}\.\d{3}(?:\s+v\d+\.\d+\.\d+)?|RFC\s*\d{3,5})\b',
-    re.IGNORECASE,
-)
-ALARM_ID_PATTERN = re.compile(r'\b(ALM-\d{3,6})\b', re.IGNORECASE)
-MML_COMMAND_PATTERN = re.compile(
-    r'\b((?:ADD|MOD|RMV|LST|DSP|SET|ACT|DEA|RST|PING|TRC)\s+[A-Z0-9_]{3,20}|NGPING|NGTRACEROUTE)\b'
-)
-KPI_COUNTER_PATTERN = re.compile(r'\b(VS\.[A-Za-z0-9_.]{5,40})\b')
-ISBN_PATTERN = re.compile(
-    r'\b(ISBN(?:-1[03])?:?\s*((?:97[89][-\s]?)?\d{1,5}[-\s]?\d{1,7}[-\s]?\d{1,6}[-\s]?[\dX]))\b',
-    re.IGNORECASE,
-)
-SKILL_ID_PATTERN = re.compile(
-    r'\b((?:manage|trigger|prowlarr|pihole|nomad|download)-[a-z0-9]+(?:-[a-z0-9]+)+)\b',
-    re.IGNORECASE,
+# Re-export all compiled grammars, regexes, and lexicons for full backward compatibility
+from .grammars import (
+    calculate_shannon_entropy,
+    HEX_PATTERN,
+    TICKET_PATTERN,
+    STANDARD_SPEC_PATTERN,
+    CPF_PATTERN,
+    CNPJ_PATTERN,
+    QUOTED_PHRASE_PATTERN,
+    ALARM_ID_PATTERN,
+    MML_COMMAND_PATTERN,
+    KPI_COUNTER_PATTERN,
+    TELCO_SPEC_PATTERN,
+    ISBN_PATTERN,
+    LOTE_PATTERN,
+    ANVISA_MS_PATTERN,
+    NFE_CHAVE_PATTERN,
+    PORTARIA_344_PATTERN,
+    CID10_PATTERN,
+    CRM_PATTERN,
+    ADR_PATTERN,
+    SKILL_PATTERN,
+    SKILL_ID_PATTERN,
+    SYNTHESIS_INTENT_PATTERN,
+    RELATIONAL_INTENT_PATTERN,
+    MACRO_SYNTHESIS_PATTERN,
+    RESERVED_LEXICON,
+    CONCEPTUAL_LEXICON,
 )
 
-# ---------------------------------------------------------------------------
-# Bilingual Intent Grammars (Portuguese & English)
-# ---------------------------------------------------------------------------
-SYNTHESIS_INTENT_PATTERN = re.compile(
-    r'\b('
-    # Portuguese Triggers
-    r'por\s+que|porque|por\s+quê|resuma|resumo|síntese|sintetize|sintetizar|'
-    r'explique|explicar|explicação|qual\s+a\s+razão|quais\s+as\s+razões|'
-    r'analise|analisar|análise|comparar|compare|diferença\s+entre|'
-    r'conclusão|o\s+que\s+significa|descreva|descrever|'
-    r'visão\s+geral|panorama\s+geral|tese|macro\s+síntese|'
-    r'como\s+funciona|como\s+configurar|como\s+são|quais\s+as\s+regras|quais\s+os\s+requisitos|o\s+que\s+é|'
-    # English Triggers
-    r'why|explain|explanation|summarize|summary|synthesis|synthesize|'
-    r'analyze|analysis|compare|comparison|difference\s+between|'
-    r'conclusion|what\s+does\s+.*mean|describe|description|overview|'
-    r'macro\s+synthesis|thematic\s+synthesis|executive\s+overview|thesis|'
-    r'how\s+does|how\s+are|how\s+to|what\s+are|what\s+is\s+the\s+protocol'
-    r')\b',
-    re.IGNORECASE
+# Re-export all classifiers, route types, and confidence models
+from .classifier import (
+    QueryRouteType,
+    RouteType,
+    ConfidenceLevel,
+    ExtractedIdentifier,
+    RouteDecision,
+    score_epistemic_confidence,
+    classify_query_intent,
 )
 
-RELATIONAL_INTENT_PATTERN = re.compile(
-    r'\b('
-    # Portuguese Triggers
-    r'relacionamento|relacionamentos|relação|relações|conectado|conexão|conexões|'
-    r'ligação|ligações|grafo|hierarquia|proprietário|proprietários|'
-    r'participação|participações|estrutura\s+societária|sócio|sócios|'
-    r'vínculo|vínculos|rede\s+de|entre\s+.*e\s+.*'
-    # English Triggers
-    r'|relationship|relationships|relation|relations|connected\s+to|'
-    r'connections?\s+between|links?|graph|hierarchy|owner|ownership|'
-    r'shareholders?|corporate\s+structure|partners?|network\s+of'
-    r')\b',
-    re.IGNORECASE
-)
-
-MACRO_SYNTHESIS_PATTERN = re.compile(
-    r'\b('
-    r'visão\s+geral|panorama\s+geral|tese|macro\s+síntese|estrutura\s+temática|'
-    r'análise\s+global|todo\s+o\s+documento|livro\s+completo|todos\s+os\s+capítulos|'
-    r'arco\s+narrativo|evolução\s+temática|tema\s+central|ao\s+longo\s+da\s+obra|'
-    r'macro\s+synthesis|thematic\s+synthesis|executive\s+overview|thesis|'
-    r'overarching\s+theme|narrative\s+arc|central\s+theme|philosophical\s+evolution|'
-    r'entire\s+document|whole\s+book|global\s+summary|across\s+all\s+chapters'
-    r')\b',
-    re.IGNORECASE
-)
-
-# ---------------------------------------------------------------------------
-# Anti-Hijacking Reserved Lexicon (Domain Terms & Common Acronyms)
-# ---------------------------------------------------------------------------
-RESERVED_LEXICON: Set[str] = {
-    # Tax & Finance (PT-BR & Global)
-    "TAX", "IRPF", "DIRPF", "DARF", "DAS", "PIS", "COFINS", "CSLL", "ICMS", "ISS", "IOF", "INSS",
-    "BACEN", "CDI", "SELIC", "IPCA", "IGPM", "TED", "PIX", "CVM", "DRE", "EBITDA", "ROI", "ROE",
-    # Corporate & Executive
-    "CEO", "CFO", "COO", "CTO", "CIO", "CRO", "CMO", "CLO", "CHRO", "BOD", "VP", "SVP", "EVP",
-    # Legal, Compliance & Regulatory
-    "LGPD", "GDPR", "HIPAA", "SOX", "PCI", "SEC", "DOJ", "OAB", "STF", "STJ", "TRF", "TST", "CLT",
-    "LAW", "WAR", "ACT", "DOD", "DLP", "MAC", "RBAC", "SLA", "NDA", "MOU", "LOI",
-    # Technical & Computing
-    "API", "CPU", "GPU", "RAM", "SSD", "HDD", "NVME", "SQL", "NOSQL", "RAG", "LLM", "NLP", "OCR",
-    "WAL", "BFS", "DFS", "HTTP", "HTTPS", "REST", "JSON", "YAML", "HTML", "CSS", "DNS", "TLS",
-    "TCP", "UDP", "SSH", "BFF", "SDK", "CLI", "UI", "UX", "HNSW", "RRF", "ONNX", "AVX",
-    # Common Short Linguistic Particles & Stopwords
-    "THE", "AND", "FOR", "NOT", "YES", "WHY", "HOW", "WHO", "WHAT", "WHEN", "QUE", "COM", "SEM",
-    "POR", "PARA", "MAS", "SIM", "VER", "DOC", "PDF", "USA", "BRA"
-}
+logger = logging.getLogger("sovereign_router")
 
 
-# ---------------------------------------------------------------------------
-# Entropy Calculation
-# ---------------------------------------------------------------------------
-def calculate_shannon_entropy(text: str) -> float:
-    """
-    Computes Shannon Entropy in bits for a given text string.
-    Formula: H(X) = - sum(P(x) * log2(P(x)))
-    """
-    if not text:
-        return 0.0
-    clean = text.strip()
-    if not clean:
-        return 0.0
-    counts = Counter(clean)
-    total = len(clean)
-    return -sum((count / total) * math.log2(count / total) for count in counts.values())
-
-
-# ---------------------------------------------------------------------------
-# Taxonomy & Data Models
-# ---------------------------------------------------------------------------
-class QueryRouteType(str, Enum):
-    DETERMINISTIC_DIRECT = "deterministic_direct"
-    RELATIONAL_GRAPH = "relational_graph"
-    HYBRID_NEEDLE = "hybrid_needle"
-    MACRO_SYNTHESIS = "macro_synthesis"
-    COMPOUND_FUSED = "compound_fused"
-
-
-@dataclass
-class ExtractedIdentifier:
-    id_type: str  # "hex", "ticket", "cpf", "cnpj", "lote", "anvisa_ms", "nfe_chave", "portaria_344_lista", "cid10", "crm", "telco_spec", "isbn", "quoted_phrase", "high_entropy_code"
-    raw_value: str
-    normalized_value: str
-    confidence: float = 1.0
-    entropy: float = 0.0
-    domain: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        d = {
-            "id_type": self.id_type,
-            "raw_value": self.raw_value,
-            "normalized_value": self.normalized_value,
-            "confidence": self.confidence,
-            "entropy": self.entropy,
-        }
-        if self.domain:
-            d["domain"] = self.domain
-        return d
-
-
-@dataclass
-class RouteDecision:
-    route_type: QueryRouteType
-    extracted_identifier: Optional[ExtractedIdentifier] = None
-    bypass_vector_search: bool = False
-    safe_fail_on_missing_id: bool = False
-    fallback_active: bool = False
-    fallback_reason: Optional[str] = None
-    suggested_retrieval_mode: str = "high_precision"  # "high_precision", "exact_entity", "legal_discovery"
-    suggested_analytical_depth: str = "flash_needle"  # "flash_needle", "relational_audit", "deep_synthesis"
-    suggested_graph_hops: int = 0
-    needs_synthesis: bool = False
-    target_entity: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "route_type": self.route_type.value,
-            "extracted_identifier": self.extracted_identifier.to_dict() if self.extracted_identifier else None,
-            "bypass_vector_search": self.bypass_vector_search,
-            "safe_fail_on_missing_id": self.safe_fail_on_missing_id,
-            "fallback_active": self.fallback_active,
-            "fallback_reason": self.fallback_reason,
-            "suggested_retrieval_mode": self.suggested_retrieval_mode,
-            "suggested_analytical_depth": self.suggested_analytical_depth,
-            "suggested_graph_hops": self.suggested_graph_hops,
-            "needs_synthesis": self.needs_synthesis,
-            "target_entity": self.target_entity,
-        }
-
-
-# ---------------------------------------------------------------------------
-# Sovereign Query Router Implementation
-# ---------------------------------------------------------------------------
 class SovereignQueryRouter:
     """
     Core Two-Pronged Hybrid Retrieval & Resilient Intent Router (ADR-40).
     Coordinates sub-2ms deterministic lookups, MAC-isolated FTS5 predicate pushdown,
-    entropy and reserved-lexicon guards, and graceful cognitive fallback cascades.
+    domain scope filtering (homelab vs telecom), entropy and reserved-lexicon guards,
+    and graceful cognitive fallback cascades.
     """
 
     def __init__(
@@ -380,395 +222,77 @@ class SovereignQueryRouter:
 
     def analyze_query(self, raw_query: str) -> RouteDecision:
         """
-        Performs resilient token classification, entropy verification, anti-hijack checks,
-        vertical domain grammar matching (ADR-06 & Chapter 24), and bilingual intent mapping
-        to produce a deterministic RouteDecision.
+        Delegates to classify_query_intent in classifier module.
+        Maintains backward compatibility.
         """
-        clean_q = raw_query.strip()
-        if not clean_q:
-            return RouteDecision(
-                route_type=QueryRouteType.HYBRID_NEEDLE,
-                suggested_retrieval_mode="high_precision",
-                suggested_analytical_depth="flash_needle",
-                needs_synthesis=False,
-            )
+        return classify_query_intent(raw_query)
 
-        # 1. Anti-Hijack Guard: Check single-word domain terms
-        single_word_upper = clean_q.upper()
-        if single_word_upper in RESERVED_LEXICON:
-            # Common domain words (TAX, CEO, DARF, LGPD) must NEVER trigger fast-path
-            return RouteDecision(
-                route_type=QueryRouteType.HYBRID_NEEDLE,
-                extracted_identifier=None,
-                bypass_vector_search=False,
-                safe_fail_on_missing_id=False,
-                suggested_retrieval_mode="high_precision",
-                suggested_analytical_depth="flash_needle",
-                needs_synthesis=False,
-            )
+    @staticmethod
+    def _normalize_domain_filter(domain_filter: Optional[str]) -> Optional[str]:
+        if not domain_filter:
+            return None
+        norm = domain_filter.strip().lower()
+        if norm in ("", "all", "none", "*"):
+            return None
+        return norm
 
-        # 2. Extract Structured & Vertical Domain Identifiers
-        extracted_id: Optional[ExtractedIdentifier] = None
+    def _matches_domain_scope(
+        self,
+        doc_identifier: str,
+        title: str,
+        metadata: Dict[str, Any],
+        domain_filter: Optional[str],
+    ) -> bool:
+        """Evaluates whether a document record complies with the active domain scope."""
+        norm_filter = self._normalize_domain_filter(domain_filter)
+        if not norm_filter:
+            return True
 
-        # Check Hex (e.g. 0x80070005)
-        hex_match = HEX_PATTERN.search(clean_q)
-        if hex_match:
-            val = hex_match.group(1)
-            extracted_id = ExtractedIdentifier(
-                id_type="hex",
-                raw_value=val,
-                normalized_value=val.lower(),
-                confidence=1.0,
-                entropy=calculate_shannon_entropy(val),
-            )
+        domain_val = str(metadata.get("domain") or "").lower()
+        doc_id_low = doc_identifier.lower()
+        title_low = title.lower()
+        v_uri_low = str(metadata.get("virtual_uri") or metadata.get("file_path") or "").lower()
 
-        # Check CNPJ (e.g. 12.345.678/0001-90)
-        if not extracted_id:
-            cnpj_match = CNPJ_PATTERN.search(clean_q)
-            if cnpj_match:
-                val = cnpj_match.group(1)
-                norm = re.sub(r'[^\d]', '', val)
-                extracted_id = ExtractedIdentifier(
-                    id_type="cnpj",
-                    raw_value=val,
-                    normalized_value=norm,
-                    confidence=1.0,
-                    entropy=calculate_shannon_entropy(val),
-                )
+        if norm_filter == "homelab":
+            # Matches homelab wiki, agent skills, homelab_and_huawei presets, or homelab file paths
+            if domain_val in (
+                "homelab_wiki",
+                "agent_skills",
+                "homelab_and_huawei",
+                "homelab technical wiki & adrs",
+                "antigravity agent skills catalog",
+                "aegis appliance manuals & specs",
+            ):
+                return True
+            if any(k in doc_id_low for k in ("docs/wiki", "agents/skills", "adr-", "skill-", "homelab-")):
+                return True
+            if any(k in v_uri_low for k in ("docs/wiki", "agents/skills", ".agents")):
+                return True
+            if any(k in title_low for k in ("homelab", "agent skill", "adr-")):
+                return True
+            # Reject if telecom vendor
+            if "telecom_vendor" in domain_val or "hua_docs" in v_uri_low or doc_id_low.startswith("archive://"):
+                return False
+            return False
 
-        # Check CPF (e.g. 123.456.789-00)
-        if not extracted_id:
-            cpf_match = CPF_PATTERN.search(clean_q)
-            if cpf_match:
-                val = cpf_match.group(1)
-                norm = re.sub(r'[^\d]', '', val)
-                extracted_id = ExtractedIdentifier(
-                    id_type="cpf",
-                    raw_value=val,
-                    normalized_value=norm,
-                    confidence=1.0,
-                    entropy=calculate_shannon_entropy(val),
-                )
+        elif norm_filter == "telecom":
+            # Matches telecom vendor archives, Huawei manuals, alarms, MML, KPIs
+            if domain_val in ("telecom_vendor", "huawei usc & upcf 26.1.0 telecom vault", "telco_and_academic_libraries"):
+                return True
+            if doc_id_low.startswith("archive://") and not any(k in doc_id_low for k in ("docs/wiki", "agents/skills")):
+                return True
+            if any(k in v_uri_low for k in ("hua_docs", "usc", "upcf", "resources/alarms", "resources/be/mml")):
+                return True
+            if any(k in doc_id_low for k in ("alm-", "dsp ", "mod ", "lst ", "add ", "vs.")):
+                return True
+            if any(k in title_low for k in ("usc", "upcf", "alm-", "optical module", "huawei")):
+                return True
+            # Reject pure homelab records
+            if any(k in doc_id_low for k in ("docs/wiki", "agents/skills", "adr-", "skill-", "homelab-")):
+                return False
+            return False
 
-        # --- Vertical 1: Pharmacy & ANVISA (pharmacies_and_smb_retail) ---
-        # Check NF-e 44-digit Chave de Acesso
-        if not extracted_id:
-            nfe_match = NFE_CHAVE_PATTERN.search(clean_q)
-            if nfe_match:
-                raw_val = nfe_match.group(1).strip()
-                norm_val = re.sub(r'[^\d]', '', raw_val)
-                if len(norm_val) == 44:
-                    extracted_id = ExtractedIdentifier(
-                        id_type="nfe_chave",
-                        raw_value=raw_val,
-                        normalized_value=norm_val,
-                        confidence=1.0,
-                        entropy=calculate_shannon_entropy(norm_val),
-                        domain="pharmacies_and_smb_retail",
-                    )
-
-        # Check ANVISA Registro MS (e.g. MS 1.0235.1234.001-2 or 1.0235.1234.001-2)
-        if not extracted_id:
-            ms_match = ANVISA_MS_PATTERN.search(clean_q)
-            if ms_match:
-                raw_val = ms_match.group(1).strip()
-                norm_val = ms_match.group(2).strip()
-                extracted_id = ExtractedIdentifier(
-                    id_type="anvisa_ms",
-                    raw_value=raw_val,
-                    normalized_value=norm_val,
-                    confidence=1.0,
-                    entropy=calculate_shannon_entropy(norm_val),
-                    domain="pharmacies_and_smb_retail",
-                )
-
-        # Check Pharmacy Batch LOTE (e.g. LOTE-202609B, Lote: L2409-A, LOTE 88412A)
-        if not extracted_id:
-            lote_match = LOTE_PATTERN.search(clean_q)
-            if lote_match:
-                raw_val = lote_match.group(1).strip()
-                batch_code = lote_match.group(2).strip().upper()
-                extracted_id = ExtractedIdentifier(
-                    id_type="lote",
-                    raw_value=raw_val,
-                    normalized_value=batch_code,
-                    confidence=1.0,
-                    entropy=calculate_shannon_entropy(batch_code),
-                    domain="pharmacies_and_smb_retail",
-                )
-
-        # Check Portaria 344 Controlled Substance List (e.g. Lista B1, Lista A1)
-        if not extracted_id:
-            p344_match = PORTARIA_344_PATTERN.search(clean_q)
-            if p344_match:
-                raw_val = p344_match.group(1).strip()
-                list_code = f"Lista {p344_match.group(2).upper()}"
-                extracted_id = ExtractedIdentifier(
-                    id_type="portaria_344_lista",
-                    raw_value=raw_val,
-                    normalized_value=list_code,
-                    confidence=0.98,
-                    entropy=calculate_shannon_entropy(list_code),
-                    domain="pharmacies_and_smb_retail",
-                )
-
-        # --- Vertical 2: Medical & Boutique Clinics (boutique_medical_and_longevity_clinics) ---
-        # Check Physician CRM (e.g. CRM-SP 123456)
-        if not extracted_id:
-            crm_match = CRM_PATTERN.search(clean_q)
-            if crm_match:
-                raw_val = crm_match.group(1).strip()
-                uf = crm_match.group(2).upper()
-                num = crm_match.group(3)
-                norm_val = f"CRM-{uf} {num}"
-                extracted_id = ExtractedIdentifier(
-                    id_type="crm",
-                    raw_value=raw_val,
-                    normalized_value=norm_val,
-                    confidence=1.0,
-                    entropy=calculate_shannon_entropy(norm_val),
-                    domain="boutique_medical_and_longevity_clinics",
-                )
-
-        # Check ICD-10 / CID-10 disease codes (e.g. CID-10 E11.9, F41.1, I10.0)
-        if not extracted_id:
-            cid_match = CID10_PATTERN.search(clean_q)
-            if cid_match:
-                raw_val = cid_match.group(0).strip()
-                code_val = (cid_match.group(1) or cid_match.group(2)).upper()
-                extracted_id = ExtractedIdentifier(
-                    id_type="cid10",
-                    raw_value=raw_val,
-                    normalized_value=code_val,
-                    confidence=0.99,
-                    entropy=calculate_shannon_entropy(code_val),
-                    domain="boutique_medical_and_longevity_clinics",
-                )
-
-        # --- Vertical 3: Telco Engineering Manuals & Academic Libraries ---
-        # Check Telecom Alarm ID (e.g. ALM-26235, ALM-29201, ALM-26522)
-        if not extracted_id:
-            alm_match = ALARM_ID_PATTERN.search(clean_q)
-            if alm_match:
-                raw_val = alm_match.group(1).strip()
-                norm_val = raw_val.upper()
-                extracted_id = ExtractedIdentifier(
-                    id_type="telecom_alarm",
-                    raw_value=raw_val,
-                    normalized_value=norm_val,
-                    confidence=1.0,
-                    entropy=calculate_shannon_entropy(norm_val),
-                    domain="telco_and_academic_libraries",
-                )
-
-        # Check Telecom MML Command (e.g. DSP OPTMODULE, MOD NRDUCELL, LST ALMAF, ADD GNBCUCP)
-        if not extracted_id:
-            mml_match = MML_COMMAND_PATTERN.search(clean_q)
-            if mml_match:
-                raw_val = mml_match.group(1).strip()
-                norm_val = re.sub(r'\s+', ' ', raw_val.upper())
-                extracted_id = ExtractedIdentifier(
-                    id_type="mml_command",
-                    raw_value=raw_val,
-                    normalized_value=norm_val,
-                    confidence=1.0,
-                    entropy=calculate_shannon_entropy(norm_val),
-                    domain="telco_and_academic_libraries",
-                )
-
-        # Check 3GPP / Vendor KPI Counter (e.g. VS.NR.RRC.ConnEstab.Succ, VS.NR.MAC.DL.Throughput)
-        if not extracted_id:
-            kpi_match = KPI_COUNTER_PATTERN.search(clean_q)
-            if kpi_match:
-                raw_val = kpi_match.group(1).strip()
-                extracted_id = ExtractedIdentifier(
-                    id_type="telecom_kpi",
-                    raw_value=raw_val,
-                    normalized_value=raw_val,
-                    confidence=1.0,
-                    entropy=calculate_shannon_entropy(raw_val),
-                    domain="telco_and_academic_libraries",
-                )
-
-        # Check 3GPP TS & IETF RFC specifications (e.g. 3GPP TS 38.331, RFC 9114)
-        if not extracted_id:
-            telco_match = TELCO_SPEC_PATTERN.search(clean_q)
-            if telco_match:
-                raw_val = telco_match.group(1).strip()
-                norm_val = re.sub(r'\s+', ' ', raw_val)
-                extracted_id = ExtractedIdentifier(
-                    id_type="telco_spec",
-                    raw_value=raw_val,
-                    normalized_value=norm_val,
-                    confidence=1.0,
-                    entropy=calculate_shannon_entropy(norm_val),
-                    domain="telco_and_academic_libraries",
-                )
-
-        # Check ISBN-10 / ISBN-13
-        if not extracted_id:
-            isbn_match = ISBN_PATTERN.search(clean_q)
-            if isbn_match:
-                raw_val = isbn_match.group(1).strip()
-                norm_val = re.sub(r'[^\dX]', '', isbn_match.group(2).upper())
-                extracted_id = ExtractedIdentifier(
-                    id_type="isbn",
-                    raw_value=raw_val,
-                    normalized_value=norm_val,
-                    confidence=1.0,
-                    entropy=calculate_shannon_entropy(norm_val),
-                    domain="telco_and_academic_libraries",
-                )
-
-        # Check Agent Skill ID (e.g. manage-sovereign-vault, manage-traefik, trigger-n8n-workflows)
-        if not extracted_id:
-            skill_match = SKILL_ID_PATTERN.search(clean_q)
-            if skill_match:
-                raw_val = skill_match.group(1).strip()
-                norm_val = raw_val.lower()
-                extracted_id = ExtractedIdentifier(
-                    id_type="agent_skill",
-                    raw_value=raw_val,
-                    normalized_value=norm_val,
-                    confidence=1.0,
-                    entropy=calculate_shannon_entropy(norm_val),
-                    domain="agent_skills",
-                )
-
-        # Check Ticket (e.g. TCK-1092, SEC-9901, INC-2026-8841, ADR-40)
-        if not extracted_id:
-            ticket_match = TICKET_PATTERN.search(clean_q)
-            if ticket_match:
-                val = ticket_match.group(1)
-                extracted_id = ExtractedIdentifier(
-                    id_type="ticket",
-                    raw_value=val,
-                    normalized_value=val.upper(),
-                    confidence=1.0,
-                    entropy=calculate_shannon_entropy(val),
-                )
-
-        # Check Quoted Phrase (e.g. "Clause 14.2")
-        if not extracted_id:
-            quote_match = QUOTED_PHRASE_PATTERN.search(clean_q)
-            if quote_match:
-                val = quote_match.group(1)
-                extracted_id = ExtractedIdentifier(
-                    id_type="quoted_phrase",
-                    raw_value=f'"{val}"',
-                    normalized_value=val,
-                    confidence=0.98,
-                    entropy=calculate_shannon_entropy(val),
-                )
-
-        # Check General High-Entropy Alphanumeric Code (H >= 2.8 and NOT in RESERVED_LEXICON)
-        if not extracted_id:
-            tokens = re.findall(r'\b[A-Za-z0-9_-]{4,20}\b', clean_q)
-            for tok in tokens:
-                upper_tok = tok.upper()
-                if upper_tok in RESERVED_LEXICON:
-                    continue
-                ent = calculate_shannon_entropy(tok)
-                # Must contain at least one digit and one letter, or high entropy
-                has_digit = any(c.isdigit() for c in tok)
-                has_letter = any(c.isalpha() for c in tok)
-                if has_digit and has_letter and ent >= 2.8:
-                    extracted_id = ExtractedIdentifier(
-                        id_type="high_entropy_code",
-                        raw_value=tok,
-                        normalized_value=tok,
-                        confidence=0.90,
-                        entropy=ent,
-                    )
-                    break
-
-        # 3. Assess Intent Patterns
-        has_synthesis_intent = bool(SYNTHESIS_INTENT_PATTERN.search(clean_q))
-        has_relational_intent = bool(RELATIONAL_INTENT_PATTERN.search(clean_q))
-        has_macro_intent = bool(MACRO_SYNTHESIS_PATTERN.search(clean_q))
-        has_question_intent = "?" in clean_q and extracted_id is not None and extracted_id.id_type == "portaria_344_lista"
-
-        # 4. Route Decision Logic
-        if extracted_id:
-            # Compound query: contains an exact identifier BUT ALSO requests synthesis/analysis
-            if has_synthesis_intent or has_macro_intent or has_question_intent:
-                return RouteDecision(
-                    route_type=QueryRouteType.COMPOUND_FUSED,
-                    extracted_identifier=extracted_id,
-                    bypass_vector_search=False,
-                    safe_fail_on_missing_id=False,
-                    suggested_retrieval_mode="exact_entity",
-                    suggested_analytical_depth="deep_synthesis",
-                    needs_synthesis=True,
-                )
-            elif has_relational_intent:
-                return RouteDecision(
-                    route_type=QueryRouteType.COMPOUND_FUSED,
-                    extracted_identifier=extracted_id,
-                    bypass_vector_search=False,
-                    safe_fail_on_missing_id=False,
-                    suggested_retrieval_mode="exact_entity",
-                    suggested_analytical_depth="relational_audit",
-                    suggested_graph_hops=2,
-                    needs_synthesis=True,
-                )
-            else:
-                # Pure deterministic fast-path lookup (<2ms, 0 cloud tokens, safe failure)
-                return RouteDecision(
-                    route_type=QueryRouteType.DETERMINISTIC_DIRECT,
-                    extracted_identifier=extracted_id,
-                    bypass_vector_search=True,
-                    safe_fail_on_missing_id=True,
-                    suggested_retrieval_mode="high_precision",
-                    suggested_analytical_depth="flash_needle",
-                    needs_synthesis=False,
-                )
-
-        # No identifier present: Cognitive Prong 2 routing
-        if has_macro_intent:
-            return RouteDecision(
-                route_type=QueryRouteType.MACRO_SYNTHESIS,
-                extracted_identifier=None,
-                bypass_vector_search=False,
-                safe_fail_on_missing_id=False,
-                suggested_retrieval_mode="high_precision",
-                suggested_analytical_depth="deep_synthesis",
-                needs_synthesis=True,
-            )
-
-        if has_relational_intent:
-            return RouteDecision(
-                route_type=QueryRouteType.RELATIONAL_GRAPH,
-                extracted_identifier=None,
-                bypass_vector_search=False,
-                safe_fail_on_missing_id=False,
-                suggested_retrieval_mode="exact_entity",
-                suggested_analytical_depth="relational_audit",
-                suggested_graph_hops=2,
-                needs_synthesis=True,
-            )
-
-        if has_synthesis_intent:
-            return RouteDecision(
-                route_type=QueryRouteType.HYBRID_NEEDLE,
-                extracted_identifier=None,
-                bypass_vector_search=False,
-                safe_fail_on_missing_id=False,
-                suggested_retrieval_mode="high_precision",
-                suggested_analytical_depth="flash_needle",
-                needs_synthesis=True,
-            )
-
-        # Default natural query
-        return RouteDecision(
-            route_type=QueryRouteType.HYBRID_NEEDLE,
-            extracted_identifier=None,
-            bypass_vector_search=False,
-            safe_fail_on_missing_id=False,
-            suggested_retrieval_mode="high_precision",
-            suggested_analytical_depth="flash_needle",
-            needs_synthesis=False,
-        )
+        return True
 
     def execute_deterministic_lookup(
         self,
@@ -776,21 +300,35 @@ class SovereignQueryRouter:
         user_clearance: Union[str, int, ClearanceLevel] = ClearanceLevel.PUBLIC,
         limit: int = 5,
         full_query: Optional[str] = None,
+        domain_filter: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Executes sub-2ms deterministic lookup via SQLite B-Tree and external-content FTS5 with MAC clearance pushdown.
-        Zero ONNX forward passes. Zero snippet leakage.
+        Zero ONNX forward passes. Zero snippet leakage. Applies domain scope filtering.
         """
         t0 = time.perf_counter()
         clearance_lvl = ClearanceLevel.from_string(user_clearance)
         clearance_int = clearance_lvl.value
+        norm_filter = self._normalize_domain_filter(domain_filter)
 
         if isinstance(identifier, ExtractedIdentifier):
             val = identifier.raw_value
             norm = identifier.normalized_value
+            id_type = identifier.id_type
+            ident_domain = identifier.domain
         else:
             val = str(identifier)
             norm = val
+            id_type = ""
+            ident_domain = None
+
+        # Cross-domain guard: if filtering for homelab, reject purely telecom extracted IDs
+        if norm_filter == "homelab":
+            if id_type in ("telecom_alarm", "mml_command", "telecom_kpi", "telco_spec") or ident_domain == "telco_and_academic_libraries":
+                return []
+        elif norm_filter == "telecom":
+            if id_type in ("agent_skill", "wiki_adr") or ident_domain in ("homelab_wiki", "agent_skills"):
+                return []
 
         results: List[Dict[str, Any]] = []
         seen_ids = set()
@@ -804,13 +342,16 @@ class SovereignQueryRouter:
             WHERE (doc_identifier = ? OR doc_identifier = ?)
               AND clearance_level <= ?
             LIMIT ?
-        """, (val, norm, clearance_int, limit))
+        """, (val, norm, clearance_int, limit * 2))
+
         for row in cursor.fetchall():
             row_dict = dict(row)
             row_id = row_dict["id"]
             if row_id not in seen_ids:
-                seen_ids.add(row_id)
                 meta = json.loads(row_dict.get("metadata") or "{}")
+                if not self._matches_domain_scope(row_dict["doc_identifier"], row_dict["title"], meta, norm_filter):
+                    continue
+                seen_ids.add(row_id)
                 v_uri = meta.get("virtual_uri") or meta.get("file_path") or row_dict["doc_identifier"]
                 content_preview = row_dict["content"][:200]
                 results.append({
@@ -830,6 +371,11 @@ class SovereignQueryRouter:
                     "retrieval_latency_ms": (time.perf_counter() - t0) * 1000.0,
                     "source": "btree_direct",
                 })
+                if len(results) >= limit:
+                    break
+
+        if len(results) >= limit:
+            return results
 
         # Extract additional context terms from full_query (if provided) to rank companion FTS5 pages
         extra_terms: List[str] = []
@@ -839,7 +385,28 @@ class SovereignQueryRouter:
                 if w.lower() not in _stop and w.upper() not in (val.upper(), norm.upper()):
                     extra_terms.append(w.replace('"', '""'))
 
-        # Step 2: External-Content FTS5 Join with MAC Predicate Pushdown (if more hits needed)
+        # Step 2: External-Content FTS5 Join with MAC Predicate Pushdown and domain filtering
+        domain_sql_pushdown = ""
+        if norm_filter == "homelab":
+            domain_sql_pushdown = (
+                " AND (d.metadata LIKE '%\"domain\": \"homelab_wiki\"%'"
+                " OR d.metadata LIKE '%\"domain\": \"agent_skills\"%'"
+                " OR d.metadata LIKE '%\"domain\": \"homelab_and_huawei\"%'"
+                " OR d.metadata LIKE '%\"domain\": \"Homelab%'"
+                " OR d.metadata LIKE '%\"domain\": \"Antigravity%'"
+                " OR d.doc_identifier LIKE '%docs/wiki%'"
+                " OR d.doc_identifier LIKE '%agents/skills%'"
+                " OR d.doc_identifier LIKE 'ADR-%'"
+                " OR d.doc_identifier LIKE 'SKILL-%'"
+                " OR d.doc_identifier LIKE 'HOMELAB-%')"
+            )
+        elif norm_filter == "telecom":
+            domain_sql_pushdown = (
+                " AND (d.metadata LIKE '%\"domain\": \"telecom_vendor\"%'"
+                " OR d.metadata LIKE '%\"domain\": \"Huawei%'"
+                " OR d.doc_identifier LIKE 'archive://%')"
+            )
+
         for candidate_tok in ([val] if val == norm else [val, norm]):
             if len(results) >= limit:
                 break
@@ -853,24 +420,28 @@ class SovereignQueryRouter:
             for fts_query in fts_candidates:
                 if len(results) >= limit:
                     break
-                remaining = limit - len(results)
+                remaining = (limit - len(results)) * 2
+                query_sql = f"""
+                    SELECT d.id, d.doc_identifier, d.title, d.content, d.clearance_level, d.metadata,
+                           snippet(document_fts, 1, '<b>', '</b>', '...', 32) as match_snippet
+                    FROM document_fts f
+                    JOIN document_records d ON f.rowid = d.id
+                    WHERE document_fts MATCH ?
+                      AND d.clearance_level <= ?
+                      {domain_sql_pushdown}
+                    ORDER BY bm25(document_fts, 10.0, 1.0)
+                    LIMIT ?
+                """
                 try:
-                    cursor.execute("""
-                        SELECT d.id, d.doc_identifier, d.title, d.content, d.clearance_level, d.metadata,
-                               snippet(document_fts, 1, '<b>', '</b>', '...', 32) as match_snippet
-                        FROM document_fts f
-                        JOIN document_records d ON f.rowid = d.id
-                        WHERE document_fts MATCH ?
-                          AND d.clearance_level <= ?
-                        ORDER BY bm25(document_fts, 10.0, 1.0)
-                        LIMIT ?
-                    """, (fts_query, clearance_int, remaining))
+                    cursor.execute(query_sql, (fts_query, clearance_int, remaining))
                     for row in cursor.fetchall():
                         row_dict = dict(row)
                         row_id = row_dict["id"]
                         if row_id not in seen_ids:
-                            seen_ids.add(row_id)
                             meta = json.loads(row_dict.get("metadata") or "{}")
+                            if not self._matches_domain_scope(row_dict["doc_identifier"], row_dict["title"], meta, norm_filter):
+                                continue
+                            seen_ids.add(row_id)
                             v_uri = meta.get("virtual_uri") or meta.get("file_path") or row_dict["doc_identifier"]
                             results.append({
                                 "id": row_id,
@@ -889,16 +460,19 @@ class SovereignQueryRouter:
                                 "retrieval_latency_ms": (time.perf_counter() - t0) * 1000.0,
                                 "source": "fts5_join",
                             })
+                            if len(results) >= limit:
+                                break
                 except sqlite3.OperationalError:
                     pass
 
-        return results
+        return results[:limit]
 
     def find_deterministic_suggestions_and_fallbacks(
         self,
         identifier: Union[ExtractedIdentifier, str],
         user_clearance: Union[str, int, ClearanceLevel] = ClearanceLevel.PUBLIC,
         limit: int = 5,
+        domain_filter: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Intelligent suggestion and fallback cascade for deterministic misses.
@@ -907,6 +481,7 @@ class SovereignQueryRouter:
         """
         clearance_lvl = ClearanceLevel.from_string(user_clearance)
         clearance_int = clearance_lvl.value
+        norm_filter = self._normalize_domain_filter(domain_filter)
 
         if isinstance(identifier, ExtractedIdentifier):
             val = identifier.raw_value
@@ -922,142 +497,158 @@ class SovereignQueryRouter:
         fallbacks: List[Dict[str, Any]] = []
 
         # 1. Telecom Alarm Neighbor Discovery (e.g. ALM-20100 -> ALM-20102, ALM-20103, ALM-20104)
-        alm_m = re.match(r"ALM-(\d+)", val, re.I)
-        if alm_m or id_type == "telecom_alarm":
-            digits = alm_m.group(1) if alm_m else re.sub(r"[^\d]", "", val)
-            if digits:
-                target_num = int(digits)
-                prefixes = []
-                if len(digits) >= 4:
-                    prefixes.append(digits[:-1])  # e.g. 2010 for 20100
-                if len(digits) >= 5:
-                    prefixes.append(digits[:-2])  # e.g. 201 for 20100
-                if not prefixes and len(digits) >= 3:
-                    prefixes.append(digits[:-1])
+        if norm_filter != "homelab":
+            alm_m = re.match(r"ALM-(\d+)", val, re.I)
+            if alm_m or id_type == "telecom_alarm":
+                digits = alm_m.group(1) if alm_m else re.sub(r"[^\d]", "", val)
+                if digits:
+                    target_num = int(digits)
+                    prefixes = []
+                    if len(digits) >= 4:
+                        prefixes.append(digits[:-1])  # e.g. 2010 for 20100
+                    if len(digits) >= 5:
+                        prefixes.append(digits[:-2])  # e.g. 201 for 20100
+                    if not prefixes and len(digits) >= 3:
+                        prefixes.append(digits[:-1])
 
-                found_alarms: Dict[str, Tuple[int, str]] = {}
-                for pfx in prefixes:
-                    cursor.execute("""
-                        SELECT doc_identifier, title, clearance_level, metadata
-                        FROM document_records
-                        WHERE (title LIKE ? OR doc_identifier LIKE ?)
-                          AND clearance_level <= ?
-                        LIMIT 40
-                    """, (f"%ALM-{pfx}%", f"%/{pfx}%", clearance_int))
-                    for row in cursor.fetchall():
-                        t = row["title"]
-                        for am in re.findall(r"ALM-(\d{3,6})", t, re.I):
-                            alm_id = f"ALM-{am}"
-                            if alm_id.upper() != val.upper() and alm_id not in found_alarms:
-                                dist = abs(int(am) - target_num)
-                                found_alarms[alm_id] = (dist, t)
-                    if len(found_alarms) >= limit * 2:
-                        break
+                    found_alarms: Dict[str, Tuple[int, str]] = {}
+                    for pfx in prefixes:
+                        cursor.execute("""
+                            SELECT doc_identifier, title, clearance_level, metadata
+                            FROM document_records
+                            WHERE (title LIKE ? OR doc_identifier LIKE ?)
+                              AND clearance_level <= ?
+                            LIMIT 40
+                        """, (f"%ALM-{pfx}%", f"%/{pfx}%", clearance_int))
+                        for row in cursor.fetchall():
+                            t = row["title"]
+                            meta = json.loads(row["metadata"] or "{}")
+                            if not self._matches_domain_scope(row["doc_identifier"], t, meta, norm_filter):
+                                continue
+                            for am in re.findall(r"ALM-(\d{3,6})", t, re.I):
+                                alm_id = f"ALM-{am}"
+                                if alm_id.upper() != val.upper() and alm_id not in found_alarms:
+                                    dist = abs(int(am) - target_num)
+                                    found_alarms[alm_id] = (dist, t)
+                        if len(found_alarms) >= limit * 2:
+                            break
 
-                sorted_alarms = sorted(found_alarms.items(), key=lambda x: x[1][0])
-                for alm_id, (dist, title) in sorted_alarms[:limit]:
-                    clean_title = re.sub(r"^(USC|UPCF)\s+[\d.]+:?\s*", "", title)
-                    suggestions.append({
-                        "identifier": alm_id,
-                        "title": title,
-                        "short_title": clean_title,
-                        "distance": dist,
-                        "type": "neighbor_alarm",
-                    })
-
-                # Relaxed FTS5 search on numeric code to discover related topics/events (e.g. 20100)
-                try:
-                    cursor.execute("""
-                        SELECT d.id, d.doc_identifier, d.title, d.content, d.clearance_level, d.metadata,
-                               snippet(document_fts, 1, '<b>', '</b>', '...', 32) as match_snippet
-                        FROM document_fts f
-                        JOIN document_records d ON f.rowid = d.id
-                        WHERE document_fts MATCH ?
-                          AND d.clearance_level <= ?
-                        ORDER BY bm25(document_fts, 10.0, 1.0)
-                        LIMIT ?
-                    """, (f'"{digits}"', clearance_int, limit))
-                    for row in cursor.fetchall():
-                        rd = dict(row)
-                        meta = json.loads(rd.get("metadata") or "{}")
-                        v_uri = meta.get("virtual_uri") or meta.get("file_path") or rd["doc_identifier"]
-                        fallbacks.append({
-                            "id": rd["id"],
-                            "doc_identifier": rd["doc_identifier"],
-                            "file_path": v_uri,
-                            "virtual_uri": v_uri,
-                            "title": rd["title"],
-                            "content": rd["content"],
-                            "text": rd["content"],
-                            "clearance_level": rd["clearance_level"],
-                            "metadata": meta,
-                            "match_snippet": rd.get("match_snippet") or rd["content"][:160],
-                            "score": 0.70,
-                            "confidence_score": 0.70,
-                            "confidence_band": "RELATED_TOPIC_FALLBACK",
-                            "source": "fts5_code_fallback",
+                    sorted_alarms = sorted(found_alarms.items(), key=lambda x: x[1][0])
+                    for alm_id, (dist, title) in sorted_alarms[:limit]:
+                        clean_title = re.sub(r"^(USC|UPCF)\s+[\d.]+:?\s*", "", title)
+                        suggestions.append({
+                            "identifier": alm_id,
+                            "title": title,
+                            "short_title": clean_title,
+                            "distance": dist,
+                            "type": "neighbor_alarm",
                         })
-                except Exception:
-                    pass
+
+                    # Relaxed FTS5 search on numeric code to discover related topics/events
+                    try:
+                        cursor.execute("""
+                            SELECT d.id, d.doc_identifier, d.title, d.content, d.clearance_level, d.metadata,
+                                   snippet(document_fts, 1, '<b>', '</b>', '...', 32) as match_snippet
+                            FROM document_fts f
+                            JOIN document_records d ON f.rowid = d.id
+                            WHERE document_fts MATCH ?
+                              AND d.clearance_level <= ?
+                            ORDER BY bm25(document_fts, 10.0, 1.0)
+                            LIMIT ?
+                        """, (f'"{digits}"', clearance_int, limit * 2))
+                        for row in cursor.fetchall():
+                            rd = dict(row)
+                            meta = json.loads(rd.get("metadata") or "{}")
+                            if not self._matches_domain_scope(rd["doc_identifier"], rd["title"], meta, norm_filter):
+                                continue
+                            v_uri = meta.get("virtual_uri") or meta.get("file_path") or rd["doc_identifier"]
+                            fallbacks.append({
+                                "id": rd["id"],
+                                "doc_identifier": rd["doc_identifier"],
+                                "file_path": v_uri,
+                                "virtual_uri": v_uri,
+                                "title": rd["title"],
+                                "content": rd["content"],
+                                "text": rd["content"],
+                                "clearance_level": rd["clearance_level"],
+                                "metadata": meta,
+                                "match_snippet": rd.get("match_snippet") or rd["content"][:160],
+                                "score": 0.70,
+                                "confidence_score": 0.70,
+                                "confidence_band": "RELATED_TOPIC_FALLBACK",
+                                "source": "fts5_code_fallback",
+                            })
+                            if len(fallbacks) >= limit:
+                                break
+                    except Exception:
+                        pass
 
         # 2. Telecom MML Command Discovery (e.g. DSP OPTMOD -> DSP OPTMODULE)
-        mml_m = re.match(r"([A-Z]{3})\s+([A-Z0-9_]+)", val, re.I)
-        if (mml_m or id_type == "mml_command") and not suggestions:
-            verb = mml_m.group(1).upper() if mml_m else val[:3].upper()
-            stem = mml_m.group(2).upper() if mml_m else val[4:].strip().upper()
-            search_prefix = stem[:4] if len(stem) >= 4 else stem
-            cursor.execute("""
-                SELECT DISTINCT doc_identifier, title, clearance_level, metadata
-                FROM document_records
-                WHERE (title LIKE ? OR content LIKE ?)
-                  AND clearance_level <= ?
-                LIMIT 20
-            """, (f"%{verb} {search_prefix}%", f"%{verb} {search_prefix}%", clearance_int))
-            existing_suggs = {s["identifier"] for s in suggestions}
-            for row in cursor.fetchall():
-                for m in re.findall(rf"\b({verb}\s+[A-Z0-9_]{{3,20}})\b", f"{row['title']}", re.I):
-                    clean_m = re.sub(r"\s+", " ", m.upper())
-                    if clean_m != val.upper() and clean_m not in existing_suggs:
-                        existing_suggs.add(clean_m)
-                        clean_title = re.sub(r"^(USC|UPCF)\s+[\d.]+:?\s*", "", row["title"])
-                        suggestions.append({
-                            "identifier": clean_m,
-                            "title": row["title"],
-                            "short_title": clean_title or clean_m,
-                            "type": "similar_mml_command",
-                        })
-                if len(suggestions) >= limit:
-                    break
+        if norm_filter != "homelab":
+            mml_m = re.match(r"([A-Z]{3})\s+([A-Z0-9_]+)", val, re.I)
+            if (mml_m or id_type == "mml_command") and not suggestions:
+                verb = mml_m.group(1).upper() if mml_m else val[:3].upper()
+                stem = mml_m.group(2).upper() if mml_m else val[4:].strip().upper()
+                search_prefix = stem[:4] if len(stem) >= 4 else stem
+                cursor.execute("""
+                    SELECT DISTINCT doc_identifier, title, clearance_level, metadata
+                    FROM document_records
+                    WHERE (title LIKE ? OR content LIKE ?)
+                      AND clearance_level <= ?
+                    LIMIT 25
+                """, (f"%{verb} {search_prefix}%", f"%{verb} {search_prefix}%", clearance_int))
+                existing_suggs = {s["identifier"] for s in suggestions}
+                for row in cursor.fetchall():
+                    meta = json.loads(row["metadata"] or "{}")
+                    if not self._matches_domain_scope(row["doc_identifier"], row["title"], meta, norm_filter):
+                        continue
+                    for m in re.findall(rf"\b({verb}\s+[A-Z0-9_]{{3,20}})\b", f"{row['title']}", re.I):
+                        clean_m = re.sub(r"\s+", " ", m.upper())
+                        if clean_m != val.upper() and clean_m not in existing_suggs:
+                            existing_suggs.add(clean_m)
+                            clean_title = re.sub(r"^(USC|UPCF)\s+[\d.]+:?\s*", "", row["title"])
+                            suggestions.append({
+                                "identifier": clean_m,
+                                "title": row["title"],
+                                "short_title": clean_title or clean_m,
+                                "type": "similar_mml_command",
+                            })
+                    if len(suggestions) >= limit:
+                        break
 
-        # 3. ADR / Ticket Neighbor Discovery (e.g. ADR-99 -> ADR-40)
-        ticket_m = re.match(r"([A-Z]{2,6})-(\d+)", val, re.I)
-        if (ticket_m or id_type in ("ticket", "wiki_adr")) and not suggestions:
-            pfx = ticket_m.group(1).upper() if ticket_m else "ADR"
-            num = int(ticket_m.group(2)) if ticket_m else 0
-            cursor.execute("""
-                SELECT doc_identifier, title, clearance_level
-                FROM document_records
-                WHERE (doc_identifier LIKE ? OR title LIKE ?)
-                  AND clearance_level <= ?
-                LIMIT 30
-            """, (f"{pfx}-%", f"%{pfx}-%", clearance_int))
-            found_tickets: Dict[str, Tuple[int, str]] = {}
-            for row in cursor.fetchall():
-                for tm in re.findall(rf"\b({pfx}-\d+)\b", f"{row['doc_identifier']} {row['title']}", re.I):
-                    t_id = tm.upper()
-                    if t_id != val.upper() and t_id not in found_tickets:
-                        t_num = int(re.sub(r"[^\d]", "", t_id) or 0)
-                        dist = abs(t_num - num)
-                        found_tickets[t_id] = (dist, row["title"])
-            sorted_tickets = sorted(found_tickets.items(), key=lambda x: x[1][0])
-            for t_id, (dist, t_title) in sorted_tickets[:limit]:
-                suggestions.append({
-                    "identifier": t_id,
-                    "title": t_title,
-                    "short_title": t_id,
-                    "distance": dist,
-                    "type": "neighbor_ticket",
-                })
+        # 3. ADR / Ticket Neighbor Discovery (e.g. ADR-99 -> ADR-40, ADR-30)
+        if norm_filter != "telecom":
+            ticket_m = re.match(r"([A-Z]{2,6})-(\d+)", val, re.I)
+            if (ticket_m or id_type in ("ticket", "wiki_adr")) and not suggestions:
+                pfx = ticket_m.group(1).upper() if ticket_m else "ADR"
+                num = int(ticket_m.group(2)) if ticket_m else 0
+                cursor.execute("""
+                    SELECT doc_identifier, title, clearance_level, metadata
+                    FROM document_records
+                    WHERE (doc_identifier LIKE ? OR title LIKE ?)
+                      AND clearance_level <= ?
+                    LIMIT 30
+                """, (f"{pfx}-%", f"%{pfx}-%", clearance_int))
+                found_tickets: Dict[str, Tuple[int, str]] = {}
+                for row in cursor.fetchall():
+                    meta = json.loads(row["metadata"] or "{}")
+                    if not self._matches_domain_scope(row["doc_identifier"], row["title"], meta, norm_filter):
+                        continue
+                    for tm in re.findall(rf"\b({pfx}-\d+)\b", f"{row['doc_identifier']} {row['title']}", re.I):
+                        t_id = tm.upper()
+                        if t_id != val.upper() and t_id not in found_tickets:
+                            t_num = int(re.sub(r"[^\d]", "", t_id) or 0)
+                            dist = abs(t_num - num)
+                            found_tickets[t_id] = (dist, row["title"])
+                sorted_tickets = sorted(found_tickets.items(), key=lambda x: x[1][0])
+                for t_id, (dist, t_title) in sorted_tickets[:limit]:
+                    suggestions.append({
+                        "identifier": t_id,
+                        "title": t_title,
+                        "short_title": t_id,
+                        "distance": dist,
+                        "type": "neighbor_ticket",
+                    })
 
         return suggestions[:limit], fallbacks[:limit]
 
@@ -1067,14 +658,16 @@ class SovereignQueryRouter:
         user_clearance: Union[str, int, ClearanceLevel] = ClearanceLevel.PUBLIC,
         plan: Optional[Union[str, PlanTier]] = None,
         limit: int = 5,
+        domain_filter: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Orchestrates query classification, deterministic lookups, graceful fallback cascade,
-        and selective LLM synthesis gating.
+        domain scope filtering pushdown, and selective LLM synthesis gating.
         """
         t0 = time.perf_counter()
         clearance_lvl = ClearanceLevel.from_string(user_clearance)
         clearance_int = clearance_lvl.value
+        norm_filter = self._normalize_domain_filter(domain_filter)
 
         enforcer = self.plan_enforcer
         if plan is not None:
@@ -1091,6 +684,7 @@ class SovereignQueryRouter:
                 clearance_lvl,
                 limit=limit,
                 full_query=query,
+                domain_filter=norm_filter,
             )
             latency_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -1100,6 +694,7 @@ class SovereignQueryRouter:
                     decision.extracted_identifier,
                     clearance_lvl,
                     limit=limit,
+                    domain_filter=norm_filter,
                 )
                 raw_id = decision.extracted_identifier.raw_value if decision.extracted_identifier else ""
                 has_suggs = bool(suggestions or fallbacks)
@@ -1126,6 +721,7 @@ class SovereignQueryRouter:
                     "confidence_score": 0.35 if has_suggs else 0.0,
                     "confidence_level": "UNVERIFIED_SUGGESTIONS_AVAILABLE" if has_suggs else "LOW_UNVERIFIED",
                     "confidence_band": "SUGGESTIONS_AVAILABLE" if suggestions else ("RELATED_TOPICS_FOUND" if fallbacks else "NOT_FOUND"),
+                    "domain_filter": norm_filter or "all",
                     "message": msg,
                 }
 
@@ -1143,6 +739,7 @@ class SovereignQueryRouter:
                 "confidence_score": 0.99,
                 "confidence_level": "HIGH_DETERMINISTIC_EXACT",
                 "confidence_band": "HIGH_DETERMINISTIC_EXACT (99%)",
+                "domain_filter": norm_filter or "all",
                 "message": f"Retrieved {len(records)} record(s) via deterministic fast-path."
             }
 
@@ -1173,7 +770,6 @@ class SovereignQueryRouter:
                     "Falling back cleanly to Sparse BM25 Keyword Search + Exact Phrase Matching."
                 )
                 effective_mode = "exact_entity"
-                # Entity becomes a mandatory lexical filter in flat chunk index
 
         # Check RaptorStore availability & enforce fallback
         elif decision.route_type == QueryRouteType.MACRO_SYNTHESIS:
@@ -1198,6 +794,7 @@ class SovereignQueryRouter:
                 clearance_lvl,
                 limit=3,
                 full_query=query,
+                domain_filter=norm_filter,
             )
 
         # Retrieve evidence: via external searcher or internal FTS5 fallback
@@ -1211,10 +808,30 @@ class SovereignQueryRouter:
                     analytical_depth=effective_depth,
                     user_clearance=clearance_lvl.name.lower(),
                 )
+                if norm_filter and results:
+                    results = [
+                        r for r in results
+                        if self._matches_domain_scope(
+                            r.get("doc_identifier", ""),
+                            r.get("title", ""),
+                            r.get("metadata") or {},
+                            norm_filter,
+                        )
+                    ]
             except Exception:
-                results = self._fallback_fts_search(query, clearance_int, effective_limit)
+                results = self._fallback_fts_search(
+                    query=query,
+                    clearance_int=clearance_int,
+                    limit=effective_limit,
+                    domain_filter=norm_filter,
+                )
         if not results:
-            results = self._fallback_fts_search(query, clearance_int, effective_limit)
+            results = self._fallback_fts_search(
+                query=query,
+                clearance_int=clearance_int,
+                limit=effective_limit,
+                domain_filter=norm_filter,
+            )
 
         # Combine compound records if present
         if compound_records:
@@ -1253,6 +870,7 @@ class SovereignQueryRouter:
             sc = float(r.get("confidence_score") or r.get("score") or 0.0)
             if sc > top_score:
                 top_score = sc
+
         if not results and decision.route_type == QueryRouteType.DETERMINISTIC_DIRECT:
             top_score = 0.0
             conf_band = "LOW_EPISTEMIC_REFUSAL (0% - Not Found)"
@@ -1280,17 +898,26 @@ class SovereignQueryRouter:
             "fallback_active": fallback_active or decision.fallback_active,
             "fallback_reason": fallback_reason or decision.fallback_reason,
             "extracted_identifier": decision.extracted_identifier.raw_value if decision.extracted_identifier else None,
+            "domain_filter": norm_filter or "all",
         }
         if graph_dossier is not None:
             payload_res["graph_dossier"] = graph_dossier
         return payload_res
 
-    def _fallback_fts_search(self, query: str, clearance_int: int, limit: int) -> List[Dict[str, Any]]:
+    def _fallback_fts_search(
+        self,
+        query: str,
+        clearance_int: int,
+        limit: int,
+        domain_filter: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """
         Multi-tier BM25 FTS5 lexical search with title boosting (10x), DITA Feature Configuration
         sibling boosting (`reference/service/cn_34_*.html` / `WHFD-611001` / `5GFUP_Service`),
-        and calibrated confidence scoring.
+        domain scope SQL pushdown, and calibrated confidence scoring.
         """
+        norm_filter = self._normalize_domain_filter(domain_filter)
+
         _stopwords = {
             "the", "and", "for", "with", "from", "what", "are", "how", "why", "does",
             "que", "por", "como", "para", "uma", "dos", "das", "nos", "nas",
@@ -1333,11 +960,33 @@ class SovereignQueryRouter:
             expr_4 = " AND ".join(f'"{w}"' for w in longest_4)
             if expr_4 not in fts_expressions:
                 fts_expressions.append(expr_4)
-        if is_service_config_intent:
+        if is_service_config_intent and norm_filter != "homelab":
             fts_expressions.insert(0, '"5GFUP_Service" OR "WHFD-611001" OR ("Usage-based Dynamic Policy Control" AND "5G")')
-        if is_pod_architecture_intent:
+        if is_pod_architecture_intent and norm_filter != "homelab":
             fts_expressions.insert(0, '"4-Tier POD Organization" OR ("Service Deployment Policies" AND "Pod Function") OR ("FE Service Deployment Policies")')
         fts_expressions.append(" OR ".join(f'"{w}"' for w in meaningful_words[:10]))
+
+        # Domain SQL Pushdown filter
+        domain_sql_pushdown = ""
+        if norm_filter == "homelab":
+            domain_sql_pushdown = (
+                " AND (d.metadata LIKE '%\"domain\": \"homelab_wiki\"%'"
+                " OR d.metadata LIKE '%\"domain\": \"agent_skills\"%'"
+                " OR d.metadata LIKE '%\"domain\": \"homelab_and_huawei\"%'"
+                " OR d.metadata LIKE '%\"domain\": \"Homelab%'"
+                " OR d.metadata LIKE '%\"domain\": \"Antigravity%'"
+                " OR d.doc_identifier LIKE '%docs/wiki%'"
+                " OR d.doc_identifier LIKE '%agents/skills%'"
+                " OR d.doc_identifier LIKE 'ADR-%'"
+                " OR d.doc_identifier LIKE 'SKILL-%'"
+                " OR d.doc_identifier LIKE 'HOMELAB-%')"
+            )
+        elif norm_filter == "telecom":
+            domain_sql_pushdown = (
+                " AND (d.metadata LIKE '%\"domain\": \"telecom_vendor\"%'"
+                " OR d.metadata LIKE '%\"domain\": \"Huawei%'"
+                " OR d.doc_identifier LIKE 'archive://%')"
+            )
 
         cursor = self._conn.cursor()
         candidates: List[Dict[str, Any]] = []
@@ -1347,37 +996,42 @@ class SovereignQueryRouter:
         for match_expr in fts_expressions:
             if len(candidates) >= fetch_cap:
                 break
+            query_sql = f"""
+                SELECT d.id, d.doc_identifier, d.title, d.content, d.clearance_level, d.metadata,
+                       snippet(document_fts, 1, '<b>', '</b>', '...', 32) as match_snippet,
+                       bm25(document_fts, 10.0, 1.0) as bm25_rank
+                FROM document_fts f
+                JOIN document_records d ON f.rowid = d.id
+                WHERE document_fts MATCH ?
+                  AND d.clearance_level <= ?
+                  {domain_sql_pushdown}
+                ORDER BY bm25_rank
+                LIMIT ?
+            """
             try:
-                cursor.execute("""
-                    SELECT d.id, d.doc_identifier, d.title, d.content, d.clearance_level, d.metadata,
-                           snippet(document_fts, 1, '<b>', '</b>', '...', 32) as match_snippet,
-                           bm25(document_fts, 10.0, 1.0) as bm25_rank
-                    FROM document_fts f
-                    JOIN document_records d ON f.rowid = d.id
-                    WHERE document_fts MATCH ?
-                      AND d.clearance_level <= ?
-                    ORDER BY bm25_rank
-                    LIMIT ?
-                """, (match_expr, clearance_int, fetch_cap))
+                cursor.execute(query_sql, (match_expr, clearance_int, fetch_cap))
                 for row in cursor.fetchall():
                     d = dict(row)
                     rid = d["id"]
                     if rid in seen_ids:
                         continue
-                    seen_ids.add(rid)
                     meta = json.loads(d.get("metadata") or "{}")
+                    if not self._matches_domain_scope(d["doc_identifier"], d["title"], meta, norm_filter):
+                        continue
+                    seen_ids.add(rid)
+
                     v_uri = meta.get("virtual_uri") or meta.get("file_path") or d["doc_identifier"]
                     title_low = d["title"].lower()
                     body_low = d["content"][:8000].lower()
                     title_hits = sum(1 for w in meaningful_words if w.lower() in title_low)
                     body_hits = sum(1 for w in meaningful_words if w.lower() in body_low)
                     dita_boost = 0.0
-                    if is_service_config_intent:
+                    if is_service_config_intent and norm_filter != "homelab":
                         if "cn_34_03_000050_5.html" in v_uri or "5gfup_service" in body_low or "whfd-611001" in title_low:
                             dita_boost = 18.0
                         elif "reference/service/" in v_uri or "en-us_topic_0289836736.html" in v_uri:
                             dita_boost = 10.0
-                    if is_pod_architecture_intent:
+                    if is_pod_architecture_intent and norm_filter != "homelab":
                         if "en-us_topic_0000001233645127.html" in v_uri:
                             dita_boost = 22.0
                         elif any(p in v_uri for p in ("en-us_topic_0000001188445608.html", "en-us_topic_0000001188287054.html", "en-us_topic_0000001188605518.html", "en-us_topic_0000001233446695.html", "en-us_topic_0287771027.html")):
@@ -1418,3 +1072,43 @@ class SovereignQueryRouter:
             final_res.append(item)
         return final_res
 
+
+__all__ = [
+    # Router Core
+    "SovereignQueryRouter",
+    # Classifier & Taxonomy
+    "QueryRouteType",
+    "RouteType",
+    "ConfidenceLevel",
+    "ExtractedIdentifier",
+    "RouteDecision",
+    "score_epistemic_confidence",
+    "classify_query_intent",
+    # Grammars & RegEx Patterns
+    "calculate_shannon_entropy",
+    "HEX_PATTERN",
+    "TICKET_PATTERN",
+    "STANDARD_SPEC_PATTERN",
+    "CPF_PATTERN",
+    "CNPJ_PATTERN",
+    "QUOTED_PHRASE_PATTERN",
+    "ALARM_ID_PATTERN",
+    "MML_COMMAND_PATTERN",
+    "KPI_COUNTER_PATTERN",
+    "TELCO_SPEC_PATTERN",
+    "ISBN_PATTERN",
+    "LOTE_PATTERN",
+    "ANVISA_MS_PATTERN",
+    "NFE_CHAVE_PATTERN",
+    "PORTARIA_344_PATTERN",
+    "CID10_PATTERN",
+    "CRM_PATTERN",
+    "ADR_PATTERN",
+    "SKILL_PATTERN",
+    "SKILL_ID_PATTERN",
+    "SYNTHESIS_INTENT_PATTERN",
+    "RELATIONAL_INTENT_PATTERN",
+    "MACRO_SYNTHESIS_PATTERN",
+    "RESERVED_LEXICON",
+    "CONCEPTUAL_LEXICON",
+]

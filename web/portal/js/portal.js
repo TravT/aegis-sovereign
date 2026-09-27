@@ -3,10 +3,20 @@
  */
 
 let currentRouterMode = "auto";
+let currentDomainFilter = "all";
 let activeTab = "search";
 let lastDossierData = null;
 let currentSourceUri = "";
 let currentSectionFilter = "";
+
+function setDomainFilter(val) {
+  currentDomainFilter = val;
+  ["all", "homelab", "telecom"].forEach(d => {
+    const pill = document.getElementById("domain-pill-" + d);
+    if (pill) pill.classList.toggle("active", d === val);
+  });
+}
+
 
 function showPortalToast(msg) {
       const banner = document.getElementById("portal-toast");
@@ -122,7 +132,14 @@ function showPortalToast(msg) {
         const resp = await fetch("/router/query", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: query, limit: 5, user_clearance: "restricted", prefer_neural: preferNeural })
+          body: JSON.stringify({
+            query: query,
+            domain_filter: currentDomainFilter,
+            limit: 5,
+            user_clearance: "restricted",
+            prefer_neural: preferNeural,
+            synthesize: currentRouterMode === "prong2" ? true : (currentRouterMode === "prong1" ? false : undefined)
+          })
         });
         const data = await resp.json();
         renderPortalResponse(data);
@@ -300,17 +317,25 @@ function showPortalToast(msg) {
               <span style="color: var(--text-secondary); font-size: 0.7rem;">O_RDONLY STREAM</span>
             </div>
 
+function renderStructuredContent(text) {
+  if (!text) return "";
+  if (typeof renderMarkdown === "function" && text.includes("|") && text.includes("\n")) {
+    return renderMarkdown(text);
+  }
+  return escapeHtml(text);
+}
+
             <div class="structured-grid">
               <div class="sec-block">
                 <div class="sec-block-title">
                   <span>📋 Description &amp; Specification</span>
                 </div>
-                <div class="sec-block-content">${escapeHtml(desc)}</div>
+                <div class="sec-block-content">${renderStructuredContent(desc)}</div>
               </div>
               ${causes ? `
               <div class="sec-block">
                 <div class="sec-block-title"><span>🔍 Possible Causes</span></div>
-                <div class="sec-block-content">${escapeHtml(causes)}</div>
+                <div class="sec-block-content">${renderStructuredContent(causes)}</div>
               </div>` : ""}
               ${proc ? `
               <div class="sec-block">
@@ -318,12 +343,12 @@ function showPortalToast(msg) {
                   <span>🛠️ Remediation Procedure</span>
                   <button type="button" class="inspector-tab" style="padding: 0.12rem 0.45rem; font-size: 0.68rem;" onclick="copyMmlFromCard('${escapeHtml(proc.slice(0, 240).replace(/'/g, "\\'"))}')">📋 Copy MML</button>
                 </div>
-                <div class="sec-block-content" style="font-family: var(--font-mono); font-size: 0.81rem;">${escapeHtml(proc)}</div>
+                <div class="sec-block-content" style="font-family: var(--font-mono); font-size: 0.81rem;">${renderStructuredContent(proc)}</div>
               </div>` : ""}
               ${params ? `
               <div class="sec-block">
                 <div class="sec-block-title"><span>⚙️ Parameters</span></div>
-                <div class="sec-block-content">${escapeHtml(params)}</div>
+                <div class="sec-block-content">${renderStructuredContent(params)}</div>
               </div>` : ""}
             </div>
 
@@ -437,7 +462,14 @@ function showPortalToast(msg) {
           <div><strong>Entry:</strong> ${escapeHtml(data.entry_name || "N/A")} | <strong>Filter:</strong> ${escapeHtml(data.section_filter_applied || "Full Document")}</div>
           <div><strong>SHA-256:</strong> <code>${escapeHtml((data.sha256_hash || "").slice(0, 24))}...</code> | <strong>O_RDONLY Zero-Disk:</strong> ${Boolean(data.zero_disk_extraction)}</div>
         `;
-        contentEl.textContent = data.content_text || data.extracted_text || "No text content in entry.";
+        const rawContent = data.content_text || data.extracted_text || "No text content in entry.";
+        if (typeof renderMarkdown === "function" && rawContent.includes("|") && rawContent.includes("\n")) {
+          contentEl.className = "inspector-content-rendered";
+          contentEl.innerHTML = renderMarkdown(rawContent);
+        } else {
+          contentEl.className = "inspector-content-pre";
+          contentEl.textContent = rawContent;
+        }
 
         if (data.diagram_url) {
           diagBox.style.display = "block";

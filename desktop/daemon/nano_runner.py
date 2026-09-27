@@ -448,7 +448,11 @@ class NanoRunner:
 
         evidence_str = "\n\n".join(context_blocks)
         system_prompt = (
-            f"You are the Aegis Sovereign Grounded Synthesis Engine (ADR-09) running locally on the Dell Enterprise Hub.\n"
+            f"You are an air-gapped sovereign technical specialist. Synthesize the verified context directly. "
+            f"Do not apologize, do not use placeholders like YOUR_TOKEN, do not output meta-commentary. "
+            f"If procedure steps are present, list them sequentially with exact command names. "
+            f"If the context contains tables, extract the relevant rows directly with column headers. "
+            f"Always cite sources [1], [2].\n"
             f"SIGNPOST PROTOCOL INSTRUCTIONS:\n"
             f"1. {lang_instruction}\n"
             f"2. Your core responsibility is to direct the operator to the authoritative document chapter rather than inventing incomplete steps.\n"
@@ -544,7 +548,11 @@ class NanoRunner:
 
         evidence_str = "\n\n".join(context_blocks)
         prompt = (
-            f"You are the Aegis Sovereign Grounded Synthesis Engine (ADR-09) on the Dell Enterprise Hub.\n"
+            f"You are an air-gapped sovereign technical specialist. Synthesize the verified context directly. "
+            f"Do not apologize, do not use placeholders like YOUR_TOKEN, do not output meta-commentary. "
+            f"If procedure steps are present, list them sequentially with exact command names. "
+            f"If the context contains tables, extract the relevant rows directly with column headers. "
+            f"Always cite sources [1], [2].\n"
             f"Rules (SIGNPOST PROTOCOL):\n"
             f"1. {lang_instruction}\n"
             f"2. Your priority is to direct the operator to the exact authoritative document chapter rather than inventing incomplete steps.\n"
@@ -603,6 +611,45 @@ class NanoRunner:
         text = re.sub(r"---\s*\[Sub-Topic:[^\]]+\]\s*---", "\n", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
+
+    @staticmethod
+    def _extract_markdown_tables(raw_text: str) -> List[str]:
+        """Extracts complete Markdown table blocks from text (| ... | ... |).
+        Supports both standard separator markdown tables and OpenXML spreadsheet rows.
+        """
+        if not raw_text or "|" not in raw_text:
+            return []
+        tables: List[str] = []
+        lines = raw_text.splitlines()
+        current_table: List[str] = []
+
+        def _is_table_candidate(tbl: List[str]) -> bool:
+            if len(tbl) < 2:
+                return False
+            # Check 1: Has separator row
+            has_sep = any(
+                all(re.match(r"^:?-{1,}:?$", c.strip()) for c in row.strip("|").split("|") if c.strip())
+                for row in tbl[1:3]
+            )
+            if has_sep:
+                return True
+            # Check 2: 2 or more rows with >= 3 pipe delimiters (spreadsheet extract)
+            if all(row.startswith("|") and row.endswith("|") and row.count("|") >= 3 for row in tbl[:3]):
+                return True
+            return False
+
+        for line in lines:
+            s_line = line.strip()
+            if s_line.startswith("|") and "|" in s_line[1:]:
+                current_table.append(s_line)
+            else:
+                if _is_table_candidate(current_table):
+                    tables.append("\n".join(current_table))
+                current_table = []
+
+        if _is_table_candidate(current_table):
+            tables.append("\n".join(current_table))
+        return tables
 
     def _deterministic_grounded_synthesis(
         self,
@@ -709,6 +756,18 @@ class NanoRunner:
                 lines.append(f"- Verified MML operations referenced: {', '.join(sorted(list(mml_commands)[:6]))}")
                 lines.append("")
 
+            alarm_tables = []
+            for chunk, cit in zip(chunks[:4], citations[:4]):
+                tbls = self._extract_markdown_tables(chunk.get("text", ""))
+                for tbl in tbls:
+                    alarm_tables.append((cit, tbl))
+            if alarm_tables:
+                lines.append("#### 📊 Diagnostic & Parameter Reference Tables")
+                for cit, tbl in alarm_tables[:2]:
+                    lines.append(f"**From [{cit.id}] {cit.doc_title}:**")
+                    lines.append(tbl)
+                    lines.append("")
+
             lines.append("#### 📚 Verified Source Signposts & Complete Manuals")
             for cit in citations[:3]:
                 v_link = cit.viewer_url or f"/archive/view?uri={cit.virtual_uri}"
@@ -790,6 +849,18 @@ class NanoRunner:
                 lines.append(f"- Verified MML operations referenced: {', '.join(sorted(list(mml_commands)[:6]))}")
                 lines.append("")
 
+            comm_tables = []
+            for chunk, cit in zip(chunks[:4], citations[:4]):
+                tbls = self._extract_markdown_tables(chunk.get("text", ""))
+                for tbl in tbls:
+                    comm_tables.append((cit, tbl))
+            if comm_tables:
+                lines.append("#### 📊 Parameter & Configuration Reference Tables")
+                for cit, tbl in comm_tables[:2]:
+                    lines.append(f"**From [{cit.id}] {cit.doc_title}:**")
+                    lines.append(tbl)
+                    lines.append("")
+
             lines.append("#### 📚 Verified Source Signposts & Complete Manuals")
             for cit in citations[:3]:
                 v_link = cit.viewer_url or f"/archive/view?uri={cit.virtual_uri}"
@@ -842,12 +913,17 @@ class NanoRunner:
 
         else:
             lines.append(
-                f"Based on verified local documents, the following evidence directly addresses \"{query}\":"
+                f"### 📑 Verified Document Dossier: {query}"
+            )
+            lines.append("")
+            lines.append(
+                f"Based on verified local documents in the Sovereign Appliance, the following evidence directly addresses \"{query}\":"
             )
             lines.append("")
 
             for idx, (chunk, cit) in enumerate(zip(chunks[:3], citations[:3]), start=1):
                 clean_text = self._clean_chunk_text(chunk.get("text", ""))
+                secs = chunk.get("structured_sections") or {}
                 query_words = set(re.findall(r"\w+", query.lower()))
                 sentences = re.split(r"(?<=[.!?])\s+", clean_text)
                 matching_sentences = []
@@ -859,13 +935,31 @@ class NanoRunner:
                 if matching_sentences:
                     excerpt = " ".join(matching_sentences[:2])
                 else:
-                    excerpt = sentences[0].strip() if sentences else clean_text[:150]
+                    excerpt = sentences[0].strip() if sentences else clean_text[:200]
 
                 v_link = cit.viewer_url or f"/archive/view?uri={cit.virtual_uri}"
-                lines.append(f"• **{cit.doc_title}** [{cit.heading}] ([Doc #{cit.id}]):")
-                lines.append(f"  \"{excerpt}\"")
+                lines.append(f"• **[{cit.id}] {cit.doc_title}** [{cit.heading}]:")
+                if cit.virtual_uri:
+                    lines.append(f"  - **Source URI:** `{cit.virtual_uri}`")
                 if v_link:
-                    lines.append(f"  [📖 Open Document in Viewer Tab ↗]({v_link})")
+                    lines.append(f"  - [📖 Open Document in Viewer Tab ↗]({v_link})")
+
+                # High-Fidelity Structured Sections
+                if secs.get("Possible Causes"):
+                    lines.append(f"  - **Possible Causes:** {secs['Possible Causes'][:400]} [{cit.id}]")
+                if secs.get("Procedure"):
+                    lines.append(f"  - **Procedure:** {secs['Procedure'][:500]} [{cit.id}]")
+                if secs.get("Description") and not secs.get("Possible Causes") and not secs.get("Procedure"):
+                    lines.append(f"  - **Description:** {secs['Description'][:400]} [{cit.id}]")
+
+                # High-Fidelity Extracted Tables
+                tbls = self._extract_markdown_tables(chunk.get("text", ""))
+                if tbls:
+                    lines.append(f"  - **Extracted Reference Table:**")
+                    for tbl_line in tbls[0].splitlines()[:6]:
+                        lines.append(f"    {tbl_line}")
+
+                lines.append(f"  - **Verified Excerpt:** \"{excerpt}\" [{cit.id}]")
                 lines.append("")
 
         # Incorporate graph entity relations if present as a responsive markdown table

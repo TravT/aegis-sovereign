@@ -28,6 +28,7 @@ from .constants import (
     DEFAULT_DIAGRAMS_DIR,
     _LEGACY_DATA_DIR,
     _extract_structured_sections,
+    _detect_and_parse_markdown_tables,
 )
 
 logger = logging.getLogger("sovereign_server.archive_inspector")
@@ -217,6 +218,12 @@ class ArchiveInspector:
                 if extracted_diagrams:
                     diagram_url = extracted_diagrams[0]["diagram_url"]
 
+            table_info = _detect_and_parse_markdown_tables(content_txt)
+            metadata_dict = {
+                "has_table": table_info["has_table"],
+                "table_headers": table_info["table_headers"],
+            }
+
             return {
                 "mode": "resolve_virtual_uri",
                 "virtual_uri": virtual_uri,
@@ -231,6 +238,9 @@ class ArchiveInspector:
                 "sha256_hash": sha_hash,
                 "content_text": trimmed_txt,
                 "extracted_text": trimmed_txt,
+                "has_table": table_info["has_table"],
+                "table_headers": table_info["table_headers"],
+                "metadata": metadata_dict,
                 "diagram_url": diagram_url,
                 "extracted_diagrams": extracted_diagrams,
                 "zero_disk_extraction": True,
@@ -346,6 +356,7 @@ class ArchiveInspector:
                 })
                 ingested_count += 1
 
+            entry_table_info = _detect_and_parse_markdown_tables(e.content_text)
             toc.append({
                 "virtual_uri": e.virtual_uri,
                 "entry_name": e.entry_name,
@@ -354,7 +365,12 @@ class ArchiveInspector:
                 "compression_ratio": round(e.compression_ratio, 2),
                 "sha256_hash": e.sha256_hash,
                 "content_text": e.content_text if query_lower else e.content_text[:1000],
+                "has_table": entry_table_info["has_table"],
+                "table_headers": entry_table_info["table_headers"],
             })
+
+        has_table_res = any(t.get("has_table") for t in toc)
+        table_headers_res = list(dict.fromkeys(h for t in toc for h in t.get("table_headers", [])))
 
         res: Dict[str, Any] = {
             "mode": "stream_archive",
@@ -364,6 +380,12 @@ class ArchiveInspector:
             "matched_entries_count": len(toc),
             "table_of_contents": toc,
             "entries": toc,
+            "has_table": has_table_res,
+            "table_headers": table_headers_res,
+            "metadata": {
+                "has_table": has_table_res,
+                "table_headers": table_headers_res,
+            },
             "zero_disk_extraction": True,
             "ingested_count": ingested_count,
         }
