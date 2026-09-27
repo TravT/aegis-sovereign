@@ -49,14 +49,20 @@ def _http_get_raw(url: str):
         return resp.status, resp.headers.get("Content-Type", ""), resp.read()
 
 
-def _http_post_json(url: str, payload: dict) -> tuple[int, dict]:
+def _http_get_json(url: str, timeout: int = 15) -> tuple[int, dict]:
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.status, json.loads(resp.read().decode("utf-8"))
+
+
+def _http_post_json(url: str, payload: dict, timeout: int = 60) -> tuple[int, dict]:
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url,
         data=data,
         headers={"Content-Type": "application/json", "Accept": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.status, json.loads(resp.read().decode("utf-8"))
 
 
@@ -136,7 +142,7 @@ def test_04_prong_2_minimal_llm_summary_and_usc_pods(portal_server):
     query = "How are the PODs of the USC and their functions organized?"
     status, res = _http_post_json(
         f"{portal_server}/router/query",
-        {"query": query, "limit": 5},
+        {"query": query, "limit": 5, "prefer_neural": False},
     )
     assert status == 200
     assert res["needs_synthesis"] is True
@@ -407,6 +413,7 @@ def test_13_pcf_commissioning_procedural_runbook_synthesis(portal_server):
             "query": "what are the first steps on the commissioning of the PCF?",
             "limit": 5,
             "synthesize": True,
+            "prefer_neural": False,
         },
     )
     assert st == 200
@@ -417,5 +424,32 @@ def test_13_pcf_commissioning_procedural_runbook_synthesis(portal_server):
     assert len(answer) > 50
     # Procedural structure verification: should have sections/steps
     assert any(marker in answer for marker in ("###", "Step", "Prerequisite", "Procedure", "Commissioning", "PCF"))
+
+
+def test_14_neural_ollama_synthesis_if_online(portal_server):
+    """
+    Tests live neural synthesis when Ollama is running, verifying grounded answer structure.
+    """
+    st_stat, llm_info = _http_get_json(f"{portal_server}/llm/status")
+    if st_stat != 200 or not llm_info.get("running"):
+        pytest.skip("Ollama local LLM is not currently running")
+
+    st, res = _http_post_json(
+        f"{portal_server}/router/query",
+        {
+            "query": "what are the first steps on the commissioning of the PCF?",
+            "limit": 3,
+            "prefer_neural": True,
+        },
+        timeout=90,
+    )
+    assert st == 200
+    assert res["needs_synthesis"] is True
+    assert res.get("fast_summary") is not None
+    fs = res["fast_summary"]
+    assert fs.get("grounded") is True
+    assert len(fs.get("answer", "")) > 40
+    # Either neural_ollama_local or graceful fallback if CPU under extreme load
+    assert res.get("execution_mode") in ("neural_ollama_local", "extractive_template_fallback")
 
 

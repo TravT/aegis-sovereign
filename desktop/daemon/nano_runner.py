@@ -345,7 +345,7 @@ class NanoRunner:
         chunks: List[Dict[str, Any]],
         citations: List[Citation],
         graph_dossier: Optional[Dict[str, Any]] = None,
-        timeout: float = 45.0,
+        timeout: float = 90.0,
     ) -> Optional[str]:
         """
         Executes live local neural synthesis via Ollama HTTP API (http://127.0.0.1:11434/api/generate).
@@ -363,8 +363,10 @@ class NanoRunner:
         )
 
         context_blocks = []
-        for chunk, cit in zip(chunks[:5], citations[:5]):
+        for chunk, cit in zip(chunks[:4], citations[:4]):
             text = self._clean_chunk_text(chunk.get("text", "")).strip()
+            if len(text) > 750:
+                text = text[:750] + "..."
             context_blocks.append(
                 f"[{cit.id}] Title: {cit.doc_title} | Section: {cit.heading} | Score: {cit.score:.3f}\n"
                 f"Content: {text}"
@@ -399,7 +401,7 @@ class NanoRunner:
             "stream": False,
             "options": {
                 "temperature": 0.0,
-                "num_predict": 512,
+                "num_predict": 280,
             },
         }
 
