@@ -376,3 +376,106 @@
       align-items: center;
       gap: 0.35rem;
     }
+
+    /* Warning / Fallback Banner for Deterministic Miss */
+    .route-banner.prong-warning {
+      background: linear-gradient(90deg, rgba(245, 158, 11, 0.22) 0%, rgba(239, 68, 68, 0.08) 60%, rgba(13, 17, 26, 0.9) 100%);
+      border: 1px solid rgba(245, 158, 11, 0.6);
+      color: #FDE68A;
+      box-shadow: 0 0 24px rgba(245, 158, 11, 0.2);
+    }
+
+    /* Suggestion Panel ("Did you mean...?") */
+    .suggestion-panel {
+      background: linear-gradient(135deg, rgba(30, 27, 20, 0.92) 0%, rgba(13, 17, 26, 0.96) 100%);
+      border: 1px solid rgba(245, 158, 11, 0.5);
+      border-left: 4px solid #F59E0B;
+      border-radius: 12px;
+      padding: 1.15rem 1.35rem;
+      margin-bottom: 1.35rem;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+
+    .suggestion-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.85rem;
+      margin-bottom: 0.85rem;
+    }
+
+    .suggestion-icon {
+      font-size: 1.4rem;
+      line-height: 1;
+    }
+
+    .suggestion-title {
+      font-size: 0.94rem;
+      font-weight: 700;
+      color: #FDE68A;
+      font-family: var(--font-sans);
+    }
+
+    .suggestion-title code {
+      color: #FBBF24;
+      background: rgba(245, 158, 11, 0.16);
+      padding: 0.12rem 0.35rem;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+    }
+
+    .suggestion-subtitle {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      margin-top: 0.3rem;
+      line-height: 1.45;
+    }
+
+    .suggestion-subtitle code {
+      color: var(--cyan-bright);
+      background: rgba(6, 182, 212, 0.12);
+      padding: 0.1rem 0.3rem;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+    }
+
+    .suggestion-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-top: 0.65rem;
+    }
+
+    .suggestion-chip {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.38);
+      border-radius: 8px;
+      padding: 0.44rem 0.85rem;
+      color: #F8FAFC;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-size: 0.82rem;
+      text-align: left;
+    }
+
+    .suggestion-chip:hover {
+      background: rgba(245, 158, 11, 0.28);
+      border-color: #F59E0B;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
+    }
+
+    .suggestion-chip .chip-id {
+      font-family: var(--font-mono);
+      font-weight: 800;
+      color: #FBBF24;
+    }
+
+    .suggestion-chip .chip-desc {
+      font-size: 0.78rem;
+      color: #CBD5E1;
+    }

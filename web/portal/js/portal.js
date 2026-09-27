@@ -151,16 +151,28 @@ function showPortalToast(msg) {
 
     function renderPortalResponse(data) {
       const routeType = data.route_type || data.route || "deterministic_direct";
+      const status = data.status || "success";
       const needsSynth = currentRouterMode === "prong2" ? true : (currentRouterMode === "prong1" ? false : Boolean(data.needs_synthesis));
       const latency = Number(data.latency_ms || 0.8).toFixed(2);
-      const confLevel = data.confidence_level || (needsSynth ? "HIGH_VERIFIED" : "HIGH_DETERMINISTIC_EXACT");
-      const confScore = Number(data.confidence_score || 0.99).toFixed(2);
+      const isDeterministicMiss = (!needsSynth && routeType === "deterministic_direct" && status !== "success");
+      const confLevel = data.confidence_level || (isDeterministicMiss ? "UNVERIFIED_SUGGESTIONS_AVAILABLE" : (needsSynth ? "HIGH_VERIFIED" : "HIGH_DETERMINISTIC_EXACT"));
+      const confScore = Number(data.confidence_score || (isDeterministicMiss ? 0.35 : 0.99)).toFixed(2);
 
       const banner = document.getElementById("route-banner");
       const bannerTitle = document.getElementById("route-banner-title");
       const bannerMetrics = document.getElementById("route-banner-metrics");
 
-      if (!needsSynth && routeType === "deterministic_direct") {
+      if (isDeterministicMiss) {
+        banner.className = "route-banner prong-warning";
+        bannerTitle.innerHTML =
+          `⚠️ <strong>PRONG 1: IDENTIFIER NOT FOUND IN CATALOG</strong> • Safe Failure Guardrail &amp; Suggestions Active`;
+        bannerMetrics.innerHTML = `
+          <span class="metric-tag">Route: ${escapeHtml(routeType)} (miss)</span>
+          <span class="metric-tag">Latency: ${latency}ms</span>
+          <span class="metric-tag">0 Hallucinations</span>
+          <span class="metric-tag">Confidence: ${escapeHtml(confLevel)} (${confScore})</span>
+        `;
+      } else if (!needsSynth && routeType === "deterministic_direct") {
         banner.className = "route-banner prong1";
         bannerTitle.innerHTML =
           `⚡ <strong>PRONG 1: DETERMINISTIC B-TREE / FTS5 FAST-PATH</strong> • Static Verified Lookup Active`;
@@ -210,17 +222,53 @@ function showPortalToast(msg) {
 
       const results = data.results || data.records || [];
       const cardsContainer = document.getElementById("source-cards-container");
+
+      let suggestionHtml = "";
+      if (data.suggestions && data.suggestions.length) {
+        const queryId = data.identifier || document.getElementById("portal-query-input").value.trim();
+        suggestionHtml = `
+          <div class="suggestion-panel">
+            <div class="suggestion-header">
+              <span class="suggestion-icon">💡</span>
+              <div>
+                <div class="suggestion-title">Technical identifier <code>${escapeHtml(queryId)}</code> is not registered in the catalog.</div>
+                <div class="suggestion-subtitle">
+                  The requested code does not exist as an independent alarm. Neighboring alarms in the same series or related registered procedures were discovered:
+                </div>
+              </div>
+            </div>
+            <div class="suggestion-chips">
+              ${data.suggestions.map(s => `
+                <button type="button" class="suggestion-chip" title="Click to run instant lookup for ${escapeHtml(s.identifier)}" onclick="runPreset('${escapeHtml(s.identifier)}')">
+                  <span class="chip-id">${escapeHtml(s.identifier)}</span>
+                  <span class="chip-desc">${escapeHtml(s.short_title || s.title || '')}</span>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
       if (!results.length) {
-        cardsContainer.innerHTML = `
+        cardsContainer.innerHTML = suggestionHtml + `
           <div class="source-card">
-            <div class="source-title">No verified records matched in Sovereign Vault</div>
-            <p style="color: var(--text-secondary); margin-top: 0.5rem;">Safe Failure Guardrail prevented unverified hallucination.</p>
+            <div class="source-title">No verified records matched '${escapeHtml(data.identifier || '')}' in Sovereign Vault</div>
+            <p style="color: var(--text-secondary); margin-top: 0.5rem;">Safe Failure Guardrail prevented unverified hallucination. Please select a suggested neighbor identifier above or reformulate query.</p>
           </div>
         `;
         return;
       }
 
-      cardsContainer.innerHTML = results.map((r, idx) => {
+      let fallbackHeader = "";
+      if (isDeterministicMiss) {
+        fallbackHeader = `
+          <div class="fallback-section-header" style="margin: 1.15rem 0 0.85rem 0; font-family: var(--font-mono); font-size: 0.82rem; color: #FBBF24; display: flex; align-items: center; gap: 0.5rem;">
+            <span>📚 Related Documentation &amp; Topic References matching '<strong>${escapeHtml(data.identifier || "")}</strong>':</span>
+          </div>
+        `;
+      }
+
+      cardsContainer.innerHTML = suggestionHtml + fallbackHeader + results.map((r, idx) => {
         const vUri = r.virtual_uri || r.source_uri || r.file_path || "";
         const secs = r.structured_sections || {};
         const desc = secs["Description"] || (r.content || "").slice(0, 600);
@@ -228,6 +276,8 @@ function showPortalToast(msg) {
         const proc = secs["Procedure"] || "";
         const params = secs["Parameters"] || "";
         const isProng1Card = !needsSynth;
+        const tagText = isDeterministicMiss ? '⚡ RELATED TOPIC (FALLBACK)' : (isProng1Card ? '⚡ PRONG 1 EXACT' : '🧠 PRONG 2 VERIFIED');
+        const tagColor = isDeterministicMiss ? '#FBBF24' : (isProng1Card ? 'var(--emerald-bright)' : 'var(--cyan-bright)');
 
         return `
           <article class="source-card ${isProng1Card ? 'prong1-card' : 'prong2-card'}" id="source-card-${idx + 1}">
@@ -236,8 +286,8 @@ function showPortalToast(msg) {
                 <div class="source-title">[${idx + 1}] ${escapeHtml(r.title || r.doc_identifier)}</div>
                 <div style="margin-top: 0.25rem; display: flex; gap: 0.45rem; align-items: center;">
                   <span class="metric-tag">${escapeHtml(r.confidence_band || confLevel)}</span>
-                  <span class="metric-tag" style="color: ${isProng1Card ? 'var(--emerald-bright)' : 'var(--cyan-bright)'};">
-                    ${isProng1Card ? '⚡ PRONG 1 EXACT' : '🧠 PRONG 2 VERIFIED'}
+                  <span class="metric-tag" style="color: ${tagColor};">
+                    ${tagText}
                   </span>
                 </div>
               </div>

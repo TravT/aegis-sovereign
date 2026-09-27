@@ -412,10 +412,21 @@ class SovereignApplianceManager:
             item["text"] = full_text
             item["structured_sections"] = _extract_structured_sections(full_text)
             if route_type == "deterministic_direct":
-                item["score"] = 0.99
-                item["confidence_score"] = 0.99
-                item["confidence_band"] = "HIGH_DETERMINISTIC_EXACT (99%)"
+                if routed.get("status") == "success":
+                    item["score"] = 0.99
+                    item["confidence_score"] = 0.99
+                    item["confidence_band"] = "HIGH_DETERMINISTIC_EXACT (99%)"
+                else:
+                    item["score"] = 0.70
+                    item["confidence_score"] = 0.70
+                    item["confidence_band"] = "RELATED_TOPIC_FALLBACK (70%)"
             enriched_results.append(item)
+
+        if routed.get("suggestions"):
+            for s in routed["suggestions"][:3]:
+                s_id = s.get("identifier")
+                if s_id and s_id not in detected_entities:
+                    detected_entities.append(s_id)
 
         routed["results"] = enriched_results
         routed["records"] = enriched_results
@@ -426,10 +437,15 @@ class SovereignApplianceManager:
             existing_dossier=routed.get("graph_dossier") if isinstance(routed.get("graph_dossier"), dict) else None,
         )
 
-        if route_type == "deterministic_direct" and enriched_results:
+        if route_type == "deterministic_direct" and routed.get("status") == "success" and enriched_results:
             routed["confidence_score"] = 0.99
             routed["confidence_level"] = "HIGH_DETERMINISTIC_EXACT"
             routed["confidence_band"] = "HIGH_DETERMINISTIC_EXACT (99%)"
+        elif route_type == "deterministic_direct" and routed.get("status") != "success":
+            has_suggs = bool(routed.get("suggestions") or enriched_results)
+            routed["confidence_score"] = 0.35 if has_suggs else 0.0
+            routed["confidence_level"] = "UNVERIFIED_SUGGESTIONS_AVAILABLE" if routed.get("suggestions") else ("PARTIAL_DISCOVERY" if enriched_results else "LOW_UNVERIFIED")
+            routed["confidence_band"] = "SUGGESTIONS_AVAILABLE" if routed.get("suggestions") else ("RELATED_TOPICS_FOUND" if enriched_results else "NOT_FOUND")
         else:
             top_sc = max(
                 (float(r.get("confidence_score") or r.get("score") or 0.88) for r in enriched_results),

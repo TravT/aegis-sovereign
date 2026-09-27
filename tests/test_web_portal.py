@@ -468,3 +468,37 @@ def test_15_static_modular_assets_served_correctly(portal_server):
         assert len(body_bytes) > 100, f"Asset {rel_path} was unexpectedly empty"
 
 
+def test_16_deterministic_miss_suggestions_and_topic_fallbacks_alm_20100(portal_server):
+    """
+    Verifies that querying an uncataloged alarm ID (e.g. ALM-20100) does NOT fail silently
+    or hallucinate, but instead returns intelligent neighbor suggestions (ALM-20102, ALM-20104)
+    and FTS5 companion topics matching code 20100.
+    """
+    st, res = _http_post_json(
+        f"{portal_server}/router/query",
+        {"query": "ALM-20100", "limit": 5, "user_clearance": "restricted"},
+        timeout=15,
+    )
+    assert st == 200
+    assert res.get("route_type") == "deterministic_direct" or res.get("route") == "deterministic_direct"
+    assert res.get("status") == "not_found"
+    assert res.get("needs_synthesis") is False
+    assert res.get("identifier") == "ALM-20100"
+
+    # Must provide neighbor alarm suggestions
+    suggestions = res.get("suggestions", [])
+    assert len(suggestions) > 0, "Expected neighbor alarm suggestions for ALM-20100"
+    sugg_ids = [s["identifier"] for s in suggestions]
+    assert any("2010" in sid for sid in sugg_ids), f"Expected 2010x neighbor alarms in suggestions, got {sugg_ids}"
+
+    # Must provide FTS5 topic fallbacks
+    fallbacks = res.get("fallback_records", []) or res.get("results", [])
+    assert len(fallbacks) > 0, "Expected FTS5 topic fallbacks for numeric code 20100"
+    assert any("20100" in (f.get("content", "") + f.get("title", "")) for f in fallbacks)
+
+    # Must display calibrated unverified suggestions confidence
+    assert res.get("confidence_level") == "UNVERIFIED_SUGGESTIONS_AVAILABLE"
+    assert "Did you mean" in res.get("message", "")
+
+
+

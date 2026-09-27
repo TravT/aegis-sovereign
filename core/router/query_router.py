@@ -894,6 +894,173 @@ class SovereignQueryRouter:
 
         return results
 
+    def find_deterministic_suggestions_and_fallbacks(
+        self,
+        identifier: Union[ExtractedIdentifier, str],
+        user_clearance: Union[str, int, ClearanceLevel] = ClearanceLevel.PUBLIC,
+        limit: int = 5,
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        Intelligent suggestion and fallback cascade for deterministic misses.
+        Discovers neighboring telecom alarms, similar MML commands, adjacent ADRs/tickets,
+        and extracts related topics via FTS5 match without hallucinated cloud tokens.
+        """
+        clearance_lvl = ClearanceLevel.from_string(user_clearance)
+        clearance_int = clearance_lvl.value
+
+        if isinstance(identifier, ExtractedIdentifier):
+            val = identifier.raw_value
+            norm = identifier.normalized_value
+            id_type = identifier.id_type
+        else:
+            val = str(identifier).strip()
+            norm = val
+            id_type = ""
+
+        cursor = self._conn.cursor()
+        suggestions: List[Dict[str, Any]] = []
+        fallbacks: List[Dict[str, Any]] = []
+
+        # 1. Telecom Alarm Neighbor Discovery (e.g. ALM-20100 -> ALM-20102, ALM-20103, ALM-20104)
+        alm_m = re.match(r"ALM-(\d+)", val, re.I)
+        if alm_m or id_type == "telecom_alarm":
+            digits = alm_m.group(1) if alm_m else re.sub(r"[^\d]", "", val)
+            if digits:
+                target_num = int(digits)
+                prefixes = []
+                if len(digits) >= 4:
+                    prefixes.append(digits[:-1])  # e.g. 2010 for 20100
+                if len(digits) >= 5:
+                    prefixes.append(digits[:-2])  # e.g. 201 for 20100
+                if not prefixes and len(digits) >= 3:
+                    prefixes.append(digits[:-1])
+
+                found_alarms: Dict[str, Tuple[int, str]] = {}
+                for pfx in prefixes:
+                    cursor.execute("""
+                        SELECT doc_identifier, title, clearance_level, metadata
+                        FROM document_records
+                        WHERE (title LIKE ? OR doc_identifier LIKE ?)
+                          AND clearance_level <= ?
+                        LIMIT 40
+                    """, (f"%ALM-{pfx}%", f"%/{pfx}%", clearance_int))
+                    for row in cursor.fetchall():
+                        t = row["title"]
+                        for am in re.findall(r"ALM-(\d{3,6})", t, re.I):
+                            alm_id = f"ALM-{am}"
+                            if alm_id.upper() != val.upper() and alm_id not in found_alarms:
+                                dist = abs(int(am) - target_num)
+                                found_alarms[alm_id] = (dist, t)
+                    if len(found_alarms) >= limit * 2:
+                        break
+
+                sorted_alarms = sorted(found_alarms.items(), key=lambda x: x[1][0])
+                for alm_id, (dist, title) in sorted_alarms[:limit]:
+                    clean_title = re.sub(r"^(USC|UPCF)\s+[\d.]+:?\s*", "", title)
+                    suggestions.append({
+                        "identifier": alm_id,
+                        "title": title,
+                        "short_title": clean_title,
+                        "distance": dist,
+                        "type": "neighbor_alarm",
+                    })
+
+                # Relaxed FTS5 search on numeric code to discover related topics/events (e.g. 20100)
+                try:
+                    cursor.execute("""
+                        SELECT d.id, d.doc_identifier, d.title, d.content, d.clearance_level, d.metadata,
+                               snippet(document_fts, 1, '<b>', '</b>', '...', 32) as match_snippet
+                        FROM document_fts f
+                        JOIN document_records d ON f.rowid = d.id
+                        WHERE document_fts MATCH ?
+                          AND d.clearance_level <= ?
+                        ORDER BY bm25(document_fts, 10.0, 1.0)
+                        LIMIT ?
+                    """, (f'"{digits}"', clearance_int, limit))
+                    for row in cursor.fetchall():
+                        rd = dict(row)
+                        meta = json.loads(rd.get("metadata") or "{}")
+                        v_uri = meta.get("virtual_uri") or meta.get("file_path") or rd["doc_identifier"]
+                        fallbacks.append({
+                            "id": rd["id"],
+                            "doc_identifier": rd["doc_identifier"],
+                            "file_path": v_uri,
+                            "virtual_uri": v_uri,
+                            "title": rd["title"],
+                            "content": rd["content"],
+                            "text": rd["content"],
+                            "clearance_level": rd["clearance_level"],
+                            "metadata": meta,
+                            "match_snippet": rd.get("match_snippet") or rd["content"][:160],
+                            "score": 0.70,
+                            "confidence_score": 0.70,
+                            "confidence_band": "RELATED_TOPIC_FALLBACK",
+                            "source": "fts5_code_fallback",
+                        })
+                except Exception:
+                    pass
+
+        # 2. Telecom MML Command Discovery (e.g. DSP OPTMOD -> DSP OPTMODULE)
+        mml_m = re.match(r"([A-Z]{3})\s+([A-Z0-9_]+)", val, re.I)
+        if (mml_m or id_type == "mml_command") and not suggestions:
+            verb = mml_m.group(1).upper() if mml_m else val[:3].upper()
+            stem = mml_m.group(2).upper() if mml_m else val[4:].strip().upper()
+            search_prefix = stem[:4] if len(stem) >= 4 else stem
+            cursor.execute("""
+                SELECT DISTINCT doc_identifier, title, clearance_level, metadata
+                FROM document_records
+                WHERE (title LIKE ? OR content LIKE ?)
+                  AND clearance_level <= ?
+                LIMIT 20
+            """, (f"%{verb} {search_prefix}%", f"%{verb} {search_prefix}%", clearance_int))
+            existing_suggs = {s["identifier"] for s in suggestions}
+            for row in cursor.fetchall():
+                for m in re.findall(rf"\b({verb}\s+[A-Z0-9_]{{3,20}})\b", f"{row['title']}", re.I):
+                    clean_m = re.sub(r"\s+", " ", m.upper())
+                    if clean_m != val.upper() and clean_m not in existing_suggs:
+                        existing_suggs.add(clean_m)
+                        clean_title = re.sub(r"^(USC|UPCF)\s+[\d.]+:?\s*", "", row["title"])
+                        suggestions.append({
+                            "identifier": clean_m,
+                            "title": row["title"],
+                            "short_title": clean_title or clean_m,
+                            "type": "similar_mml_command",
+                        })
+                if len(suggestions) >= limit:
+                    break
+
+        # 3. ADR / Ticket Neighbor Discovery (e.g. ADR-99 -> ADR-40)
+        ticket_m = re.match(r"([A-Z]{2,6})-(\d+)", val, re.I)
+        if (ticket_m or id_type in ("ticket", "wiki_adr")) and not suggestions:
+            pfx = ticket_m.group(1).upper() if ticket_m else "ADR"
+            num = int(ticket_m.group(2)) if ticket_m else 0
+            cursor.execute("""
+                SELECT doc_identifier, title, clearance_level
+                FROM document_records
+                WHERE (doc_identifier LIKE ? OR title LIKE ?)
+                  AND clearance_level <= ?
+                LIMIT 30
+            """, (f"{pfx}-%", f"%{pfx}-%", clearance_int))
+            found_tickets: Dict[str, Tuple[int, str]] = {}
+            for row in cursor.fetchall():
+                for tm in re.findall(rf"\b({pfx}-\d+)\b", f"{row['doc_identifier']} {row['title']}", re.I):
+                    t_id = tm.upper()
+                    if t_id != val.upper() and t_id not in found_tickets:
+                        t_num = int(re.sub(r"[^\d]", "", t_id) or 0)
+                        dist = abs(t_num - num)
+                        found_tickets[t_id] = (dist, row["title"])
+            sorted_tickets = sorted(found_tickets.items(), key=lambda x: x[1][0])
+            for t_id, (dist, t_title) in sorted_tickets[:limit]:
+                suggestions.append({
+                    "identifier": t_id,
+                    "title": t_title,
+                    "short_title": t_id,
+                    "distance": dist,
+                    "type": "neighbor_ticket",
+                })
+
+        return suggestions[:limit], fallbacks[:limit]
+
     def route_and_execute(
         self,
         query: str,
@@ -927,29 +1094,55 @@ class SovereignQueryRouter:
             )
             latency_ms = (time.perf_counter() - t0) * 1000.0
 
-            # Safe Failure Protocol: 404 on missing technical ID without dense fallthrough
+            # Safe Failure Protocol: 404 on missing technical ID with intelligent suggestion & topic fallback
             if not records and decision.safe_fail_on_missing_id:
+                suggestions, fallbacks = self.find_deterministic_suggestions_and_fallbacks(
+                    decision.extracted_identifier,
+                    clearance_lvl,
+                    limit=limit,
+                )
+                raw_id = decision.extracted_identifier.raw_value if decision.extracted_identifier else ""
+                has_suggs = bool(suggestions or fallbacks)
+                if suggestions:
+                    sugg_str = ", ".join(s["identifier"] for s in suggestions[:3])
+                    msg = f"Technical identifier '{raw_id}' was not found in catalog. Did you mean: {sugg_str}?"
+                else:
+                    msg = f"Technical identifier '{raw_id}' not found in appliance records."
+
                 return {
                     "status": "not_found",
                     "route": decision.route_type.value,
+                    "route_type": decision.route_type.value,
                     "query": query,
-                    "identifier": decision.extracted_identifier.raw_value if decision.extracted_identifier else None,
-                    "results": [],
+                    "identifier": raw_id,
+                    "suggestions": suggestions,
+                    "fallback_records": fallbacks,
+                    "results": fallbacks,
+                    "records": fallbacks,
                     "latency_ms": latency_ms,
                     "bypass_vector_search": True,
                     "needs_synthesis": False,
-                    "message": f"Technical identifier '{decision.extracted_identifier.raw_value if decision.extracted_identifier else ''}' not found in appliance records."
+                    "has_suggestions": has_suggs,
+                    "confidence_score": 0.35 if has_suggs else 0.0,
+                    "confidence_level": "UNVERIFIED_SUGGESTIONS_AVAILABLE" if has_suggs else "LOW_UNVERIFIED",
+                    "confidence_band": "SUGGESTIONS_AVAILABLE" if suggestions else ("RELATED_TOPICS_FOUND" if fallbacks else "NOT_FOUND"),
+                    "message": msg,
                 }
 
             return {
                 "status": "success",
                 "route": decision.route_type.value,
+                "route_type": decision.route_type.value,
                 "query": query,
                 "identifier": decision.extracted_identifier.raw_value if decision.extracted_identifier else None,
                 "results": records,
+                "records": records,
                 "latency_ms": latency_ms,
                 "bypass_vector_search": True,
                 "needs_synthesis": False,
+                "confidence_score": 0.99,
+                "confidence_level": "HIGH_DETERMINISTIC_EXACT",
+                "confidence_band": "HIGH_DETERMINISTIC_EXACT (99%)",
                 "message": f"Retrieved {len(records)} record(s) via deterministic fast-path."
             }
 
