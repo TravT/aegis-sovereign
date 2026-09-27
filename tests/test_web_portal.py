@@ -23,7 +23,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from http.server import HTTPServer
+from http.server import ThreadingHTTPServer
 import pytest
 
 from core.server import create_app, SovereignHTTPHandler
@@ -33,7 +33,7 @@ from core.server import create_app, SovereignHTTPHandler
 def portal_server():
     """Spins up a live SovereignHTTPHandler server backed by the production Huawei Vault DBs."""
     create_app()
-    server = HTTPServer(("127.0.0.1", 0), SovereignHTTPHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), SovereignHTTPHandler)
     port = server.server_port
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

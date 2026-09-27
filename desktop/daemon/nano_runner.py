@@ -36,6 +36,8 @@ class Citation:
     chunk_index: int
     score: float
     snippet: str
+    virtual_uri: str = ""
+    viewer_url: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -63,9 +65,9 @@ class NanoSynthesisResult:
 class NanoRunner:
     """
     On-device nano-model inference runner.
-    Supports live local Ollama inference (http://127.0.0.1:11434) and local quantized
-    ONNX/GGUF models with automatic graceful fallback to deterministic extractive
-    template synthesis when neural model weights or local Ollama are offline.
+    Supports live local Ollama (http://127.0.0.1:11434) and llama.cpp (http://127.0.0.1:8085)
+    inference engines with automatic graceful fallback to deterministic extractive
+    template synthesis with Signpost Protocol when local models are offline.
     """
 
     DEFAULT_MODEL_NAME = "Llama-3.2-3B-Instruct (Local Quantized)"
@@ -85,6 +87,8 @@ class NanoRunner:
         ollama_url: Optional[str] = None,
         ollama_model: Optional[str] = None,
         use_ollama: Optional[bool] = None,
+        llama_cpp_url: Optional[str] = None,
+        llama_cpp_model: Optional[str] = None,
     ):
         self.cache_dir = cache_dir or Path(
             os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")
@@ -96,6 +100,13 @@ class NanoRunner:
             ollama_url or os.getenv("SOVEREIGN_OLLAMA_URL", "http://127.0.0.1:11434")
         ).rstrip("/")
         self.ollama_model = ollama_model or os.getenv("SOVEREIGN_OLLAMA_MODEL", "qwen2.5:1.5b")
+
+        self.llama_cpp_url = (
+            llama_cpp_url or os.getenv("SOVEREIGN_LLAMA_CPP_URL", "http://127.0.0.1:8085")
+        ).rstrip("/")
+        self.llama_cpp_model = llama_cpp_model or os.getenv(
+            "SOVEREIGN_LLAMA_CPP_MODEL", "Phi-3-mini-4k-instruct-q4"
+        )
 
         if use_ollama is not None:
             self.use_ollama = bool(use_ollama)
@@ -170,6 +181,28 @@ class NanoRunner:
         except Exception:
             return False
 
+    def _check_llama_cpp_available(self, timeout: float = 0.5) -> bool:
+        """
+        Lightweight probe checking if local loopback llama.cpp server is active and listening.
+        Never wakes or queries remote network nodes.
+        """
+        if not self._is_local_loopback_url(self.llama_cpp_url):
+            return False
+
+        try:
+            req = urllib.request.Request(
+                f"{self.llama_cpp_url}/health",
+                method="GET",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    return data.get("status") == "ok"
+            return False
+        except Exception:
+            return False
+
     @classmethod
     def _is_portuguese_query(cls, query: str) -> bool:
         """Detects whether the query is in Portuguese (PT-BR) for bilingual-aware responses."""
@@ -214,11 +247,13 @@ class NanoRunner:
         graph_dossier: Optional[Dict[str, Any]] = None,
         confidence_floor: float = 0.35,
         use_ollama: Optional[bool] = None,
+        prefer_engine: Optional[str] = None,
     ) -> NanoSynthesisResult:
         """
-        Synthesizes a grounded answer with interactive citations.
+        Synthesizes a grounded answer with interactive citations and Signpost Protocol.
         Enforces strict ADR-09 epistemic refusal if top score < confidence_floor (default 0.35 / 35%).
-        Supports live local Ollama HTTP bridge with graceful fallback to extractive template synthesis.
+        Supports live local llama.cpp (3.8B Phi-3 Mini) and Ollama (1.5B Qwen) HTTP bridges with graceful
+        fallback to deterministic extractive template synthesis.
         """
         start_time = time.perf_counter()
 
@@ -240,6 +275,15 @@ class NanoRunner:
             raw_text = c.get("text", "").strip()
             # Trim snippet for preview
             snippet = raw_text[:300] + "..." if len(raw_text) > 300 else raw_text
+            v_uri = (
+                c.get("virtual_uri")
+                or (c.get("metadata") or {}).get("virtual_uri")
+                or c.get("file_path")
+                or (c.get("metadata") or {}).get("file_path")
+                or ""
+            )
+            v_url = f"/archive/view?uri={urllib.parse.quote(str(v_uri), safe='/:!#')}" if v_uri else ""
+
             citations.append(
                 Citation(
                     id=idx,
@@ -249,6 +293,8 @@ class NanoRunner:
                     chunk_index=c.get("chunk_index", 0),
                     score=round(norm_score, 4),
                     snippet=snippet,
+                    virtual_uri=str(v_uri),
+                    viewer_url=v_url,
                 )
             )
 
@@ -277,7 +323,7 @@ class NanoRunner:
         query_tokens = self.estimate_tokens(query)
         prompt_tokens = query_tokens + raw_context_tokens
 
-        should_try_ollama = (
+        should_try_neural = (
             bool(use_ollama)
             if use_ollama is not None
             else (self.use_ollama or os.getenv("SOVEREIGN_ENABLE_OLLAMA", "0") == "1")
@@ -288,28 +334,48 @@ class NanoRunner:
         active_model = self.FALLBACK_MODEL_NAME
         active_is_fallback = True
 
-        # 1. Try Live Local Ollama HTTP Bridge if enabled and reachable on localhost
-        if should_try_ollama and self._check_ollama_available(timeout=0.3):
-            ollama_answer = self._try_ollama_inference(
-                query=query,
-                chunks=chunks,
-                citations=citations,
-                graph_dossier=graph_dossier,
-            )
-            if ollama_answer:
-                answer = ollama_answer
-                active_mode = "neural_ollama_local"
-                active_model = f"{self.ollama_model} (Ollama Local Neural)"
-                active_is_fallback = False
+        pref_eng = (prefer_engine or "").lower()
+        if pref_eng in ("none", "extractive", "deterministic"):
+            should_try_neural = False
 
-        # 2. Try Local ONNX Session if Ollama did not run
+        # 1. Try llama.cpp (e.g. Phi-3 Mini 3.8B on port 8085) if requested or (neural enabled and available)
+        if pref_eng in ("llama-cpp", "llama_cpp", "phi3", "phi-3") or (should_try_neural and not pref_eng and self._check_llama_cpp_available(timeout=0.4)):
+            if self._check_llama_cpp_available(timeout=0.4):
+                llama_answer = self._try_llama_cpp_inference(
+                    query=query,
+                    chunks=chunks,
+                    citations=citations,
+                    graph_dossier=graph_dossier,
+                )
+                if llama_answer:
+                    answer = llama_answer
+                    active_mode = "neural_llama_cpp_local"
+                    active_model = f"{self.llama_cpp_model} (llama.cpp Local 3.8B Neural)"
+                    active_is_fallback = False
+
+        # 2. Try Live Local Ollama HTTP Bridge (e.g. Qwen 2.5 1.5B on port 11434)
+        if answer is None and (pref_eng in ("ollama", "qwen") or (should_try_neural and self._check_ollama_available(timeout=0.3))):
+            if self._check_ollama_available(timeout=0.3):
+                ollama_answer = self._try_ollama_inference(
+                    query=query,
+                    chunks=chunks,
+                    citations=citations,
+                    graph_dossier=graph_dossier,
+                )
+                if ollama_answer:
+                    answer = ollama_answer
+                    active_mode = "neural_ollama_local"
+                    active_model = f"{self.ollama_model} (Ollama Local Neural)"
+                    active_is_fallback = False
+
+        # 3. Try Local ONNX Session if neural engines did not run
         if answer is None and not self.is_fallback and self._session is not None:
             answer = self._run_model_inference(query, chunks, citations, graph_dossier)
             active_mode = "neural_onnx_local"
             active_model = self.model_name
             active_is_fallback = False
 
-        # 3. Graceful Deterministic Extractive Template Fallback
+        # 4. Graceful Deterministic Extractive Template Fallback (Signpost Protocol)
         if answer is None:
             answer = self._deterministic_grounded_synthesis(query, chunks, citations, graph_dossier)
             active_mode = "extractive_template_fallback"
@@ -339,6 +405,100 @@ class NanoRunner:
             execution_mode=active_mode,
         )
 
+    def _try_llama_cpp_inference(
+        self,
+        query: str,
+        chunks: List[Dict[str, Any]],
+        citations: List[Citation],
+        graph_dossier: Optional[Dict[str, Any]] = None,
+        timeout: float = 120.0,
+    ) -> Optional[str]:
+        """
+        Executes live local neural synthesis via llama.cpp OpenAI-compatible API
+        (http://127.0.0.1:8085/v1/chat/completions) using downloaded GGUF weights (Phi-3 Mini 3.8B).
+        Strictly enforces the Signpost Protocol, zero-hallucination citations, and clickable viewer links.
+        """
+        if not self._is_local_loopback_url(self.llama_cpp_url):
+            return None
+
+        is_pt = self._is_portuguese_query(query)
+        lang_instruction = (
+            "Responda estritamente em Português (PT-BR)."
+            if is_pt
+            else "Respond strictly in English (EN), matching the language of the query."
+        )
+
+        context_blocks = []
+        for cit in citations[:4]:
+            text = self._clean_chunk_text(cit.snippet).strip()
+            v_link = cit.viewer_url or f"/archive/view?uri={cit.virtual_uri}"
+            context_blocks.append(
+                f"[{cit.id}] Document: {cit.doc_title}\n"
+                f"Chapter / Topic: {cit.heading}\n"
+                f"Direct Viewer Link: {v_link}\n"
+                f"Verified Excerpt: {text}"
+            )
+
+        if graph_dossier:
+            entity = graph_dossier.get("entity") or {}
+            if entity.get("name"):
+                context_blocks.append(
+                    f"[Knowledge Graph] Entity: {entity.get('name')} ({entity.get('entity_type', 'unknown')})"
+                )
+
+        evidence_str = "\n\n".join(context_blocks)
+        system_prompt = (
+            f"You are the Aegis Sovereign Grounded Synthesis Engine (ADR-09) running locally on the Dell Enterprise Hub.\n"
+            f"SIGNPOST PROTOCOL INSTRUCTIONS:\n"
+            f"1. {lang_instruction}\n"
+            f"2. Your core responsibility is to direct the operator to the authoritative document chapter rather than inventing incomplete steps.\n"
+            f"3. Always cite the exact document and chapter name, and provide the exact clickable link format:\n"
+            f"   [📖 Open Full Manual in Viewer Tab ↗](<viewer_link>)\n"
+            f"4. If the user asks for commissioning, procedures, or steps:\n"
+            f"   - State the verified prerequisites from the text.\n"
+            f"   - Present ONLY verified procedural steps found in the excerpt.\n"
+            f"   - Explicitly warn the operator to consult the full manual for complete safety procedures and interlocks.\n"
+            f"   - List any verbatim MML commands (e.g. DSP TIME, LST PSRV, MOD SCTPPP) exactly as written.\n"
+            f"5. Never speculate or fabricate steps not present in the excerpt.\n"
+            f"6. Use inline citation brackets like [1], [2]."
+        )
+
+        user_content = f"Verified Evidence Chunks:\n{evidence_str}\n\nOperator Query: {query}"
+
+        payload = {
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 420,
+        }
+
+        try:
+            req = urllib.request.Request(
+                f"{self.llama_cpp_url}/v1/chat/completions",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if resp.status != 200:
+                    return None
+                data = json.loads(resp.read().decode("utf-8"))
+                choices = data.get("choices") or []
+                if choices:
+                    msg = choices[0].get("message") or {}
+                    content = (msg.get("content") or "").strip()
+                    if content:
+                        return content
+        except Exception:
+            return None
+
+        return None
+
     def _try_ollama_inference(
         self,
         query: str,
@@ -349,7 +509,7 @@ class NanoRunner:
     ) -> Optional[str]:
         """
         Executes live local neural synthesis via Ollama HTTP API (http://127.0.0.1:11434/api/generate).
-        Strictly enforces zero-hallucination grounding, inline [1], [2] citations, and query language preservation.
+        Enforces Signpost Protocol, zero-hallucination grounding, and direct viewer links.
         Returns None if Ollama is unreachable or returns an error.
         """
         if not self._is_local_loopback_url(self.ollama_url):
@@ -363,12 +523,15 @@ class NanoRunner:
         )
 
         context_blocks = []
-        for chunk, cit in zip(chunks[:4], citations[:4]):
-            text = self._clean_chunk_text(chunk.get("text", "")).strip()
+        for cit in citations[:4]:
+            text = self._clean_chunk_text(cit.snippet).strip()
             if len(text) > 750:
                 text = text[:750] + "..."
+            v_link = cit.viewer_url or f"/archive/view?uri={cit.virtual_uri}"
             context_blocks.append(
-                f"[{cit.id}] Title: {cit.doc_title} | Section: {cit.heading} | Score: {cit.score:.3f}\n"
+                f"[{cit.id}] Document: {cit.doc_title}\n"
+                f"Chapter / Section: {cit.heading}\n"
+                f"Direct Viewer Link: {v_link}\n"
                 f"Content: {text}"
             )
 
@@ -382,14 +545,18 @@ class NanoRunner:
         evidence_str = "\n\n".join(context_blocks)
         prompt = (
             f"You are the Aegis Sovereign Grounded Synthesis Engine (ADR-09) on the Dell Enterprise Hub.\n"
-            f"Rules:\n"
+            f"Rules (SIGNPOST PROTOCOL):\n"
             f"1. {lang_instruction}\n"
-            f"2. Answer ONLY using the verified evidence chunks below. Never invent or extrapolate facts.\n"
-            f"3. If the user asks for 'first steps', 'procedure', or 'how to', structure the answer clearly into:\n"
-            f"   - Prerequisites & Conditions\n"
-            f"   - Step-by-Step Procedure\n"
-            f"   - Verification & MML Commands\n"
-            f"4. Cite every claim inline using bracketed citation numbers like [1], [2] (or [Doc #1]).\n\n"
+            f"2. Your priority is to direct the operator to the exact authoritative document chapter rather than inventing incomplete steps.\n"
+            f"3. Always cite the authoritative manual and chapter name, and provide the exact clickable link format:\n"
+            f"   [📖 Open Full Manual in Viewer Tab ↗](<viewer_link>)\n"
+            f"4. If the query asks for commissioning, procedures, or 'how to':\n"
+            f"   - State the verified prerequisites.\n"
+            f"   - Present ONLY verified procedural steps found in the excerpt. Do not invent missing steps.\n"
+            f"   - Warn the operator to consult the full manual for complete safety procedures and interlocks.\n"
+            f"   - List any verbatim MML commands (e.g. DSP TIME, LST PSRV, MOD SCTPPP) exactly as written.\n"
+            f"5. Never speculate or fabricate steps not present in the excerpt.\n"
+            f"6. Cite every claim inline using bracketed citation numbers like [1], [2].\n\n"
             f"Verified Evidence Chunks:\n{evidence_str}\n\n"
             f"Query: {query}\n\n"
             f"Grounded Answer:"
@@ -401,7 +568,7 @@ class NanoRunner:
             "stream": False,
             "options": {
                 "temperature": 0.0,
-                "num_predict": 280,
+                "num_predict": 300,
             },
         }
 
@@ -523,9 +690,17 @@ class NanoRunner:
                 lines.append(f"- Verified MML operations referenced: {', '.join(sorted(list(mml_commands)[:6]))}")
                 lines.append("")
 
-            lines.append("#### 📚 Verified Source References")
+            lines.append("#### 📚 Verified Source Signposts & Complete Manuals")
             for cit in citations[:3]:
-                lines.append(f"- **[{cit.id}] {cit.doc_title}**: `{cit.heading}` (Confidence: {cit.score:.2f})")
+                v_link = cit.viewer_url or f"/archive/view?uri={cit.virtual_uri}"
+                lines.append(f"- **[{cit.id}] {cit.doc_title}** — Chapter: `{cit.heading}` (Confidence: {cit.score:.2f})")
+                if v_link:
+                    lines.append(f"  [📖 Open Full Manual in Viewer Tab ↗]({v_link})")
+            lines.append("")
+            lines.append("> [!IMPORTANT]")
+            lines.append("> **Signpost Protocol Directive**: The procedural excerpts above capture verified initial commands and prerequisites.")
+            lines.append("> For the complete multi-stage operational runbook, parameter tables, and safety interlocks, open the authoritative manual in the Viewer tab above.")
+            lines.append("")
 
         else:
             lines.append(
@@ -548,8 +723,11 @@ class NanoRunner:
                 else:
                     excerpt = sentences[0].strip() if sentences else clean_text[:150]
 
+                v_link = cit.viewer_url or f"/archive/view?uri={cit.virtual_uri}"
                 lines.append(f"• **{cit.doc_title}** [{cit.heading}] ([Doc #{cit.id}]):")
                 lines.append(f"  \"{excerpt}\"")
+                if v_link:
+                    lines.append(f"  [📖 Open Document in Viewer Tab ↗]({v_link})")
                 lines.append("")
 
         # Incorporate graph entity relations if present
