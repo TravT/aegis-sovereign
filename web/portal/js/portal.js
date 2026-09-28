@@ -17,6 +17,13 @@ function setDomainFilter(val) {
   });
 }
 
+function renderStructuredContent(text) {
+  if (!text) return "";
+  if (typeof renderMarkdown === "function" && text.includes("|") && text.includes("\n")) {
+    return renderMarkdown(text);
+  }
+  return escapeHtml(text);
+}
 
 function showPortalToast(msg) {
       const banner = document.getElementById("portal-toast");
@@ -316,14 +323,6 @@ function showPortalToast(msg) {
               </a>
               <span style="color: var(--text-secondary); font-size: 0.7rem;">O_RDONLY STREAM</span>
             </div>
-
-function renderStructuredContent(text) {
-  if (!text) return "";
-  if (typeof renderMarkdown === "function" && text.includes("|") && text.includes("\n")) {
-    return renderMarkdown(text);
-  }
-  return escapeHtml(text);
-}
 
             <div class="structured-grid">
               <div class="sec-block">
