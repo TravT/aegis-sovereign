@@ -80,7 +80,7 @@ sequenceDiagram
 
 ## 3. Heuristic Auto-Tagging & Entity Extraction
 
-When documents arrive, the deterministic classifier ([`scripts/rag_classifier.py`](../../scripts/rag_classifier.py)) extracts key legal and financial entities without needing external cloud calls:
+When documents arrive, the deterministic classifier ([`scripts/rag_classifier.py`](05_ingestion_and_tagging_runbook.md)) extracts key legal and financial entities without needing external cloud calls:
 
 | Entity Pattern | Regex / Extraction Strategy | Inferred Metadata |
 | :--- | :--- | :--- |
@@ -94,7 +94,7 @@ When documents arrive, the deterministic classifier ([`scripts/rag_classifier.py
 
 ## 4. Proactive Action Alerts
 
-High-priority actionable events trigger automated push alerts via the Action Dispatcher ([`scripts/rag_action_dispatcher.py`](../../scripts/rag_action_dispatcher.py)):
+High-priority actionable events trigger automated push alerts via the Action Dispatcher ([`scripts/rag_action_dispatcher.py`](05_ingestion_and_tagging_runbook.md)):
 
 1. **Urgent Legal Notice (Intimação)**: Detected judicial subpoena with strict statutory deadline ($\le 5$ days) triggers emergency Telegram alert.
 2. **Upcoming Tax / Bill Expiration**: Invoices due within 3 days trigger proactive heads-up notifications.

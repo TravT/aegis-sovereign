@@ -23,7 +23,7 @@ aliases:
 
 > **Parent Index**: [Aegis Master Manual Suite](README.md)  
 > **Related Manuals**: [Manual 10: Hierarchical Library Retrieval & RAPTOR](10_hierarchical_library_retrieval_and_raptor_summaries.md) | [Manual 12: Tier 1 Workstation Compendium](12_sovereign_workstation_tier1_architecture_compendium.md) | [Manual 14: Real-World Corpus Acquisition & Stress-Testing Guide](14_real_world_corpus_acquisition_and_testing_guide.md)  
-> **Architecture Standard**: [ADR-07: Virtual Container Streaming & Cognitive Graph Intelligence](../projects/aegis/adrs/ADR-07-Virtual-Container-Streaming-and-Cognitive-Graph-Intelligence.md)  
+> **Architecture Standard**: [ADR-07: Virtual Container Streaming & Cognitive Graph Intelligence](../adrs/ADR-07-Virtual-Container-Streaming-and-Cognitive-Graph-Intelligence.md)  
 > **Target Verticals**: 5G RAN / Core / Signaling Telecom NOCs (Huawei `.hdx` & `.hwics` HedEx 2.0 Information Center Service libraries, `ReleaseDoc_EN.zip` `.xlsx`/`.docx` bundles, Ericsson/Nokia CPI), Defense & Avionics Technical Manuals, Air-Gapped Field Engineering Laptops
 
 ---

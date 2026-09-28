@@ -23,7 +23,7 @@ aliases:
 # 📚 Manual 10: Hierarchical Library Retrieval, RAPTOR Summaries & Multi-Strata Archival Search
 
 > **Parent Suite**: [Sovereign Appliance Manual Index](README.md)  
-> **Related Architecture**: [ADR-35: Sovereign Knowledge Appliance Packaging](../adrs/ADR-35-Sovereign-Knowledge-Appliance-Packaging-and-Commercial-Architecture.md) | [ADR-38: Enterprise Datacenter Platform](../adrs/ADR-38-Enterprise-Sovereign-Datacenter-Architecture-and-Distributed-Fabric.md) | [Chapter 21: Hybrid RAG Architecture](../21_hybrid_rag_and_semantic_retrieval_architecture.md)  
+> **Related Architecture**: [ADR-35: Sovereign Knowledge Appliance Packaging](../adrs/ADR-35-Sovereign-Knowledge-Appliance-Packaging-and-Commercial-Architecture.md) | [ADR-38: Enterprise Datacenter Platform](../adrs/ADR-38-Enterprise-Sovereign-Datacenter-Architecture-and-Distributed-Fabric.md) | [Chapter 21: Hybrid RAG Architecture](README.md)  
 > **Target Environments**: University Archives, National & Public Libraries, Rare Manuscript Repositories, Research Foundations, Academic Consortia  
 > **Retrieval Paradigm**: 3-Strata Cognitive Model (Micro-Factual, Meso-Relational, Macro-Thematic RAPTOR Tree)  
 
@@ -299,5 +299,5 @@ with urllib.request.urlopen(req) as resp:
 * [Manual 06: Executive Tuning & Client Knobs](06_executive_tuning_and_client_knobs.md)
 * [Manual 08: Desktop Workstation & Corporate DLP](08_desktop_workstation_and_corporate_dlp.md)
 * [Manual 09: Enterprise Datacenter Supercomputing Deployment](09_datacenter_supercomputing_and_distributed_fabric.md)
-* [Chapter 21: Hybrid RAG Architecture](../21_hybrid_rag_and_semantic_retrieval_architecture.md)
-* [System Overview & Live Cluster Manifest](../system_overview.md)
+* [Chapter 21: Hybrid RAG Architecture](README.md)
+* [System Overview & Live Cluster Manifest](README.md)

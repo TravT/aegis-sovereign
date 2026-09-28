@@ -19,7 +19,7 @@ aliases:
 # 🚀 Manual 07: Scaling Topologies, Bottlenecks & Commercial Playbook
 
 > **Parent Suite**: [Sovereign Appliance Manual Index](README.md)  
-> **Related Architecture**: [Chapter 23: Sovereign Knowledge Appliance](../23_sovereign_knowledge_appliance_and_commercial_stack.md) | [ADR-36: Scaling Fleet & Business Topology](../adrs/ADR-36-Sovereign-Appliance-Scaling-Fleet-and-Business-Topology.md)
+> **Related Architecture**: [Chapter 23: Sovereign Knowledge Appliance](README.md) | [ADR-36: Scaling Fleet & Business Topology](../adrs/ADR-36-Sovereign-Appliance-Scaling-Fleet-and-Business-Topology.md)
 
 This playbook addresses the engineering, operational scaling, and commercial packaging strategy for turning the Sovereign Knowledge Appliance into a sustainable product line that spans home power-users, professional practices, and institutional B2B deployments.
 

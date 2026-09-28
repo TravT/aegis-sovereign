@@ -1,0 +1,1 @@
+ADR-05-Security-Clearance-Governance-and-Resource-Quotas.md

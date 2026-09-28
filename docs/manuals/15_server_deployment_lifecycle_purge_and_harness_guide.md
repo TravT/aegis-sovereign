@@ -132,14 +132,19 @@ python3 -m tools.vault_lifecycle --purge "test_temp_corpus://"
 ## 5. How to Search Properly (Prong 1 vs. Prong 2 Mastery)
 
 | Query Class | Best Query Syntax | Active Prong | Typical Latency |
-| :--- | :--- | :--- | :---
-| **Exact Telecom Alarm** | `ALM-20104` or `ALM-3276800192` | **Prong 1 (`deterministic_direct`)** | **`0.28 ms`** |
-| **Exact MML Command** | `DSP OFFLINEUSR` or `ADD NRPCELLDU` | **Prong 1 (`deterministic_direct`)** | **`0.31 ms`** |
-| **Homelab ADR Lookup** | `ADR-40` or `ADR-30` | **Prong 1 (`deterministic_direct`)** | **`0.25 ms`** |
-| **Agent Skill Lookup** | `manage-sovereign-vault` or `manage-traefik` | **Prong 1 (`deterministic_direct`)** | **`0.27 ms`** |
-| **Compound Alarm + Synthesis** | `Why does ALM-20104 occur and how to fix it?` | **Prong 1+2 (`compound_fused`)** | **`1.40 ms`** |
-| **Cross-Doc Graph Dossier** | `sovereign_get_entity_dossier(entity_name="ALM-20104")` | **GraphStore (`1-2 hops`)** | **`0.42 ms`** |
-| **Conceptual / Architecture** | `How does Traefik enforce Tailscale port 443 invariant?` | **Prong 2 (`hybrid_needle`)** | **`1.85 ms`** |
+| Query Class | Best Query Syntax | Active Prong | In-Engine DB Latency | End-to-End MCP Latency |
+| :--- | :--- | :--- | :---: | :---: |
+| **Exact Telecom Alarm** | `ALM-20104` or `ALM-3276800192` | **Prong 1 (`deterministic_direct`)** | **`0.03–0.3 ms`** | **`~12–15 ms`** |
+| **Exact MML Command** | `DSP OFFLINEUSR` or `ADD NRPCELLDU` | **Prong 1 (`deterministic_direct`)** | **`0.03–0.3 ms`** | **`~12–15 ms`** |
+| **Homelab ADR Lookup** | `ADR-40` or `ADR-30` | **Prong 1 (`deterministic_direct`)** | **`0.03–0.3 ms`** | **`~12–15 ms`** |
+| **Agent Skill Lookup** | `manage-sovereign-vault` or `manage-traefik` | **Prong 1 (`deterministic_direct`)** | **`0.03–0.3 ms`** | **`~12–15 ms`** |
+| **Compound Alarm + Synthesis** | `Why does ALM-20104 occur and how to fix it?` | **Prong 1+2 (`compound_fused`)** | **`1.4–3.5 ms`** | **`~25–45 ms`** |
+| **Cross-Doc Graph Dossier** | `sovereign_get_entity_dossier(entity_name="ALM-20104")` | **GraphStore (`1-2 hops`)** | **`0.4–1.2 ms`** | **`~15–18 ms`** |
+| **Conceptual / Architecture** | `How does Traefik enforce Tailscale port 443 invariant?` | **Prong 2 (`hybrid_needle`)** | **`1.8–15 ms`** | **`~25–50 ms`** |
+
+> [!NOTE] Latency Measurement Distinctions
+> - **In-Engine DB Latency**: Measures pure SQLite B-Tree index lookup (`~0.03 ms`) and in-process Python query route planning (`~0.8 ms`).
+> - **End-to-End MCP Latency**: Measures wall-clock time from the AI client's perspective, which includes standard JSON-RPC 2.0 serialization, OS stdio/IPC pipe traversal, and local loopback socket round-trips (`~12–15 ms`).
 
 ---
 

@@ -1,0 +1,1 @@
+ADR-04-Enterprise-Sovereign-Datacenter-Architecture-and-Distributed-Fabric.md

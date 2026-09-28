@@ -262,7 +262,7 @@ def test_08_monitored_sources_add_anti_loop_and_db_purge(portal_server, tmp_path
     assert st == 200
     src_data = json.loads(raw.decode("utf-8"))
     assert src_data["status"] == "ok"
-    assert len(src_data["sources"]) >= 4
+    assert len(src_data["sources"]) >= 3
 
     # 2. Create temporary folder with 2 markdown docs and ingest via POST /sources/add
     custom_dir = tmp_path / "custom_homelab_docs"

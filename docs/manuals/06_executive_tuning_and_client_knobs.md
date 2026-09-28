@@ -114,4 +114,4 @@ curl -s -X POST http://<APPLIANCE_IP>:8765/optimize \
 You have completed the **Aegis Sovereign Knowledge Appliance Manual Suite**. For architecture references and cluster inventory, consult:
 * [Master Manual Index](README.md)
 * [ADR-35: Sovereign Knowledge Appliance Packaging](../adrs/ADR-35-Sovereign-Knowledge-Appliance-Packaging-and-Commercial-Architecture.md)
-* [Chapter 23: Sovereign Knowledge Appliance Architecture](../23_sovereign_knowledge_appliance_and_commercial_stack.md)
+* [Chapter 23: Sovereign Knowledge Appliance Architecture](README.md)

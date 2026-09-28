@@ -1,0 +1,1 @@
+ADR-02-Sovereign-Appliance-Scaling-Fleet-and-Business-Topology.md

@@ -297,4 +297,4 @@ Enterprise IT departments and Chief Information Security Officers (CISOs) requir
 - [Manual 04: MCP Harness & Agent Configuration](04_mcp_harness_and_agent_configuration.md)
 - [Manual 06: Executive Tuning & Client Knobs](06_executive_tuning_and_client_knobs.md)
 - [ADR-37: Zero-Copy Workstation Indexing Architecture](../adrs/ADR-37-Zero-Copy-Workstation-Indexing-and-Serverless-Desktop-Engine.md)
-- [Chapter 23: Sovereign Knowledge Appliance & Commercial Stack](../23_sovereign_knowledge_appliance_and_commercial_stack.md)
+- [Chapter 23: Sovereign Knowledge Appliance & Commercial Stack](README.md)

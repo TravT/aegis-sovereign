@@ -229,6 +229,6 @@ See **[ADR-44: Zero-Knowledge Telemetry, Zstandard Compression & Privacy Archite
 - [Manual 08: Desktop Workstation & Corporate DLP](08_desktop_workstation_and_corporate_dlp.md)
 - [Manual 07: Scaling Topologies, Bottlenecks & Commercial Playbook](07_scaling_topologies_bottlenecks_and_commercial_playbook.md)
 - [Manual 11: Hardware Sizing & Infrastructure Capacity Planning](11_hardware_sizing_and_infrastructure_capacity_planning.md)
-- [Chapter 24: Sovereign Workstation Engine — EE Foundations & Commercial Architecture](../24_sovereign_workstation_engine_ee_foundations_and_commercial_architecture.md)
+- [Chapter 24: Sovereign Workstation Engine — EE Foundations & Commercial Architecture](12_sovereign_workstation_tier1_architecture_compendium.md)
 - [ADR-40: Two-Pronged Hybrid Retrieval](../adrs/ADR-40-Two-Pronged-Hybrid-Retrieval-and-Resilient-Intent-Routing.md)
-- [System Overview & Live Fleet Inventory](../system_overview.md)
+- [System Overview & Live Fleet Inventory](README.md)

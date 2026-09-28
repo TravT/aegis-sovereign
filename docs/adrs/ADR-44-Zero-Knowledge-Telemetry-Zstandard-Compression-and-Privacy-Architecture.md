@@ -1,0 +1,1 @@
+ADR-10-Zero-Knowledge-Telemetry-Zstandard-Compression-and-Privacy-Architecture.md

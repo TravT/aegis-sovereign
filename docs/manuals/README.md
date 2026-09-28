@@ -19,7 +19,7 @@ aliases:
 # 🏛️ Aegis Sovereign Knowledge Appliance — Master Manual Suite
 
 > **Product**: Aegis Sovereign Knowledge & Document Intelligence Appliance  
-> **Architecture Standard**: [ADR-35: Sovereign Knowledge Appliance Packaging](../projects/aegis/adrs/ADR-01-Sovereign-Knowledge-Appliance-Packaging-and-Commercial-Architecture.md)  
+> **Architecture Standard**: [ADR-35: Sovereign Knowledge Appliance Packaging](../adrs/ADR-01-Sovereign-Knowledge-Appliance-Packaging-and-Commercial-Architecture.md)  
 > **Deployment Footprint**: 100% Air-Gapped | On-Premises Bare-Metal / Hypervisor VM / Sovereign VPC  
 > **Core Guarantee**: $\ge 40\%$ Cloud Token Reduction (Empirically $>90\%$) with Sub-120ms Local CPU Inference  
 
@@ -109,7 +109,7 @@ flowchart TD
 ---
 
 ## 4. Related Architecture & Governance Links
-* [ADR-35: Sovereign Knowledge Appliance Packaging](../projects/aegis/adrs/ADR-01-Sovereign-Knowledge-Appliance-Packaging-and-Commercial-Architecture.md)
-* [Chapter 21: Hybrid RAG & Semantic Retrieval Architecture](../21_hybrid_rag_and_semantic_retrieval_architecture.md)
-* [Chapter 19: Local LLM Delegation & Token Economics](../19_local_llm_delegation_and_token_economics.md)
-* [System Overview & Live Fleet Inventory](../system_overview.md)
+* [ADR-35: Sovereign Knowledge Appliance Packaging](../adrs/ADR-01-Sovereign-Knowledge-Appliance-Packaging-and-Commercial-Architecture.md)
+* [Chapter 21: Hybrid RAG & Semantic Retrieval Architecture](README.md)
+* [Chapter 19: Local LLM Delegation & Token Economics](04_mcp_harness_and_agent_configuration.md)
+* [System Overview & Live Fleet Inventory](README.md)

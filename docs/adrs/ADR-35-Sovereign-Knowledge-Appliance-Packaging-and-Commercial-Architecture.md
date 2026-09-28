@@ -1,0 +1,1 @@
+ADR-01-Sovereign-Knowledge-Appliance-Packaging-and-Commercial-Architecture.md
