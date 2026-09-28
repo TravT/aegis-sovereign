@@ -26,6 +26,8 @@ class LLMController:
         idle_timeout_seconds: float = 600.0,
     ):
         self.nomad_url = (nomad_url or os.getenv("NOMAD_ADDR", "http://127.0.0.1:4646")).rstrip("/")
+        # ACL token for scaling the LLM jobs (Nomad policy "llm-scaler"); unset when ACLs are off.
+        self.nomad_token = os.getenv("NOMAD_TOKEN", "")
         self.ollama_url = (ollama_url or os.getenv("SOVEREIGN_OLLAMA_URL", "http://127.0.0.1:11434")).rstrip("/")
         self.llama_cpp_url = (llama_cpp_url or os.getenv("SOVEREIGN_LLAMA_CPP_URL", "http://127.0.0.1:8085")).rstrip("/")
         self.idle_timeout_seconds = idle_timeout_seconds
@@ -92,7 +94,7 @@ class LLMController:
         nomad_running = False
         desired_count = 0
         try:
-            req = urllib.request.Request(f"{self.nomad_url}/v1/job/ollama/scale")
+            req = urllib.request.Request(f"{self.nomad_url}/v1/job/ollama/scale", headers=self._nomad_headers())
             with urllib.request.urlopen(req, timeout=1.5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 tg = data.get("TaskGroups", {}).get("ai-stack", {})
@@ -137,7 +139,7 @@ class LLMController:
         nomad_running = False
         desired_count = 0
         try:
-            req = urllib.request.Request(f"{self.nomad_url}/v1/job/llama-cpp/scale")
+            req = urllib.request.Request(f"{self.nomad_url}/v1/job/llama-cpp/scale", headers=self._nomad_headers())
             with urllib.request.urlopen(req, timeout=1.5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 tg = data.get("TaskGroups", {}).get("ai-stack", {})
@@ -167,6 +169,12 @@ class LLMController:
             "desired_count": desired_count,
         }
 
+    def _nomad_headers(self, extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        headers = dict(extra or {})
+        if self.nomad_token:
+            headers["X-Nomad-Token"] = self.nomad_token
+        return headers
+
     def scale_engine(
         self,
         action: str,
@@ -194,7 +202,7 @@ class LLMController:
             req = urllib.request.Request(
                 f"{self.nomad_url}/v1/job/{job_id}/scale",
                 data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=self._nomad_headers({"Content-Type": "application/json"}),
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=5.0) as resp:
@@ -203,7 +211,7 @@ class LLMController:
             if action == "stop":
                 try:
                     req_stop = urllib.request.Request(
-                        f"{self.nomad_url}/v1/job/{job_id}", method="DELETE"
+                        f"{self.nomad_url}/v1/job/{job_id}", method="DELETE", headers=self._nomad_headers()
                     )
                     urllib.request.urlopen(req_stop, timeout=5.0)
                 except Exception:
