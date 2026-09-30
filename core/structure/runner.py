@@ -40,13 +40,20 @@ WHERE NOT EXISTS (
 """
 
 
-def ensure_schema(conn: sqlite3.Connection) -> None:
+def ensure_schema(conn: sqlite3.Connection, rebuild: bool = True) -> None:
+    """Create the structure schema. `rebuild=True` (the migration) drops and recreates the topic
+    tables; `rebuild=False` (incremental ingest) only creates what is missing."""
+    if rebuild:
+        conn.executescript(
+            """
+            DROP VIEW IF EXISTS topic_paths;
+            DROP TABLE IF EXISTS topic_edges;
+            DROP TABLE IF EXISTS topic_nodes;
+            """
+        )
     conn.executescript(
         """
-        DROP VIEW IF EXISTS topic_paths;
-        DROP TABLE IF EXISTS topic_edges;
-        DROP TABLE IF EXISTS topic_nodes;
-        CREATE TABLE topic_nodes (
+        CREATE TABLE IF NOT EXISTS topic_nodes (
             topic_id TEXT PRIMARY KEY,
             package TEXT NOT NULL,
             name TEXT NOT NULL,
@@ -54,14 +61,15 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             source TEXT NOT NULL,
             path_text TEXT
         );
-        CREATE TABLE topic_edges (
+        CREATE TABLE IF NOT EXISTS topic_edges (
             child TEXT NOT NULL REFERENCES topic_nodes(topic_id),
             parent TEXT REFERENCES topic_nodes(topic_id),
             is_primary INTEGER NOT NULL DEFAULT 1,
             PRIMARY KEY (child, parent)
         );
-        CREATE INDEX idx_topic_edges_parent ON topic_edges(parent);
+        CREATE INDEX IF NOT EXISTS idx_topic_edges_parent ON topic_edges(parent);
         CREATE TABLE IF NOT EXISTS structure_meta (key TEXT PRIMARY KEY, value TEXT);
+        DROP VIEW IF EXISTS topic_paths;
         """
     )
     conn.execute(TOPIC_PATHS_VIEW)

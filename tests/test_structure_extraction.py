@@ -248,15 +248,16 @@ def test_chunk_edge_cases_and_policy_validation():
 
 
 # ---------------------------------------------------------------- search-time de-duplication
-def test_collapse_by_topic_keeps_rank_prefers_native_and_counts():
+def test_collapse_folds_composites_under_their_native_but_never_natives_together():
     ranked = [
         {"id": 1, "topic_id": "T1", "record_kind": "composite"},
         {"id": 2, "topic_id": "T2", "record_kind": "native"},
         {"id": 3, "topic_id": "T1", "record_kind": "native"},
         {"id": 4, "topic_id": None, "record_kind": "external"},
-        {"id": 5, "topic_id": None, "record_kind": "external"},
+        {"id": 5, "topic_id": "T2", "record_kind": "native"},  # another chunk of the same section: separate evidence
         {"id": 6, "topic_id": "T2", "record_kind": "composite"},
+        {"id": 7, "topic_id": "T9", "record_kind": "composite"},  # its native is not in the results: kept
     ]
     out = st.collapse_by_topic(ranked)
-    assert [(r["id"], r["collapsed"]) for r in out] == [(3, 1), (2, 1), (4, 0), (5, 0)]
-    assert ranked[0]["record_kind"] == "composite" and "collapsed" not in ranked[0]  # input untouched
+    assert [(r["id"], r["collapsed"]) for r in out] == [(2, 1), (3, 1), (4, 0), (5, 0), (7, 0)]
+    assert "collapsed" not in ranked[0]  # input untouched

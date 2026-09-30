@@ -12,7 +12,7 @@ overlapping spans that together cover every character; nothing is dropped to fit
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,7 @@ class SizePolicy:
     chunk_overlap: int  # characters shared between consecutive chunks
     store_paths: bool  # persist path_text on topic_nodes (else derive via the topic_paths view)
     collapse_derived: bool  # search layer should collapse composite records under their native topic
+    max_file_chars: Optional[int] = None  # above this a file is indexed as a flagged catalog card, not in full
 
     def __post_init__(self) -> None:
         if self.chunk_chars < 200:
@@ -32,9 +33,9 @@ class SizePolicy:
 
 PROFILES: Dict[str, SizePolicy] = {
     # Tier 1: laptop, zero-copy. Smallest footprint: derive paths, collapse duplicates.
-    "desktop": SizePolicy("desktop", chunk_chars=2000, chunk_overlap=150, store_paths=False, collapse_derived=True),
+    "desktop": SizePolicy("desktop", chunk_chars=2000, chunk_overlap=150, store_paths=False, collapse_derived=True, max_file_chars=300_000),
     # Tier 2: edge appliance. Stores paths for fast joins, still collapses duplicates.
-    "edge": SizePolicy("edge", chunk_chars=3000, chunk_overlap=200, store_paths=True, collapse_derived=True),
+    "edge": SizePolicy("edge", chunk_chars=3000, chunk_overlap=200, store_paths=True, collapse_derived=True, max_file_chars=1_000_000),
     # Tier 3: datacenter. Larger chunks, keeps every derived record visible.
     "datacenter": SizePolicy("datacenter", chunk_chars=4000, chunk_overlap=300, store_paths=True, collapse_derived=False),
 }
@@ -80,29 +81,32 @@ def chunk_text(text: str, policy: SizePolicy) -> List[str]:
 
 
 def collapse_by_topic(results: Sequence[dict]) -> List[dict]:
-    """Search-time de-duplication. `results` are ranked dicts carrying `topic_id` and `record_kind`.
+    """Search-time de-duplication of curated duplicates. `results` are ranked dicts carrying
+    `topic_id` and `record_kind`.
 
-    Keeps one result per topic, at the rank of its best-ranked member, preferring the native
-    record when the topic has one. Records with no topic pass through untouched. Each kept
-    result gets `collapsed` = number of other records folded into it.
+    A `composite` record (a curated record standing on a native item) is folded into the native
+    record of the same topic when that native is also in the results; the native keeps its rank
+    and gets `collapsed` = number of composites folded into it. Natives are never folded together
+    (different chunks of one section are different evidence), and records with no topic, or a
+    composite whose native is not in the results, pass through untouched.
     """
-    order: List[object] = []
-    best: Dict[object, dict] = {}
-    folded: Dict[object, int] = {}
+    first_native: Dict[object, int] = {}
     for i, r in enumerate(results):
         tid = r.get("topic_id")
-        key = tid if tid else ("_untopiced", i)
-        if key not in best:
-            best[key] = r
-            folded[key] = 0
-            order.append(key)
-            continue
-        folded[key] += 1
-        if best[key].get("record_kind") != "native" and r.get("record_kind") == "native":
-            best[key] = r
-    out = []
-    for key in order:
-        item = dict(best[key])
-        item["collapsed"] = folded[key]
+        if tid and r.get("record_kind") == "native" and tid not in first_native:
+            first_native[tid] = i
+    out: List[dict] = []
+    slot: Dict[int, dict] = {}
+    for i, r in enumerate(results):
+        item = dict(r)
+        item["collapsed"] = 0
+        tid = r.get("topic_id")
+        if tid and r.get("record_kind") == "composite" and tid in first_native:
+            continue  # folded below
         out.append(item)
+        slot[i] = item
+    for i, r in enumerate(results):
+        tid = r.get("topic_id")
+        if tid and r.get("record_kind") == "composite" and tid in first_native:
+            slot[first_native[tid]]["collapsed"] += 1
     return out
