@@ -325,7 +325,7 @@
         const i = this.store.idx.get(path[k]); if (i === undefined) break;
         if (this.isExpandable(i)) { const slice = await this.api("slice", { layer: "tree", focus: path[k], levels: 1 }); this.store.merge(slice); }
       }
-      this.rebuild(false);
+      if (this.layer === "tree") this.rebuild(false);      // flat layers have nothing new to load, and a rebuild would restart their layout
       const i = this.store.idx.get(target); if (i === undefined) { this.status("Node not loaded", true); return; }
       this.select(i); this.gl.focusOn(i); this.gl.zoomBy(this.gl.mode === "2d" ? 3.5 : 2.5);
     }

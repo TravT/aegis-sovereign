@@ -50,7 +50,7 @@ All routes are `GET`, return JSON, and take `user_clearance` (`public | internal
 | :--- | :--- | :--- |
 | `/graph/v2/meta` | | layers with node and edge counts *at that clearance*, edge kinds present, theme legend, `reserved_edge_kinds`, `content_version` |
 | `/graph/v2/slice` | `layer` (`tree`, `entity`, `wiki`), `mode` (`clustered` default or `all`, tree only), `focus` (a node id), `levels` (default 2) | columnar `nodes` (`id label kind group depth theme n_desc expandable`, tree positions `x y x3 y3 z3`, flat `degree`, entity `see_also`) and `edges` (`s`, `t` index arrays and `k` kinds) |
-| `/graph/v2/find` | `q` (text) or `id` (one node), `layer`, `limit` | matches with `id label layer kind path` (ancestors from the package root) |
+| `/graph/v2/find` | `q` (text) or `id` (one node), `layer`, `limit` (at most 200) | matches with `id label layer kind path` (ancestors from the package root) |
 
 Node ids are `pkg:<package>`, `t:<topic_id>`, `e:<entity_type>:<name>` and `w:<relative path>`. Errors: 400 for a bad layer, mode, clearance or number, 404 for an unknown or hidden `focus` (a hidden node looks exactly like a missing one), 503 without on-disk databases. Responses are compact JSON, gzipped when the client sends `Accept-Encoding: gzip`, with a weak `ETag` equal to the vault content version (`If-None-Match` gets a 304).
 

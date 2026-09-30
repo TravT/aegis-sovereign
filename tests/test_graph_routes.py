@@ -138,3 +138,8 @@ def test_viewer_assets_are_served_with_their_content_type(base_url, path, conten
     with urllib.request.urlopen(f"{base_url}{path}", timeout=10) as resp:
         assert resp.status == 200 and resp.headers["Content-Type"].startswith(content_type)
         assert len(resp.read()) > 1000
+
+
+def test_an_unknown_mode_is_a_client_error_on_flat_layers_too(base_url):
+    status, _, body = get(f"{base_url}/graph/v2/slice?layer=entity&mode=bogus")
+    assert status == 400 and "error" in body

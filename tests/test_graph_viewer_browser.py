@@ -75,6 +75,18 @@ def test_layers_clearance_and_isolating_a_legend_category(page):
 def test_two_d_three_d_toggle_and_wiki_layer(page):
     page.click("[data-layer='wiki']")
     page.wait_for_function("/^5 nodes/.test(document.getElementById('gv-status').textContent)", timeout=30000)  # d.md is INTERNAL
+    page.wait_for_function("window.AegisGraphView.force === null", timeout=30000)   # layout finished
+
+    # picking a search result in a flat layer selects it without restarting the layout
+    page.evaluate("""() => { const gl = window.AegisGraphView.gl, original = gl.setData.bind(gl);
+        window.__uploads = 0; gl.setData = (data) => { window.__uploads++; return original(data); }; }""")
+    page.fill("#gv-search", "alpha")
+    page.wait_for_selector(".gv-result[data-id]", timeout=10000)
+    page.click(".gv-result[data-id]")
+    page.wait_for_function("document.querySelector('.gv-node-title') && document.querySelector('.gv-node-title').textContent === 'Alpha'", timeout=10000)
+    assert page.evaluate("window.__uploads") == 0          # nothing was rebuilt, so no layout restart
+    assert page.evaluate("window.AegisGraphView.force") is None
+
     page.click("#gv-dim3")
     assert page.evaluate("window.AegisGraphView.gl.mode") == "3d"
     page.click("#gv-dim2")

@@ -496,3 +496,26 @@ def test_find_by_node_id_returns_that_node_with_its_path_only_if_visible(svc):
     assert svc.find("", clearance="public", node_id="t:nope") == []
     alarm = eid("ALM-1", "telecom_alarm")
     assert [h["id"] for h in svc.find("", clearance="public", layer="entity", node_id=alarm)] == [alarm]
+
+
+def test_an_unknown_mode_is_rejected_for_every_layer(svc):
+    for layer in ("tree", "entity"):
+        with pytest.raises(ValueError):
+            svc.slice(layer, clearance="public", mode="bogus")
+
+
+def test_find_never_returns_more_than_the_hard_limit(tmp_path):
+    import sqlite3
+
+    router, graph = build_vault(tmp_path)
+    con = sqlite3.connect(router)
+    for i in range(300):
+        con.execute("INSERT INTO topic_nodes VALUES (?, 'P1', ?, 2, 'fixture', NULL)", (f"z{i}", f"zebra {i}"))
+        con.execute("INSERT INTO topic_edges VALUES (?, 't1', 1)", (f"z{i}",))
+        con.execute(
+            "INSERT INTO document_records (doc_identifier, title, content, clearance_level, topic_id) "
+            "VALUES (?, 'z', 'z', 0, ?)", (f"zr{i}", f"z{i}"))
+    con.commit()
+    con.close()
+    hits = GraphService(router, graph).find("zebra", clearance="restricted", limit=10**6)
+    assert len(hits) == 200

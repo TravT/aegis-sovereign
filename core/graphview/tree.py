@@ -3,7 +3,7 @@
 import sqlite3
 import threading
 from collections import Counter, defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from ..security import ClearanceLevel
 from .layout import Position, radial_layout

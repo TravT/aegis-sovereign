@@ -16,6 +16,8 @@ from .wiki import WikiLayer
 Clearance = Union[str, int, ClearanceLevel]
 
 DEFAULT_LEVELS = 2
+MODES = ('clustered', 'all')
+MAX_FIND = 200  # hard cap on find results, whatever limit the caller asks for
 
 LAYER_LABELS = {"tree": "Manual trees", "entity": "Alarms, MML commands and KPIs", "wiki": "Homelab wiki"}
 # relationships that are part of the contract but not extracted yet (Task 14.3): alarm -> alarm
@@ -86,16 +88,16 @@ class GraphService:
         levels (or ``focus`` plus ``levels`` levels below it), ``all`` returns every visible node.
         Flat layers (entity, wiki) are always returned whole."""
         level = int(ClearanceLevel.from_string(clearance))
+        if mode not in MODES:
+            raise ValueError(f"unknown mode {mode!r}")
         version = self.content_version()
         view = self._view(layer, level, version)
         if isinstance(view, FlatView):
             return self._flat_slice(layer, view, level, version)
         if mode == "all":
             selected = list(view.nodes)
-        elif mode == "clustered":
-            selected = view.expand(focus, levels)
         else:
-            raise ValueError(f"unknown mode {mode!r}")
+            selected = view.expand(focus, levels)
         return self._tree_slice(view, level, version, selected, complete=(mode == "all"))
 
     def find(
@@ -119,7 +121,7 @@ class GraphService:
                 rank = 0 if low == needle else 1 if low.startswith(needle) else 2
                 ranked.append((rank, node.depth, low, nid))
         ranked.sort()
-        return [self._hit(view, nid, layer) for _, _, _, nid in ranked[: max(0, limit)]]
+        return [self._hit(view, nid, layer) for _, _, _, nid in ranked[: max(0, min(limit, MAX_FIND))]]
 
     @staticmethod
     def _hit(view: Union[TreeView, FlatView], nid: str, layer: str) -> Dict[str, Any]:
