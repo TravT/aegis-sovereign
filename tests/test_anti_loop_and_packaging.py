@@ -324,7 +324,7 @@ def test_turnkey_install_script_and_release_bundle_builder():
     dry_info = create_release_bundle(dry_run=True)
     manifest = dry_info["manifest"]
     assert manifest["version"] == "2.1.0"
-    assert manifest["operator_manuals_count"] == 15
+    assert manifest["operator_manuals_count"] == 17  # manuals 01-17 (16: structure, 17: file-type handlers)
     assert manifest["mcp_v2_tool_schemas_count"] == 7
     assert manifest["components"]["core"] is True
     assert manifest["components"]["desktop_nano_runner"] is True
