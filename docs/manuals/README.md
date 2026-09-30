@@ -60,6 +60,7 @@ This manual suite provides end-to-end guidance for infrastructure engineers, cli
 | **[15. Unified Server Vault, Purge Lifecycle & Multi-Harness Guide](15_server_deployment_lifecycle_purge_and_harness_guide.md)** | Single-vault storage (`sovereign_router.db` & `sovereign_graph.db`), data removal/purge lifecycle (`--purge`), Prong 1/2 search mastery, and MCP configs for `agy`, Claude Code, Claude Desktop, Cursor, Windsurf, and Cline. | Server Administrators, AI Engineers, & DevOps Architects |
 | **[16. Structure Extraction, Tier Size Profiles & Adding a New Format](16_structure_extraction_tier_profiles_and_adding_a_format.md)** | `core/structure` contract + registry, `topic_nodes`/`topic_edges`/`topic_paths`, desktop/edge/datacenter size profiles, never-truncate chunking, search-time collapse, how to add an extractor |
 | **[17. File-Type Handlers, the Conformance Gate & Ingestion Modes](17_file_type_handlers_conformance_gate_and_ingestion_modes.md)** | supported file types, `tools/ingest_files.py` modes (missing / changed / grow / replace), tiered fidelity and catalog cards, verification recipe, adding a new file type in bounded steps |
+| **[18. Project Memory, Operating Quirks & Session Handoff](18_project_memory_operating_quirks_and_session_handoff.md)** | where things live (DB symlink, host-side MCP, own repo, doc mirrors), data / container / git / test / agy quirks, the tested safe-change recipe, handoff convention |
 
 
 ---

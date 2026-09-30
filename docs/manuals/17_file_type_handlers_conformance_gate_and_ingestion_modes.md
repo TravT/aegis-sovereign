@@ -19,7 +19,7 @@ aliases:
 
 # Manual 17: File-Type Handlers, the Conformance Gate & Ingestion Modes
 
-Rationale and measurements: [ADR-13](../adrs/ADR-13-File-Type-Handlers-Conformance-Gate-and-Tiered-Fidelity-Ingestion.md). Structure layer: [Manual 16](16_structure_extraction_tier_profiles_and_adding_a_format.md). This manual is the operator and developer how-to.
+Rationale and measurements: [ADR-13](../adrs/ADR-13-File-Type-Handlers-Conformance-Gate-and-Tiered-Fidelity-Ingestion.md). Structure layer: [Manual 16](16_structure_extraction_tier_profiles_and_adding_a_format.md). Operating quirks and the safe-change recipe: [Manual 18](18_project_memory_operating_quirks_and_session_handoff.md). This manual is the operator and developer how-to.
 
 ## 1. Supported file types
 
