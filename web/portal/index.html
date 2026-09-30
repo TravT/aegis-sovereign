@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/portal/css/search.css">
   <link rel="stylesheet" href="/portal/css/cards.css">
   <link rel="stylesheet" href="/portal/css/topology.css">
+  <link rel="stylesheet" href="/portal/css/graphview.css?v=1">
   <link rel="stylesheet" href="/portal/css/management.css">
   <link rel="stylesheet" href="/portal/css/markdown.css">
 </head>
@@ -287,60 +288,52 @@
     <div id="tab-panel-graph" class="tab-panel">
       <section class="search-console">
         <div class="search-header">
-          <h1>🕸️ Interactive Server &amp; Knowledge Graph Topology Visualizer</h1>
-          <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
-            <input
-              type="text"
-              id="graph-filter-input"
-              class="search-input"
-              style="padding: 0.52rem 0.9rem; font-size: 0.85rem; width: 290px;"
-              placeholder="Filter nodes (e.g. ALM-20104, ADR-40, Traefik)..."
-              oninput="loadGraphTopology(this.value)"
-            />
-            <button type="button" class="action-btn primary-emerald" onclick="loadGraphTopology('')">
-              🔄 Reset Full Topology
-            </button>
+          <h1>🕸️ Knowledge Graph Explorer</h1>
+          <div class="gv-toolbar">
+            <div class="gv-searchbox">
+              <input type="text" id="gv-search" placeholder="Find a node (ALM-20104, DSP OPTMODULE, Traefik)…" autocomplete="off" aria-label="Find a node">
+              <div class="gv-results" id="gv-results"></div>
+            </div>
+            <span class="gv-seg" role="group" aria-label="Dimensions">
+              <button type="button" id="gv-dim2" class="active">2D</button>
+              <button type="button" id="gv-dim3">3D</button>
+            </span>
+            <select id="gv-colorby" aria-label="Colour by"></select>
+            <label id="gv-showall-wrap" title="Load every node of the manual trees (about 45,000)"><input type="checkbox" id="gv-showall"> show all nodes</label>
+            <label><input type="checkbox" id="gv-edges" checked> edges</label>
+            <select id="gv-clearance" aria-label="Clearance level" title="Nodes above this clearance are never sent to the browser">
+              <option value="public">clearance: public</option>
+              <option value="internal">clearance: internal</option>
+              <option value="confidential">clearance: confidential</option>
+              <option value="restricted" selected>clearance: restricted</option>
+            </select>
           </div>
         </div>
 
-        <div class="graph-legend-row">
-          <span class="graph-legend-pill" onclick="loadGraphTopology('server_hub')">
-            <span class="color-dot" style="background: #D4AF37; box-shadow: 0 0 8px #D4AF37;"></span> Server Hub &amp; Vaults (#D4AF37)
-          </span>
-          <span class="graph-legend-pill" onclick="loadGraphTopology('wiki_adr')">
-            <span class="color-dot" style="background: #06B6D4; box-shadow: 0 0 8px #06B6D4;"></span> Homelab Wiki &amp; ADRs (#06B6D4)
-          </span>
-          <span class="graph-legend-pill" onclick="loadGraphTopology('telecom_alarm')">
-            <span class="color-dot" style="background: #F43F5E; box-shadow: 0 0 8px #F43F5E;"></span> Telecom Alarms &amp; NEs (#F43F5E)
-          </span>
-          <span class="graph-legend-pill" onclick="loadGraphTopology('mml_command')">
-            <span class="color-dot" style="background: #10B981; box-shadow: 0 0 8px #10B981;"></span> MML Commands &amp; Fixes (#10B981)
-          </span>
-          <span class="graph-legend-pill" onclick="loadGraphTopology('agent_skill')">
-            <span class="color-dot" style="background: #A855F7; box-shadow: 0 0 8px #A855F7;"></span> Agent Skills &amp; MCP (#A855F7)
-          </span>
-        </div>
+        <div class="gv-layers" id="gv-layers"></div>
+        <div class="gv-legend" id="gv-legend" aria-label="Colour legend (click a category to hide or show it)"></div>
 
         <div class="graph-workspace">
-          <div class="graph-canvas-card">
-            <svg id="topology-svg" viewBox="0 0 920 580" style="width: 100%; height: 540px; display: block;"></svg>
-            <div class="graph-zoom-toolbar">
-              <button type="button" class="action-btn" onclick="zoomGraph(1.18)" title="Zoom In">➕ Zoom In</button>
-              <button type="button" class="action-btn" onclick="zoomGraph(0.85)" title="Zoom Out">➖ Zoom Out</button>
-              <button type="button" class="action-btn" onclick="resetGraphZoom()" title="Reset View">🎯 Center</button>
+          <div class="graph-canvas-card gv-card">
+            <div class="gv-stage" id="gv-stage">
+              <canvas id="gv-canvas" role="img" aria-label="Interactive graph of the selected layer; use the search box and the inspector for a text view"></canvas>
+              <div class="gv-labels" id="gv-labels"></div>
+              <div class="gv-tooltip" id="gv-tooltip"></div>
+              <div class="gv-status" id="gv-status"></div>
+              <div class="graph-zoom-toolbar">
+                <button type="button" class="action-btn" id="gv-zoom-in" title="Zoom in">➕</button>
+                <button type="button" class="action-btn" id="gv-zoom-out" title="Zoom out">➖</button>
+                <button type="button" class="action-btn" id="gv-fit" title="Fit the whole graph">🎯 Fit</button>
+              </div>
             </div>
           </div>
 
           <aside class="inspector-drawer" style="position: static; max-height: none;">
             <div class="inspector-header">
-              <div class="inspector-title">🎯 SELECTED GRAPH NODE DOSSIER</div>
-              <span class="metric-tag" id="graph-node-category">server_hub</span>
+              <div class="inspector-title">🎯 SELECTED NODE</div>
+              <span class="metric-tag" id="graph-node-category">tree</span>
             </div>
-            <div id="graph-node-details">
-              <p style="color: var(--text-secondary); font-size: 0.88rem;">
-                Click any node in the interactive curved-bezier topology graph to inspect its cross-server relationships and trigger an instant Prong 1/2 lookup.
-              </p>
-            </div>
+            <div id="graph-node-details"></div>
           </aside>
         </div>
       </section>
@@ -492,6 +485,9 @@
   <script src="/portal/js/markdown.js?v=2.2.1"></script>
   <script src="/portal/js/portal.js?v=2.2.1"></script>
   <script src="/portal/js/topology.js?v=2.2.1"></script>
+  <script src="/portal/js/graph_gl.js?v=1"></script>
+  <script src="/portal/js/graph_force.js?v=1"></script>
+  <script src="/portal/js/graph_view.js?v=1"></script>
   <script src="/portal/js/sources.js?v=2.2.1"></script>
   <script src="/portal/js/license.js?v=2.2.1"></script>
 </body>

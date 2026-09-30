@@ -61,6 +61,7 @@ This manual suite provides end-to-end guidance for infrastructure engineers, cli
 | **[16. Structure Extraction, Tier Size Profiles & Adding a New Format](16_structure_extraction_tier_profiles_and_adding_a_format.md)** | `core/structure` contract + registry, `topic_nodes`/`topic_edges`/`topic_paths`, desktop/edge/datacenter size profiles, never-truncate chunking, search-time collapse, how to add an extractor |
 | **[17. File-Type Handlers, the Conformance Gate & Ingestion Modes](17_file_type_handlers_conformance_gate_and_ingestion_modes.md)** | supported file types, `tools/ingest_files.py` modes (missing / changed / grow / replace), tiered fidelity and catalog cards, verification recipe, adding a new file type in bounded steps |
 | **[18. Project Memory, Operating Quirks & Session Handoff](18_project_memory_operating_quirks_and_session_handoff.md)** | where things live (DB symlink, host-side MCP, own repo, doc mirrors), data / container / git / test / agy quirks, the tested safe-change recipe, handoff convention |
+| **[19. The Interactive Graph Viewer: API, Layers, Clearance & Rendering](19_interactive_graph_viewer_api_layers_clearance_and_rendering.md)** | the three layers and their edge kinds, controls, `/graph/v2/{meta,slice,find}` reference, clearance rules, allow-lists, layout and performance budgets, colour policy, tests and the Playwright recipe, troubleshooting |
 
 
 ---

@@ -81,7 +81,7 @@ function showPortalToast(msg) {
         if (panel) panel.classList.toggle("active", t === tabName);
       });
       if (tabName === "graph") {
-        loadGraphTopology(document.getElementById("graph-filter-input").value || "");
+        if (window.AegisGraphView) window.AegisGraphView.open();
       } else if (tabName === "sources") {
         loadMonitoredSources();
       } else if (tabName === "license") {

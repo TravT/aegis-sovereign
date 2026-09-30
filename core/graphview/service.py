@@ -99,12 +99,16 @@ class GraphService:
         return self._tree_slice(view, level, version, selected, complete=(mode == "all"))
 
     def find(
-        self, text: str, clearance: Clearance, layer: str = "tree", limit: int = 50
+        self, text: str, clearance: Clearance, layer: str = "tree", limit: int = 50,
+        node_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Visible nodes whose label contains ``text`` (exact matches first, then prefix, then
-        contains; shallower first), each with its ancestor path so the viewer can reveal it."""
+        contains; shallower first), each with its ancestor path so the viewer can reveal it.
+        With ``node_id`` it returns just that node (if the caller may see it)."""
         level = int(ClearanceLevel.from_string(clearance))
         view = self._view(layer, level, self.content_version())
+        if node_id is not None:
+            return [self._hit(view, node_id, layer)] if node_id in view.nodes else []
         needle = text.strip().lower()
         if not needle:
             return []
@@ -115,15 +119,16 @@ class GraphService:
                 rank = 0 if low == needle else 1 if low.startswith(needle) else 2
                 ranked.append((rank, node.depth, low, nid))
         ranked.sort()
+        return [self._hit(view, nid, layer) for _, _, _, nid in ranked[: max(0, limit)]]
+
+    @staticmethod
+    def _hit(view: Union[TreeView, FlatView], nid: str, layer: str) -> Dict[str, Any]:
         parents = view.parents if isinstance(view, TreeView) else {}
-        hits = []
-        for _, _, _, nid in ranked[: max(0, limit)]:
-            path = [nid]
-            while path[-1] in parents:
-                path.append(parents[path[-1]])
-            node = view.nodes[nid]
-            hits.append({"id": nid, "label": node.label, "layer": layer, "kind": node.kind, "path": path[::-1]})
-        return hits
+        path = [nid]
+        while path[-1] in parents:
+            path.append(parents[path[-1]])
+        node = view.nodes[nid]
+        return {"id": nid, "label": node.label, "layer": layer, "kind": node.kind, "path": path[::-1]}
 
     # ---- views ------------------------------------------------------------------------------
 

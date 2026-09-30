@@ -119,3 +119,22 @@ def test_slice_route_maps_bad_input_to_client_errors(base_url, query, status):
 def test_find_route_requires_a_query(base_url):
     status, _, body = get(f"{base_url}/graph/v2/find?layer=tree")
     assert status == 400 and "error" in body
+
+
+def test_find_route_can_look_up_a_single_node_by_id(base_url):
+    status, _, hits = get(f"{base_url}/graph/v2/find?id=t:t4&layer=tree&user_clearance=public")
+    assert status == 200 and [h["id"] for h in hits] == ["t:t4"]
+    _, _, hidden = get(f"{base_url}/graph/v2/find?id=t:t3&layer=tree&user_clearance=public")
+    assert hidden == []
+
+
+@pytest.mark.parametrize("path, content_type", [
+    ("/portal/js/graph_gl.js", "application/javascript"),
+    ("/portal/js/graph_force.js", "application/javascript"),
+    ("/portal/js/graph_view.js", "application/javascript"),
+    ("/portal/css/graphview.css", "text/css"),
+])
+def test_viewer_assets_are_served_with_their_content_type(base_url, path, content_type):
+    with urllib.request.urlopen(f"{base_url}{path}", timeout=10) as resp:
+        assert resp.status == 200 and resp.headers["Content-Type"].startswith(content_type)
+        assert len(resp.read()) > 1000

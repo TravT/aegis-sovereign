@@ -86,10 +86,13 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                     levels=int(arg("levels", "2")),
                 )
             elif operation == "find":
-                if "q" not in query:
-                    self._send_json(400, {"error": "Missing 'q' query parameter"})
+                if "q" not in query and "id" not in query:
+                    self._send_json(400, {"error": "Missing 'q' (text) or 'id' (node id) query parameter"})
                     return
-                payload = view.find(arg("q"), clearance, layer=arg("layer", "tree"), limit=int(arg("limit", "50")))
+                payload = view.find(
+                    arg("q"), clearance, layer=arg("layer", "tree"), limit=int(arg("limit", "50")),
+                    node_id=arg("id") if "id" in query else None,
+                )
             else:
                 self._send_json(404, {"error": f"Unknown graph operation '{operation}'"})
                 return

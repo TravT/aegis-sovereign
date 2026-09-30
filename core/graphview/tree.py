@@ -1,6 +1,7 @@
 """The topic-tree layer: the part of the manual trees one clearance level may see."""
 
 import sqlite3
+import threading
 from collections import Counter, defaultdict
 from typing import Dict, List, Optional, Tuple
 
@@ -19,16 +20,26 @@ class TreeView:
 
     ``nodes`` maps a node id (``pkg:<package>`` or ``t:<topic_id>``) to a Node; ``children`` holds
     visible primary children only; ``edges`` are every visible edge, including second-parent links;
-    ``n_desc`` counts visible primary descendants; ``positions`` is the radial layout of this view.
+    ``n_desc`` counts visible primary descendants; ``positions`` is the radial layout of this view,
+    computed on first use (``meta`` and ``find`` never need it).
     """
 
-    def __init__(self, nodes, children, edges, n_desc, positions):
+    def __init__(self, nodes, children, edges, n_desc):
         self.nodes: Dict[str, Node] = nodes
         self.children: Dict[str, List[str]] = children
         self.parents: Dict[str, str] = {c: p for p, kids in children.items() for c in kids}
         self.edges: List[Edge] = edges
         self.n_desc: Dict[str, int] = n_desc
-        self.positions: Dict[str, Position] = positions
+        self._positions: Optional[Dict[str, Position]] = None
+        self._layout_lock = threading.Lock()
+
+    @property
+    def positions(self) -> Dict[str, Position]:
+        with self._layout_lock:
+            if self._positions is None:
+                roots = [n for n, node in self.nodes.items() if node.kind == "package"]
+                self._positions = radial_layout({n: node.depth for n, node in self.nodes.items()}, self.children, roots)
+            return self._positions
 
     def expand(self, focus: Optional[str], levels: int) -> List[str]:
         """The entry nodes (every package, or the focus) plus ``levels`` levels of visible children."""
@@ -104,9 +115,7 @@ class TreeLayer:
         n_desc: Dict[str, int] = {}
         for nid in sorted(nodes, key=lambda n: -nodes[n].depth):  # deepest first
             n_desc[nid] = sum(1 + n_desc[c] for c in children.get(nid, ()))
-        roots = [n for n, node in nodes.items() if node.kind == "package"]
-        positions = radial_layout({n: node.depth for n, node in nodes.items()}, children, roots)
-        return TreeView(nodes, dict(children), out_edges, n_desc, positions)
+        return TreeView(nodes, dict(children), out_edges, n_desc)
 
     @staticmethod
     def _derive_clearance(topics, edges, own) -> Dict[str, int]:

@@ -486,3 +486,13 @@ def test_meta_lists_only_the_layers_that_exist(svc):
     assert [layer["id"] for layer in svc.meta("restricted")["layers"]] == ["tree", "entity"]
     tree = {layer["id"]: layer for layer in svc.meta("restricted")["layers"]}["tree"]
     assert tree["edge_kinds"] == {"CHILD_OF": 11, "SECOND_PARENT": 1}
+
+
+def test_find_by_node_id_returns_that_node_with_its_path_only_if_visible(svc):
+    hit = svc.find("", clearance="public", node_id="t:t4")
+    assert [(h["id"], h["label"], h["path"]) for h in hit] == [
+        ("t:t4", "Leaf A1a", ["pkg:P1", "t:t1", "t:t2", "t:t4"])]
+    assert svc.find("", clearance="public", node_id="t:t3") == []        # hidden looks like missing
+    assert svc.find("", clearance="public", node_id="t:nope") == []
+    alarm = eid("ALM-1", "telecom_alarm")
+    assert [h["id"] for h in svc.find("", clearance="public", layer="entity", node_id=alarm)] == [alarm]
