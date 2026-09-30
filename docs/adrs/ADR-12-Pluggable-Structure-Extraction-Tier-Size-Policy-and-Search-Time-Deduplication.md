@@ -58,7 +58,7 @@ Accepted (engine on branch `feat/topic-tree`; Stage 1 schema applied to the live
 `core/structure/policy.py`: profiles `desktop` (Tier 1), `edge` (Tier 2), `datacenter` (Tier 3) set chunk size and overlap, whether `path_text` is stored (desktop derives paths from the `topic_paths` view instead) and whether search collapses derived records. Text longer than a chunk is split into overlapping spans that cover every character; nothing is ever dropped to fit a limit.
 
 ### 6. Search-time de-duplication before any deletion
-`collapse_by_topic()` folds curated `composite` records under their native topic at query time, keeping the best rank and preferring the native record. Duplicates are not deleted: they may carry unique enrichment (alarm procedures, dossiers) and are removed only after a measured, per-topic review.
+`core/structure/search.fold_duplicates()` folds a curated `composite` record under the `native` record of the same topic **only when their text is near-identical** (shared tokens relative to the larger text >= 0.85, measured on the live vault: 99.9% of the 7,653 composite/native pairs qualify and the median is exactly 1.0). Curated records that add information (e.g. the `ALM-1003` root-alarm dossier) always stay visible. The native keeps its rank, gets `collapsed = n`, and the result carries `topic_id` / `record_kind`. It is wired into `SovereignQueryRouter.route_and_execute` (which fetches twice the limit and slices back after folding, so folding never returns fewer distinct answers) and into the in-process MCP search; the hybrid `/query` path is not wired yet. The tier is chosen with `AEGIS_SIZE_PROFILE` (desktop | edge | datacenter, default edge; datacenter keeps everything). It is a no-op on vaults without the structure columns. Duplicates are not deleted: they are removed only after a measured, per-topic review.
 
 ### 7. Deterministic first, models optional
 Structure comes from the source's own organisation. Any model assistance (e.g. the embedded NER agreed for humanities collections in the master plan) is a separate, tier-gated step and is never required for structure.
@@ -87,7 +87,8 @@ Structure comes from the source's own organisation. Any model assistance (e.g. t
 ## Rollout
 1. **Done:** Stage 1 tree on the live vault (dead-man rollback tested; content hash unchanged).
 2. **Done ([ADR-13](ADR-13-File-Type-Handlers-Conformance-Gate-and-Tiered-Fidelity-Ingestion.md)):** structure is emitted at ingest; the truncating slices are replaced by lossless chunking (docx by heading style); the `.xls` and nested `.zip` files are ingested.
-3. **Next:** wire `collapse_by_topic` into the served search; the 3D/2D graph viewer over `topic_nodes`/`topic_edges`.
+3. **Done:** search-time folding wired into the router and the in-process MCP search (see §6); container image rebuilt from `main`.
+4. **Next:** wire the hybrid `/query` path; the 3D/2D graph viewer over `topic_nodes`/`topic_edges`.
 
 ## Alternatives considered
 - **Keep a Huawei-specific script and copy it per format** — rejected: repeats the current debt and cannot scale to mailboxes, decks and traces.

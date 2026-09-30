@@ -660,6 +660,30 @@ class SovereignQueryRouter:
         limit: int = 5,
         domain_filter: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Route, execute and fold near-identical curated duplicates (ADR-12) out of the results.
+
+        Fetches twice the requested limit, folds composites under their native (`core.structure.search`),
+        and returns at most `limit` results, so folding never leaves fewer distinct answers than asked for.
+        """
+        from core.structure.search import active_policy, fold_duplicates
+
+        widen = active_policy().collapse_derived and self.db_path != ":memory:"
+        res = self._route_and_execute(
+            query, user_clearance=user_clearance, plan=plan, limit=limit * 2 if widen else limit, domain_filter=domain_filter
+        )
+        results = res.get("results") if isinstance(res, dict) else None
+        if widen and isinstance(results, list) and results and all(isinstance(r, dict) for r in results):
+            res["results"] = fold_duplicates(self.db_path, results, limit)
+        return res
+
+    def _route_and_execute(
+        self,
+        query: str,
+        user_clearance: Union[str, int, ClearanceLevel] = ClearanceLevel.PUBLIC,
+        plan: Optional[Union[str, PlanTier]] = None,
+        limit: int = 5,
+        domain_filter: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Orchestrates query classification, deterministic lookups, graceful fallback cascade,
         domain scope filtering pushdown, and selective LLM synthesis gating.

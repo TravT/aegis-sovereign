@@ -602,6 +602,9 @@ def _fallback_search_vault(arguments: Dict[str, Any]) -> Dict[str, Any]:
             seen_ids.add(fh.get("id"))
             raw_hits.append(fh)
 
+    from core.structure.search import fold_duplicates
+
+    raw_hits = fold_duplicates(getattr(router, "db_path", None), raw_hits, limit)
     formatted: List[Dict[str, Any]] = []
     top_conf = 0.0
     for idx, r in enumerate(raw_hits[:limit], start=1):
@@ -652,6 +655,11 @@ def _fallback_search_vault(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 "clearance_level": r.get("clearance_level", 0),
             },
         }
+        if r.get("topic_id"):  # structure layer (ADR-12): where the record sits, and duplicates folded into it
+            item["topic_id"] = r["topic_id"]
+            item["record_kind"] = r.get("record_kind")
+            if r.get("collapsed"):
+                item["collapsed"] = r["collapsed"]
         formatted.append(item)
 
     overall_conf = round(top_conf, 4)

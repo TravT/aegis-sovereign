@@ -11,6 +11,7 @@ overlapping spans that together cover every character; nothing is dropped to fit
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -80,7 +81,24 @@ def chunk_text(text: str, policy: SizePolicy) -> List[str]:
     return [text[a:b] for a, b in chunk_spans(text, policy)]
 
 
-def collapse_by_topic(results: Sequence[dict]) -> List[dict]:
+_TOKEN = re.compile(r"[a-z0-9]+")
+
+
+def _tokens(hit: dict) -> set:
+    text = hit.get("content") or hit.get("text") or hit.get("match_snippet") or ""
+    return set(_TOKEN.findall(str(text)[:6000].lower()))
+
+
+def _overlap(a: dict, b: dict) -> float:
+    """Shared tokens relative to the LARGER text (1.0 = the same words). A record that contains the other
+    plus extra information scores below 1.0, so it is never mistaken for a duplicate."""
+    ta, tb = _tokens(a), _tokens(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / max(len(ta), len(tb))
+
+
+def collapse_by_topic(results: Sequence[dict], min_overlap: Optional[float] = None) -> List[dict]:
     """Search-time de-duplication of curated duplicates. `results` are ranked dicts carrying
     `topic_id` and `record_kind`.
 
@@ -89,24 +107,32 @@ def collapse_by_topic(results: Sequence[dict]) -> List[dict]:
     and gets `collapsed` = number of composites folded into it. Natives are never folded together
     (different chunks of one section are different evidence), and records with no topic, or a
     composite whose native is not in the results, pass through untouched.
+
+    `min_overlap` (0..1): when given, a composite is folded only if its text is at least that
+    similar (shared tokens relative to the larger text) to the native's, so curated records that add information are kept.
     """
     first_native: Dict[object, int] = {}
     for i, r in enumerate(results):
         tid = r.get("topic_id")
         if tid and r.get("record_kind") == "native" and tid not in first_native:
             first_native[tid] = i
+
+    def folds(r: dict) -> bool:
+        tid = r.get("topic_id")
+        if not (tid and r.get("record_kind") == "composite" and tid in first_native):
+            return False
+        return min_overlap is None or _overlap(r, results[first_native[tid]]) >= min_overlap
+
     out: List[dict] = []
     slot: Dict[int, dict] = {}
     for i, r in enumerate(results):
+        if folds(r):
+            continue
         item = dict(r)
         item["collapsed"] = 0
-        tid = r.get("topic_id")
-        if tid and r.get("record_kind") == "composite" and tid in first_native:
-            continue  # folded below
         out.append(item)
         slot[i] = item
-    for i, r in enumerate(results):
-        tid = r.get("topic_id")
-        if tid and r.get("record_kind") == "composite" and tid in first_native:
-            slot[first_native[tid]]["collapsed"] += 1
+    for r in results:
+        if folds(r):
+            slot[first_native[r["topic_id"]]]["collapsed"] += 1
     return out

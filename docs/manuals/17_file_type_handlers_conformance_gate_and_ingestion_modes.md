@@ -86,4 +86,4 @@ class EmlHandler(FormatHandler):
 
 ## 6. Known limits
 
-PDF / scanned documents / images (OCR or layout models, higher tiers), `.msg` and mailbox families, packet captures, `.7z` / `.tar`; spreadsheet dates stay raw Excel serials; `collapse_by_topic` is not yet wired into the served search.
+PDF / scanned documents / images (OCR or layout models, higher tiers), `.msg` and mailbox families, packet captures, `.7z` / `.tar`; spreadsheet dates stay raw Excel serials; the hybrid `/query` path does not fold curated duplicates yet.

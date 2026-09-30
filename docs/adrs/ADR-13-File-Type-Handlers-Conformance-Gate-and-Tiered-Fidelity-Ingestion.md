@@ -79,4 +79,4 @@ Prose is always indexed in full. Only *tabular rows* are subject to a tier's cap
 | Real files through the conformance gate | 30 real docx / xlsx / xlsm / xls files, including corrupt-input fuzzing: 0 problems |
 
 ## Known limits and next formats
-Not covered (deliberately, not forgotten): PDF and scanned documents / images (need OCR or layout models: optional Tier-2/3 handler per ADR-11), e-mail (`.msg` can reuse the OLE2 reader; mbox has a parser in `core/formats`), packet captures and traces (TelcoTrace, ADR-11), `.7z`/`.tar` containers, and the retrieval-side collapse of curated duplicates (`collapse_by_topic` exists but is not wired into the served search).
+Not covered (deliberately, not forgotten): PDF and scanned documents / images (need OCR or layout models: optional Tier-2/3 handler per ADR-11), e-mail (`.msg` can reuse the OLE2 reader; mbox has a parser in `core/formats`), packet captures and traces (TelcoTrace, ADR-11), `.7z`/`.tar` containers, and folding of curated duplicates on the hybrid `/query` path (wired for the router and in-process MCP search, see ADR-12 §6).

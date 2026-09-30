@@ -66,7 +66,7 @@ Live vault changes need a backup and a dead-man rollback (drop the added tables/
 
 Rule for every profile: **never truncate**. `chunk_spans()` returns overlapping spans that cover every character.
 
-Search layers de-duplicate with `collapse_by_topic(results)` (keeps the best rank, prefers the native record, adds `collapsed` = number folded in). Duplicates are not deleted.
+Search de-duplicates automatically: `SovereignQueryRouter.route_and_execute` and the in-process MCP search call `core.structure.search.fold_duplicates`, which folds a curated `composite` record under its `native` record when their text is >= 85% similar (records that add information are kept), sets `collapsed` on the native and returns `topic_id` / `record_kind`. Choose the tier with the `AEGIS_SIZE_PROFILE` environment variable (`desktop` | `edge` | `datacenter`, default `edge`; `datacenter` disables folding). It does nothing on vaults without the structure columns. Duplicates are not deleted.
 
 ## 4. Adding a new format
 
@@ -93,4 +93,4 @@ Rules: deterministic, standard library only, no model calls, stream in memory (o
 ## 5. Known limits
 
 - Structure is applied after indexing until indexers emit it at ingest; the enrichment tool's `INSERT OR REPLACE` would blank the columns for rows it rewrites (re-run the tool to restore).
-- `.docx` chunking by heading, `.xls` and nested-zip ingestion, and the graph viewer are later stages (see ADR-12 rollout).
+- The hybrid `/query` path does not fold duplicates yet, and the graph viewer is a later stage (see ADR-12 rollout). File ingestion is covered by [Manual 17](17_file_type_handlers_conformance_gate_and_ingestion_modes.md).
