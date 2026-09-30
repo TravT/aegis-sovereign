@@ -4,6 +4,7 @@ Processes REST requests, streams Dark Obsidian HTML document views,
 and executes Two-Pronged routing with zero cloud tokens.
 """
 
+import gzip
 import json
 import logging
 import urllib.parse
@@ -36,6 +37,72 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_graph_json(self, data: Any, version: str):
+        """Compact JSON, gzipped when the client accepts it, revalidated with an ETag: a full
+        45k-node slice is ~8 MB raw and ~1 MB gzipped, so it must not be resent when unchanged."""
+        etag = f'W/"{version}"'
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            return
+        body = json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        gzipped = "gzip" in self.headers.get("Accept-Encoding", "") and len(body) > 1024
+        if gzipped:
+            body = gzip.compress(body, compresslevel=5)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        if gzipped:
+            self.send_header("Content-Encoding", "gzip")
+        self.send_header("Vary", "Accept-Encoding")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_graph_v2(self, parsed):
+        """GET /graph/v2/{meta,slice,find}: clearance-aware graph data for the portal viewer."""
+        query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+
+        def arg(name: str, default: str = "") -> str:
+            return query.get(name, [default])[0]
+
+        operation = parsed.path[len("/graph/v2/"):]
+        clearance = arg("user_clearance", "restricted")
+        try:
+            view = self.manager.graph_view
+            if operation == "meta":
+                payload = view.meta(clearance)
+            elif operation == "slice":
+                payload = view.slice(
+                    layer=arg("layer", "tree"),
+                    clearance=clearance,
+                    focus=arg("focus") or None,
+                    mode=arg("mode", "clustered"),
+                    levels=int(arg("levels", "2")),
+                )
+            elif operation == "find":
+                if "q" not in query:
+                    self._send_json(400, {"error": "Missing 'q' query parameter"})
+                    return
+                payload = view.find(arg("q"), clearance, layer=arg("layer", "tree"), limit=int(arg("limit", "50")))
+            else:
+                self._send_json(404, {"error": f"Unknown graph operation '{operation}'"})
+                return
+            self._send_graph_json(payload, view.content_version())
+        except KeyError as e:
+            self._send_json(404, {"error": str(e.args[0]) if e.args else "not found"})
+        except ValueError as e:
+            self._send_json(400, {"error": str(e)})
+        except RuntimeError as e:
+            self._send_json(503, {"error": str(e)})
+        except Exception as e:
+            logger.exception("graph viewer request failed")
+            self._send_json(500, {"error": str(e)})
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -117,6 +184,8 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                 self._send_json(404, {"error": str(ke)})
             except Exception as e:
                 self._send_json(500, {"error": f"Failed to render document: {e}"})
+        elif parsed.path.startswith("/graph/v2/"):
+            self._handle_graph_v2(parsed)
         elif parsed.path == "/graph/topology":
             query_params = urllib.parse.parse_qs(parsed.query)
             filter_term = query_params.get("filter", [""])[0]

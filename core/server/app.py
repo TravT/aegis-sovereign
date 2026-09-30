@@ -35,7 +35,9 @@ try:
 except ImportError:
     from ...desktop.daemon.nano_runner import NanoRunner
 
+from ..graphview import GraphService
 from .constants import (
+    DEFAULT_WIKI_DIR,
     DEFAULT_ROUTER_DB,
     DEFAULT_GRAPH_DB,
     DEFAULT_DIAGRAMS_DIR,
@@ -68,6 +70,7 @@ class SovereignApplianceManager:
         onboarding_radar: Optional[OnboardingRadar] = None,
         router_db_path: Optional[str] = None,
         llm_controller: Optional[LLMController] = None,
+        wiki_dir: Optional[str] = None,
     ):
         is_mock_searcher = searcher is not None and (
             hasattr(searcher, "_mock_name") or type(searcher).__name__ == "MagicMock"
@@ -101,6 +104,9 @@ class SovereignApplianceManager:
             )
         )
         self.router_db_path = effective_router_db
+        self._wiki_dir = wiki_dir or (str(DEFAULT_WIKI_DIR) if DEFAULT_WIKI_DIR else None)
+        self._graph_view: Optional[GraphService] = None
+        self._graph_view_lock = threading.Lock()
         self.router = SovereignQueryRouter(
             db_path=effective_router_db,
             searcher=self.searcher,
@@ -646,6 +652,18 @@ class SovereignApplianceManager:
     def control_llm(self, action: str, engine: str = "ollama") -> Dict[str, Any]:
         return self.llm_controller.scale_engine(action=action, engine=engine)
 
+    @property
+    def graph_view(self) -> GraphService:
+        """The interactive graph viewer's service (Task 14.1), created on first use."""
+        with self._graph_view_lock:
+            if self._graph_view is None:
+                if self.router_db_path == ":memory:" or self.graph_store.db_path == ":memory:":
+                    raise RuntimeError("graph viewer needs on-disk router and graph databases")
+                self._graph_view = GraphService(
+                    self.router_db_path, self.graph_store.db_path, wiki_dir=self._wiki_dir
+                )
+            return self._graph_view
+
     def get_graph_topology(self, filter_term: str = "") -> Dict[str, Any]:
         return build_graph_topology(self.graph_store, filter_term=filter_term)
 
@@ -694,6 +712,7 @@ def create_app(
     onboarding_radar: Optional[OnboardingRadar] = None,
     router_db_path: Optional[str] = None,
     llm_controller: Optional[LLMController] = None,
+    wiki_dir: Optional[str] = None,
 ) -> SovereignApplianceManager:
     """Factory to initialize the singleton SovereignApplianceManager."""
     from .handler import SovereignHTTPHandler
@@ -709,6 +728,7 @@ def create_app(
         onboarding_radar=onboarding_radar,
         router_db_path=router_db_path,
         llm_controller=llm_controller,
+        wiki_dir=wiki_dir,
     )
     SovereignHTTPHandler.manager = manager
     return manager

@@ -5,7 +5,7 @@ Constants, path resolution, and common extractors for the Sovereign Server.
 import os
 import re
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 DEFAULT_HOST = os.getenv("SOVEREIGN_HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.getenv("SOVEREIGN_PORT", "8765"))
@@ -63,6 +63,16 @@ def _resolve_default_graph_db() -> Path:
     return _LEGACY_DATA_DIR / "sovereign_huawei_graph.db"
 
 
+def _resolve_default_wiki_dir() -> Optional[Path]:
+    """The homelab wiki (docs/wiki), mounted read-only next to the vault; None when absent."""
+    env_p = os.getenv("AEGIS_WIKI_DIR")
+    if env_p:
+        return Path(env_p) if Path(env_p).is_dir() else None
+    candidate = _PROD_VAULT_DIR.parent / "wiki"
+    return candidate if candidate.is_dir() else None
+
+
+DEFAULT_WIKI_DIR = _resolve_default_wiki_dir()
 DEFAULT_ROUTER_DB = _resolve_default_router_db()
 DEFAULT_GRAPH_DB = _resolve_default_graph_db()
 DEFAULT_HUAWEI_ROUTER_DB = DEFAULT_ROUTER_DB
