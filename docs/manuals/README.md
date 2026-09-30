@@ -59,6 +59,7 @@ This manual suite provides end-to-end guidance for infrastructure engineers, cli
 | **[14. Real-World Corpus Acquisition & Testing Guide](14_real_world_corpus_acquisition_and_testing_guide.md)** | 6 high-value real-world file categories (`.hdx`, `NF-e .xml`, `Fleury/Einstein .pdf`, `.mbox`, STEM `.pdf/.epub/.tex`, Legal redlines), dropzone staging layout, and deep capability stress-test commands. | Principal Systems Architects, QA Engineers, & Enterprise Pilots |
 | **[15. Unified Server Vault, Purge Lifecycle & Multi-Harness Guide](15_server_deployment_lifecycle_purge_and_harness_guide.md)** | Single-vault storage (`sovereign_router.db` & `sovereign_graph.db`), data removal/purge lifecycle (`--purge`), Prong 1/2 search mastery, and MCP configs for `agy`, Claude Code, Claude Desktop, Cursor, Windsurf, and Cline. | Server Administrators, AI Engineers, & DevOps Architects |
 | **[16. Structure Extraction, Tier Size Profiles & Adding a New Format](16_structure_extraction_tier_profiles_and_adding_a_format.md)** | `core/structure` contract + registry, `topic_nodes`/`topic_edges`/`topic_paths`, desktop/edge/datacenter size profiles, never-truncate chunking, search-time collapse, how to add an extractor |
+| **[17. File-Type Handlers, the Conformance Gate & Ingestion Modes](17_file_type_handlers_conformance_gate_and_ingestion_modes.md)** | supported file types, `tools/ingest_files.py` modes (missing / changed / grow / replace), tiered fidelity and catalog cards, verification recipe, adding a new file type in bounded steps |
 
 
 ---

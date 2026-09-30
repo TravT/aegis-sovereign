@@ -86,7 +86,8 @@ Structure comes from the source's own organisation. Any model assistance (e.g. t
 
 ## Rollout
 1. **Done:** Stage 1 tree on the live vault (dead-man rollback tested; content hash unchanged).
-2. **Next:** emit structure at ingest; remove the truncating slices by chunking (`docx` by heading style); ingest the `.xls`/nested `.zip` files; then the 3D/2D graph viewer over `topic_nodes`/`topic_edges`.
+2. **Done ([ADR-13](ADR-13-File-Type-Handlers-Conformance-Gate-and-Tiered-Fidelity-Ingestion.md)):** structure is emitted at ingest; the truncating slices are replaced by lossless chunking (docx by heading style); the `.xls` and nested `.zip` files are ingested.
+3. **Next:** wire `collapse_by_topic` into the served search; the 3D/2D graph viewer over `topic_nodes`/`topic_edges`.
 
 ## Alternatives considered
 - **Keep a Huawei-specific script and copy it per format** — rejected: repeats the current debt and cannot scale to mailboxes, decks and traces.
