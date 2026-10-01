@@ -371,11 +371,6 @@ function showPortalToast(msg) {
           </article>
         `;
       }).join("");
-
-      const topUri = results[0].virtual_uri || results[0].source_uri || "";
-      if (topUri) {
-        openSourceInInspector(topUri, "", false);
-      }
     }
 
     function renderGraphDossier(dossier) {

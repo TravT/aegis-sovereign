@@ -153,5 +153,4 @@ async function loadLicenseStatus() {
       refreshTelemetry();
       checkLlmStatus();
       setInterval(checkLlmStatus, 10000);
-      executePortalQuery();
     });

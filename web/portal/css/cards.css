@@ -451,3 +451,4 @@
       overflow-x: auto;
       line-height: 1.65;
     }
+.idle-hint { color: var(--text-secondary); margin: 1rem 0; font-size: 0.9rem; }

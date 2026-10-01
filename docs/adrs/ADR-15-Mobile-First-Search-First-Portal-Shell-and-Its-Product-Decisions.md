@@ -22,7 +22,7 @@ aliases:
 # ADR-15: Mobile-First, Search-First Portal Shell and Its Product Decisions
 
 ## Status
-Accepted as a design on 2026-10-01; implementation not started. Two product questions are still open (see "Still open"). Builds on [ADR-14](ADR-14-Interactive-Graph-Viewer-Clearance-Aware-Layers-Server-Layout-and-Dependency-Free-Renderer.md) (the graph explorer it hosts) and is paired with [ADR-16](ADR-16-Archive-Streaming-Checkpoint-Index-Lazy-Preview-and-Memory-Budget.md) (the memory fix that its first phase enables). Evidence and the build plan: the recommendation (wiki note `projects/aegis/studies/portal-redesign-recommendation.md` in Enterprise_Hub), the audit (wiki note `projects/aegis/studies/portal-redesign-audit.md` in Enterprise_Hub), the design principles (wiki note `projects/aegis/studies/portal-redesign-design.md` in Enterprise_Hub) and the implementation plan (wiki note `projects/aegis/studies/portal-redesign-implementation-plan.md` in Enterprise_Hub).
+Accepted as a design on 2026-10-01. Phase 1 (open idle, preview on tap) implemented 2026-10-01; the rest of the rebuild has not started. The two open product questions were settled the same day (decisions 11 and 12). Builds on [ADR-14](ADR-14-Interactive-Graph-Viewer-Clearance-Aware-Layers-Server-Layout-and-Dependency-Free-Renderer.md) (the graph explorer it hosts) and is paired with [ADR-16](ADR-16-Archive-Streaming-Checkpoint-Index-Lazy-Preview-and-Memory-Budget.md) (the memory fix that its first phase enables). Evidence and the build plan: the recommendation (wiki note `projects/aegis/studies/portal-redesign-recommendation.md` in Enterprise_Hub), the audit (wiki note `projects/aegis/studies/portal-redesign-audit.md` in Enterprise_Hub), the design principles (wiki note `projects/aegis/studies/portal-redesign-design.md` in Enterprise_Hub) and the implementation plan (wiki note `projects/aegis/studies/portal-redesign-implementation-plan.md` in Enterprise_Hub).
 
 ## Date
 2026-10-01
@@ -62,13 +62,11 @@ Three destinations, **Search, Graph, Settings**. On a phone they are a bottom ta
 8. **Dark theme only for now.** The colour tokens stay theme-ready; a light theme is revisited after phase 4.
 9. **The Cmd+K palette is later** (after the shell and the graph screen). **Installing as an app (PWA) is deferred**; if wanted, a manifest and an icon only, with no service worker.
 10. **Vocabulary** is fixed in `CONTEXT.md` of the appliance repository: **Plan** (FREE / PRO / ENTERPRISE) and **Deployment profile** (desktop / edge / datacenter) replace the overloaded "tier"; **Source folder**, **Citation** and **Document** separate the three meanings of "source"; the one destructive verb is **Remove from index**.
+11. **Examples.** All 12 example searches stay, inside a collapsed "Examples" row (a test asserts their strings; nothing is lost and the landing screen stays at 11 controls). Settled with the owner on 2026-10-01.
+12. **Deep synthesis while the Local LLM is off** is shown disabled, with "turn on the Local LLM in Settings" beneath it, so the feature stays discoverable and the layout does not shift when the LLM starts. Settled with the owner on 2026-10-01.
 
 ### 3. Constraints that carry over
 Air-gapped (system fonts and inline SVG, no external origin: a test enforces it, so the inline SVG must not carry the `xmlns` URL); vanilla HTML, CSS and JavaScript with no build step; the existing API contracts; every element id that the existing tests assert is kept, and `test_06` of `test_web_portal.py` is updated because it asserts the old tab labels.
-
-## Still open
-- **Presets**: keep all 12 examples inside the collapsed "Examples" (their strings are asserted by a test) or cut to 4 to 6.
-- **Deep synthesis**: whether to show it while the Local LLM is off (the prototype shows it disabled, with "turn it on in Settings").
 
 ## Consequences
 - The first release of the new design is one day of work (phase 1: idle open, preview on tap) and fixes the page-load crash independently of the larger rebuild.

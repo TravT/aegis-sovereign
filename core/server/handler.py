@@ -7,6 +7,7 @@ and executes Two-Pronged routing with zero cloud tokens.
 import gzip
 import json
 import logging
+import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler
 from typing import Dict, Any
@@ -18,6 +19,10 @@ from ..security import (
     FeatureNotAllowedError,
 )
 from .constants import WEB_PORTAL_INDEX, _PROD_VAULT_DIR, _LEGACY_DATA_DIR
+
+# ADR-16 stop-gap: reading a large archive for a preview takes about 1 GB, so only one such read runs at a
+# time; other requests wait their turn. Lifted when the streaming core (ADR-16 phase 1) lands.
+_ARCHIVE_READ_LOCK = threading.Lock()
 
 logger = logging.getLogger("sovereign_server.handler")
 
@@ -181,7 +186,8 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": "Missing 'uri' query parameter (e.g. ?uri=archive://...)"})
                 return
             try:
-                html_out = self.manager.render_archive_document_html(virtual_uri)
+                with _ARCHIVE_READ_LOCK:
+                    html_out = self.manager.render_archive_document_html(virtual_uri)
                 self._send_bytes(200, "text/html; charset=utf-8", html_out.encode("utf-8", errors="replace"))
             except KeyError as ke:
                 self._send_json(404, {"error": str(ke)})
@@ -373,16 +379,17 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": "Missing 'archive_path' or 'virtual_uri' in JSON payload"})
                 return
             try:
-                res = self.manager.inspect_archive(
-                    archive_path=archive_path,
-                    virtual_uri=virtual_uri,
-                    query=query,
-                    ingest=ingest,
-                    section_filter=section_filter,
-                    extract_diagram_to_artifact=extract_diagram,
-                    char_offset=char_offset,
-                    max_chars=max_chars,
-                )
+                with _ARCHIVE_READ_LOCK:
+                    res = self.manager.inspect_archive(
+                        archive_path=archive_path,
+                        virtual_uri=virtual_uri,
+                        query=query,
+                        ingest=ingest,
+                        section_filter=section_filter,
+                        extract_diagram_to_artifact=extract_diagram,
+                        char_offset=char_offset,
+                        max_chars=max_chars,
+                    )
                 self._send_json(200, res)
             except ArchiveSecurityError as ase:
                 self._send_json(403, {"error": str(ase), "code": "ARCHIVE_SECURITY_VIOLATION"})
