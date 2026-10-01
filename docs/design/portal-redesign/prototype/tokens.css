@@ -1,0 +1,79 @@
+/* PROTOTYPE (throwaway) - shared design tokens for the Aegis portal redesign study.
+   Keeps the obsidian / gold / emerald / cyan language of web/portal/css/variables.css,
+   with two contrast fixes: --text-muted is raised to pass 4.5:1 on the obsidian surface,
+   and gold is used only for the ONE primary action per screen. System fonts only (air-gapped). */
+:root {
+  --bg: #05070B;
+  --bg-deep: #090C13;
+  --surface: #0D111A;
+  --surface-2: #121826;
+  --surface-3: #182033;
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.18);
+  --gold: #D4AF37;
+  --gold-bright: #F3E5AB;
+  --gold-soft: rgba(212, 175, 55, 0.14);
+  --emerald: #10B981;
+  --emerald-bright: #34D399;
+  --emerald-soft: rgba(16, 185, 129, 0.14);
+  --cyan: #06B6D4;
+  --cyan-bright: #22D3EE;
+  --cyan-soft: rgba(6, 182, 212, 0.14);
+  --amber: #FBBF24;
+  --amber-soft: rgba(251, 191, 36, 0.13);
+  --rose: #FB7185;
+  --rose-soft: rgba(244, 63, 94, 0.14);
+  --text: #F1F5F9;          /* 17.6:1 on --bg */
+  --text-2: #A3B0C2;        /* 9.0:1 */
+  --text-3: #8391A7;        /* 6.1:1 - was #64748B (4.2:1, fails AA) */
+  --on-gold: #1A1405;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+  --r-sm: 8px; --r: 12px; --r-lg: 18px;
+  --tap: 44px;
+  --gutter: 16px;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--bg); color: var(--text); font-family: var(--font); font-size: 16px; line-height: 1.5;
+  min-height: 100vh; min-height: 100dvh; overflow-x: hidden;
+  background-image: radial-gradient(ellipse 90% 45% at 50% -12%, rgba(212, 175, 55, 0.10), rgba(6, 182, 212, 0.04), transparent 70%);
+  background-attachment: fixed;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: 0; }
+a { color: var(--cyan-bright); }
+code, .mono { font-family: var(--mono); font-size: 0.92em; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; border-radius: 6px; }
+.sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ico { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ico.sm { width: 16px; height: 16px; }
+.ico.lg { width: 24px; height: 24px; }
+
+/* Route badges: icon + words, never colour alone */
+.badge { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+  padding: 3px 8px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
+.badge.exact { color: var(--emerald-bright); background: var(--emerald-soft); border-color: rgba(52, 211, 153, 0.35); }
+.badge.synth { color: var(--cyan-bright); background: var(--cyan-soft); border-color: rgba(34, 211, 238, 0.35); }
+.badge.miss { color: var(--amber); background: var(--amber-soft); border-color: rgba(251, 191, 36, 0.35); }
+.badge.neutral { color: var(--text-2); background: var(--surface-2); border-color: var(--line); }
+
+/* Prototype switcher (NOT part of the design being evaluated) */
+.proto-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(96px + var(--safe-b)); z-index: 9999;
+  display: flex; align-items: center; gap: 4px; padding: 4px; border-radius: 999px; background: #FDF6E3; color: #111;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.6), 0 0 0 2px #111; font: 600 13px/1 var(--font); }
+.proto-bar button { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #111; }
+.proto-bar button:hover { background: rgba(0,0,0,0.08); }
+.proto-bar .lbl { padding: 0 8px; white-space: nowrap; }
+.proto-bar .x { width: 28px; height: 28px; opacity: 0.6; }
+body.no-bar .proto-bar { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}
+@media (min-width: 768px) { .proto-bar { bottom: 12px; } }

@@ -79,3 +79,6 @@ yarn-error.log*
 pnpm-debug.log*
 *.tsbuildinfo
 package-lock.json
+
+# Raw study artefacts (screenshots, run logs, scratch DBs): kept locally, curated results live in the wiki and benchmarks/
+studies/
