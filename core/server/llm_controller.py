@@ -30,7 +30,8 @@ class LLMController:
         self.nomad_token = os.getenv("NOMAD_TOKEN", "")
         self.ollama_url = (ollama_url or os.getenv("SOVEREIGN_OLLAMA_URL", "http://127.0.0.1:11434")).rstrip("/")
         self.llama_cpp_url = (llama_cpp_url or os.getenv("SOVEREIGN_LLAMA_CPP_URL", "http://127.0.0.1:8085")).rstrip("/")
-        self.idle_timeout_seconds = idle_timeout_seconds
+        env_timeout = os.getenv("SOVEREIGN_LLM_IDLE_TIMEOUT")
+        self.idle_timeout_seconds = float(env_timeout) if env_timeout is not None else idle_timeout_seconds
         self.last_activity = time.time()
         self._lock = threading.Lock()
         self._daemon_started = False
@@ -42,7 +43,7 @@ class LLMController:
             self.last_activity = time.time()
 
     def _start_idle_daemon(self):
-        if self._daemon_started:
+        if self._daemon_started or self.idle_timeout_seconds <= 0:
             return
         self._daemon_started = True
 
@@ -50,6 +51,8 @@ class LLMController:
             while True:
                 time.sleep(30.0)
                 try:
+                    if self.idle_timeout_seconds <= 0:
+                        continue
                     status = self.get_status()
                     if status.get("running"):
                         idle_sec = time.time() - self.last_activity
