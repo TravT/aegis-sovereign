@@ -476,8 +476,64 @@ function showPortalToast(msg) {
         } else if (!extractDiagram) {
           diagBox.style.display = "none";
         }
+        loadTopicNavigation(virtualUri);
       } catch (err) {
         metaEl.textContent = "Error inspecting archive entry: " + err;
+      }
+    }
+
+    async function loadTopicNavigation(virtualUri) {
+      const treeContainer = document.getElementById("inspector-topic-tree");
+      if (!treeContainer) return;
+      try {
+        const resp = await fetch("/topic/tree?uri=" + encodeURIComponent(virtualUri));
+        if (!resp.ok) {
+          treeContainer.style.display = "none";
+          return;
+        }
+        const data = await resp.json();
+        if (!data || !data.current || (!data.prev_topic && !data.next_topic && (!data.siblings || data.siblings.length <= 1))) {
+          treeContainer.style.display = "none";
+          return;
+        }
+
+        let navBtns = "";
+        if (data.prev_topic && data.prev_topic.uri) {
+          navBtns += `<button type="button" class="inspector-nav-btn prev" onclick="openSourceInInspector('${escapeHtml(data.prev_topic.uri)}')" title="Previous: ${escapeHtml(data.prev_topic.name)}">⬅ Prev: ${escapeHtml(data.prev_topic.name)}</button>`;
+        }
+        if (data.parent && data.parent.uri) {
+          navBtns += `<button type="button" class="inspector-nav-btn parent" onclick="openSourceInInspector('${escapeHtml(data.parent.uri)}')" title="Chapter: ${escapeHtml(data.parent.name)}">⬆ ${escapeHtml(data.parent.name)}</button>`;
+        }
+        if (data.next_topic && data.next_topic.uri) {
+          navBtns += `<button type="button" class="inspector-nav-btn next" onclick="openSourceInInspector('${escapeHtml(data.next_topic.uri)}')" title="Next: ${escapeHtml(data.next_topic.name)}">Next: ${escapeHtml(data.next_topic.name)} ➡</button>`;
+        }
+
+        let sibList = "";
+        if (data.siblings && data.siblings.length > 1) {
+          sibList = `
+            <details class="inspector-tree-accordion">
+              <summary>📑 Chapter Contents (${data.siblings.length} Topics)</summary>
+              <ul class="inspector-sib-list">
+                ${data.siblings.map(s => {
+                  if (s.is_current) return `<li class="current-topic">👉 <strong>${escapeHtml(s.name)}</strong> (Viewing)</li>`;
+                  if (s.uri) return `<li><a href="javascript:void(0)" onclick="openSourceInInspector('${escapeHtml(s.uri)}')">${escapeHtml(s.name)}</a></li>`;
+                  return `<li>${escapeHtml(s.name)}</li>`;
+                }).join("")}
+              </ul>
+            </details>
+          `;
+        }
+
+        treeContainer.style.display = "block";
+        treeContainer.innerHTML = `
+          <div class="topic-strip-header">
+            <span class="topic-path-badge">📁 ${escapeHtml(data.current.path_text || data.current.name)}</span>
+          </div>
+          <div class="topic-nav-buttons">${navBtns}</div>
+          ${sibList}
+        `;
+      } catch (e) {
+        treeContainer.style.display = "none";
       }
     }
 

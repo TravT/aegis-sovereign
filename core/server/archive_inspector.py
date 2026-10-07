@@ -194,7 +194,8 @@ class ArchiveInspector:
                                     for rel_img in re.findall(r'<img[^>]+src=["\']([^"\']+\.(?:png|jpg|gif))["\']', raw_html_str, flags=re.I):
                                         if "caution" in rel_img.lower() or "note" in rel_img.lower():
                                             continue
-                                        resolved_img = str((Path(parent_dir) / rel_img).as_posix())
+                                        norm_path = os.path.normpath(str((Path(parent_dir) / rel_img).as_posix()))
+                                        resolved_img = norm_path.lstrip("/")
                                         if resolved_img in target_zf.namelist() and resolved_img not in img_entries:
                                             img_entries.append(resolved_img)
                                 for img_ep in img_entries[:8]:

@@ -6,14 +6,19 @@ with Dark Obsidian styling, relative diagram link rewriting, and script strippin
 
 import html
 import re
-from typing import Any
+import urllib.parse
+from typing import Any, Optional, Dict, List
 
 
 class DocumentViewer:
     """Renders virtual container archive entries as sanitized, responsive Dark Obsidian HTML."""
 
     @staticmethod
-    def format_entry_to_styled_html(entry: Any, virtual_uri: str) -> str:
+    def format_entry_to_styled_html(
+        entry: Any,
+        virtual_uri: str,
+        topic_hierarchy: Optional[Dict[str, Any]] = None,
+    ) -> str:
         name_lower = getattr(entry, "entry_name", "").lower()
         title = getattr(entry, "entry_name", "Document").split("/")[-1]
 
@@ -50,13 +55,76 @@ class DocumentViewer:
 
         # Strip scripts that could break iframe / viewer
         raw_body_html = re.sub(r"<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>", "", raw_body_html, flags=re.IGNORECASE)
-        # Rewrite relative image references (figure/...) to diagrams endpoint
+        # Rewrite relative image references (figure/..., ../images/..., etc.) to diagrams endpoint
         raw_body_html = re.sub(
-            r'<img\s+([^>]*?)src=["\'](?:figure/|images/)?([^"\']+\.(?:png|jpg|jpeg|gif))["\']',
+            r'<img\s+([^>]*?)src=["\'](?:(?:\.\./)+|/)?(?:[^"\'\s]*/)?([^"\'/\s]+\.(?:png|jpg|jpeg|gif|svg|webp))["\']',
             r'<img \1src="/diagrams/\2"',
             raw_body_html,
             flags=re.IGNORECASE,
         )
+
+        nav_html = ""
+        bottom_nav_html = ""
+        if topic_hierarchy and topic_hierarchy.get("current"):
+            cur = topic_hierarchy["current"]
+            parent = topic_hierarchy.get("parent")
+            prev_t = topic_hierarchy.get("prev_topic")
+            next_t = topic_hierarchy.get("next_topic")
+            sibs = topic_hierarchy.get("siblings") or []
+
+            path_text = cur.get("path_text") or cur.get("name") or ""
+            breadcrumb_html = (
+                f'<div class="topic-breadcrumbs">📁 <span>{html.escape(path_text)}</span></div>'
+                if path_text else ""
+            )
+
+            buttons: List[str] = []
+            if prev_t and prev_t.get("uri"):
+                p_url = f"/archive/view?uri={urllib.parse.quote(prev_t['uri'])}"
+                buttons.append(f'<a href="{p_url}" class="nav-step-btn prev-btn" title="Previous: {html.escape(prev_t["name"])}">⬅ Prev: {html.escape(prev_t["name"])}</a>')
+            if parent and parent.get("uri"):
+                par_url = f"/archive/view?uri={urllib.parse.quote(parent['uri'])}"
+                buttons.append(f'<a href="{par_url}" class="nav-step-btn parent-btn" title="Up to Chapter: {html.escape(parent["name"])}">⬆ Chapter: {html.escape(parent["name"])}</a>')
+            if next_t and next_t.get("uri"):
+                n_url = f"/archive/view?uri={urllib.parse.quote(next_t['uri'])}"
+                buttons.append(f'<a href="{n_url}" class="nav-step-btn next-btn" title="Next: {html.escape(next_t["name"])}">Next: {html.escape(next_t["name"])} ➡</a>')
+
+            siblings_html = ""
+            if len(sibs) > 1:
+                sib_items: List[str] = []
+                for s in sibs:
+                    s_name = html.escape(s.get("name") or "Topic")
+                    s_uri = s.get("uri")
+                    if s.get("is_current"):
+                        sib_items.append(f'<li class="current-sib"><strong>👉 {s_name} (Current)</strong></li>')
+                    elif s_uri:
+                        s_url = f"/archive/view?uri={urllib.parse.quote(s_uri)}"
+                        sib_items.append(f'<li><a href="{s_url}">{s_name}</a></li>')
+                    else:
+                        sib_items.append(f'<li class="muted-sib">{s_name}</li>')
+
+                siblings_html = f"""
+                <details class="chapter-siblings-accordion">
+                  <summary>📑 Chapter Contents ({len(sibs)} Topics) — Click to browse adjacent sections</summary>
+                  <ul class="siblings-list">
+                    {"".join(sib_items)}
+                  </ul>
+                </details>
+                """
+
+            buttons_strip = f'<div class="nav-buttons-strip">{" ".join(buttons)}</div>' if buttons else ""
+            nav_html = f"""
+            <nav class="topic-nav-container">
+              {breadcrumb_html}
+              {buttons_strip}
+              {siblings_html}
+            </nav>
+            """
+            bottom_nav_html = f"""
+            <nav class="topic-bottom-nav">
+              <div class="nav-buttons-strip">{" ".join(buttons)}</div>
+            </nav>
+            """
 
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -190,6 +258,82 @@ class DocumentViewer:
       margin-bottom: 1.5rem;
       border: 1px solid var(--border);
     }}
+    .topic-nav-container {{
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 8px;
+      padding: 0.85rem 1.15rem;
+      margin-bottom: 1.5rem;
+    }}
+    .topic-breadcrumbs {{
+      font-size: 0.82rem;
+      font-family: var(--font-mono);
+      color: var(--cyan);
+      margin-bottom: 0.65rem;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      word-break: break-word;
+    }}
+    .nav-buttons-strip {{
+      display: flex;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }}
+    .nav-step-btn {{
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.82rem;
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      text-decoration: none;
+      transition: all 0.2s;
+    }}
+    .nav-step-btn:hover {{
+      background: rgba(56, 189, 248, 0.15);
+      border-color: var(--cyan);
+      color: #FFF;
+    }}
+    .chapter-siblings-accordion {{
+      margin-top: 0.75rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }}
+    .chapter-siblings-accordion summary {{
+      color: var(--gold);
+      font-weight: 500;
+      user-select: none;
+    }}
+    .siblings-list {{
+      margin: 0.65rem 0 0 1.25rem;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }}
+    .siblings-list a {{
+      color: var(--text);
+      text-decoration: none;
+    }}
+    .siblings-list a:hover {{
+      color: var(--cyan);
+      text-decoration: underline;
+    }}
+    .current-sib {{
+      color: var(--gold);
+    }}
+    .topic-bottom-nav {{
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: center;
+    }}
   </style>
 </head>
 <body>
@@ -208,8 +352,11 @@ class DocumentViewer:
     <strong>Virtual URI:</strong> {virtual_uri}
   </div>
 
+  {nav_html}
+
   <main class="document-content">
     {raw_body_html}
+    {bottom_nav_html}
   </main>
 </body>
 </html>"""

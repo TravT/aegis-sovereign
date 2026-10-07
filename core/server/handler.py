@@ -180,13 +180,40 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                         ctype = "image/jpeg"
                     elif rel_name.lower().endswith(".gif"):
                         ctype = "image/gif"
+                    elif rel_name.lower().endswith(".svg"):
+                        ctype = "image/svg+xml"
+                    elif rel_name.lower().endswith(".webp"):
+                        ctype = "image/webp"
                     self._send_bytes(200, ctype, cp.read_bytes())
                     return
+
+            # On-demand streaming from archive if not found on disk
+            diag = self.manager.stream_diagram(rel_name)
+            if diag:
+                ctype, img_bytes = diag
+                self._send_bytes(200, ctype, img_bytes)
+                return
+
             self._send_json(404, {"error": f"Diagram '{rel_name}' not found"})
         elif parsed.path in ("/health", "/status"):
             self._send_json(200, self.manager.get_status())
         elif parsed.path == "/llm/status":
             self._send_json(200, self.manager.llm_controller.get_status())
+        elif parsed.path == "/topic/tree":
+            query_params = urllib.parse.parse_qs(parsed.query)
+            virtual_uri = query_params.get("uri", [""])[0]
+            topic_id = query_params.get("topic_id", [""])[0]
+            if not virtual_uri and not topic_id:
+                self._send_json(400, {"error": "Missing 'uri' or 'topic_id' query parameter"})
+                return
+            try:
+                tree_data = self.manager.get_topic_hierarchy(virtual_uri=virtual_uri, topic_id=topic_id)
+                if tree_data:
+                    self._send_json(200, tree_data)
+                else:
+                    self._send_json(404, {"error": "Topic hierarchy not found for identifier"})
+            except Exception as e:
+                self._send_json(500, {"error": f"Failed to fetch topic hierarchy: {e}"})
         elif parsed.path == "/archive/view":
             query_params = urllib.parse.parse_qs(parsed.query)
             virtual_uri = query_params.get("uri", [""])[0]

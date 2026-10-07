@@ -9,10 +9,12 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import threading
 import time
+import zipfile
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
 from ..search.searcher import SovereignSearcher
 from ..proxy.context_condenser import ContextCondenser
@@ -42,6 +44,7 @@ from .constants import (
     DEFAULT_GRAPH_DB,
     DEFAULT_DIAGRAMS_DIR,
     _PROD_VAULT_DIR,
+    _LEGACY_DATA_DIR,
     _extract_structured_sections,
     _detect_and_parse_markdown_tables,
 )
@@ -553,9 +556,207 @@ class SovereignApplianceManager:
         )
 
     def render_archive_document_html(self, virtual_uri: str) -> str:
-        """Extracts and renders an authentic HTML/OpenXML archive document with Dark Obsidian styling."""
+        """Extracts and renders an authentic HTML/OpenXML archive document with Dark Obsidian styling and topic navigation."""
         entry = self.archive_streamer.resolve_virtual_uri(virtual_uri)
-        return DocumentViewer.format_entry_to_styled_html(entry, virtual_uri)
+        topic_hierarchy = self.get_topic_hierarchy(virtual_uri=virtual_uri)
+        return DocumentViewer.format_entry_to_styled_html(entry, virtual_uri, topic_hierarchy=topic_hierarchy)
+
+    def stream_diagram(self, filename: str) -> Optional[Tuple[str, bytes]]:
+        """Resolves and streams an embedded diagram/image purely from archive in-memory, caching to disk."""
+        ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else "png"
+        ctypes = {
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "gif": "image/gif",
+            "svg": "image/svg+xml",
+            "webp": "image/webp",
+        }
+        ctype = ctypes.get(ext, "image/png")
+
+        # 1. Check disk caches first
+        for base in (_PROD_VAULT_DIR / "extracted_diagrams", _LEGACY_DATA_DIR / "extracted_diagrams"):
+            p = base / filename
+            if p.exists() and p.is_file():
+                return ctype, p.read_bytes()
+
+        # 2. Look up virtual URI from sovereign_router.db
+        v_uri = None
+        db_path = getattr(self.router, "db_path", None)
+        if db_path and db_path != ":memory:" and Path(db_path).exists():
+            try:
+                conn = sqlite3.connect(db_path, timeout=5.0)
+                try:
+                    cur = conn.cursor()
+                    row = cur.execute(
+                        "SELECT content FROM document_records WHERE content LIKE ? LIMIT 1",
+                        (f"%{filename}%",)
+                    ).fetchone()
+                    if row and row[0]:
+                        m = re.search(r"archive://[^\r\n\"'\)\]]+?" + re.escape(filename), row[0])
+                        if m:
+                            v_uri = m.group(0).strip()
+                finally:
+                    conn.close()
+            except Exception as e:
+                logger.warning(f"Error looking up diagram {filename} in router DB: {e}")
+
+        # 3. If found in router DB, resolve directly with archive_streamer
+        if v_uri:
+            try:
+                entry = self.archive_streamer.resolve_virtual_uri(v_uri)
+                if hasattr(entry, "raw_bytes") and entry.raw_bytes:
+                    try:
+                        out_dir = _PROD_VAULT_DIR / "extracted_diagrams"
+                        out_dir.mkdir(parents=True, exist_ok=True)
+                        (out_dir / filename).write_bytes(entry.raw_bytes)
+                    except Exception:
+                        pass
+                    return ctype, entry.raw_bytes
+            except Exception as exc:
+                logger.warning(f"Failed to stream diagram via URI {v_uri}: {exc}")
+
+        # 4. Fallback: Search known archive packages in Hua_Docs / monitored sources
+        default_hua_dir = Path("/home/tlima/Enterprise_Hub/docs/Hua_Docs")
+        if default_hua_dir.exists():
+            for z_path in default_hua_dir.glob("*.zip"):
+                try:
+                    with zipfile.ZipFile(z_path, "r") as ozf:
+                        hwics_entries = [n for n in ozf.namelist() if n.lower().endswith(".hwics")]
+                        for hw in hwics_entries:
+                            v_cand = f"archive://{z_path}!{hw}#resources/images/{filename}"
+                            try:
+                                entry = self.archive_streamer.resolve_virtual_uri(v_cand)
+                                if hasattr(entry, "raw_bytes") and entry.raw_bytes:
+                                    try:
+                                        out_dir = _PROD_VAULT_DIR / "extracted_diagrams"
+                                        out_dir.mkdir(parents=True, exist_ok=True)
+                                        (out_dir / filename).write_bytes(entry.raw_bytes)
+                                    except Exception:
+                                        pass
+                                    return ctype, entry.raw_bytes
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+
+        return None
+
+    def get_topic_hierarchy(self, virtual_uri: str = "", topic_id: str = "") -> Optional[Dict[str, Any]]:
+        """Returns topic hierarchy (current, parent, prev_topic, next_topic, siblings, children)."""
+        db_path = getattr(self.router, "db_path", None)
+        if not db_path or db_path == ":memory:" or not Path(db_path).exists():
+            return None
+
+        try:
+            conn = sqlite3.connect(db_path, timeout=5.0)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            try:
+                title = ""
+                # 1. Resolve topic_id if virtual_uri is provided
+                if not topic_id and virtual_uri:
+                    default_hua_dir = "/home/tlima/Enterprise_Hub/docs/Hua_Docs"
+                    norm_uri = virtual_uri.replace("/tmp/docs_rag_gemini", default_hua_dir)
+                    row = cur.execute(
+                        "SELECT topic_id, title FROM document_records WHERE doc_identifier = ? OR doc_identifier = ? LIMIT 1",
+                        (virtual_uri, norm_uri)
+                    ).fetchone()
+                    if row and row["topic_id"]:
+                        topic_id = row["topic_id"]
+                        title = row["title"]
+                    else:
+                        entry_suffix = virtual_uri.split("#")[-1]
+                        row = cur.execute(
+                            "SELECT topic_id, title FROM document_records WHERE doc_identifier LIKE ? LIMIT 1",
+                            (f"%{entry_suffix}",)
+                        ).fetchone()
+                        if row and row["topic_id"]:
+                            topic_id = row["topic_id"]
+                            title = row["title"]
+
+                if not topic_id:
+                    return None
+
+                # 2. Get Topic Node
+                node = cur.execute(
+                    "SELECT topic_id, package, name, depth, path_text FROM topic_nodes WHERE topic_id = ?",
+                    (topic_id,)
+                ).fetchone()
+
+                # 3. Get Parent
+                parent_row = cur.execute("""
+                    SELECT e.parent AS topic_id, p.name,
+                           (SELECT doc_identifier FROM document_records WHERE topic_id = e.parent LIMIT 1) AS uri,
+                           (SELECT title FROM document_records WHERE topic_id = e.parent LIMIT 1) AS title
+                    FROM topic_edges e
+                    JOIN topic_nodes p ON p.topic_id = e.parent
+                    WHERE e.child = ? AND e.is_primary = 1
+                """, (topic_id,)).fetchone()
+
+                # 4. Get Siblings
+                sib_rows = cur.execute("""
+                    SELECT es.child AS topic_id, s.name,
+                           (SELECT doc_identifier FROM document_records WHERE topic_id = es.child LIMIT 1) AS uri,
+                           (SELECT title FROM document_records WHERE topic_id = es.child LIMIT 1) AS title
+                    FROM topic_edges e
+                    JOIN topic_edges es ON es.parent = e.parent AND es.is_primary = 1
+                    JOIN topic_nodes s ON s.topic_id = es.child
+                    WHERE e.child = ? AND e.is_primary = 1
+                    ORDER BY es.rowid ASC
+                """, (topic_id,)).fetchall()
+
+                # 5. Get Children
+                child_rows = cur.execute("""
+                    SELECT e.child AS topic_id, c.name,
+                           (SELECT doc_identifier FROM document_records WHERE topic_id = e.child LIMIT 1) AS uri,
+                           (SELECT title FROM document_records WHERE topic_id = e.child LIMIT 1) AS title
+                    FROM topic_edges e
+                    JOIN topic_nodes c ON c.topic_id = e.child
+                    WHERE e.parent = ? AND e.is_primary = 1
+                    ORDER BY e.rowid ASC
+                """, (topic_id,)).fetchall()
+
+                sib_list = []
+                cur_idx = -1
+                for idx, s in enumerate(sib_rows):
+                    is_cur = (s["topic_id"] == topic_id)
+                    if is_cur:
+                        cur_idx = idx
+                    sib_list.append({
+                        "topic_id": s["topic_id"],
+                        "name": s["name"],
+                        "uri": s["uri"],
+                        "title": s["title"],
+                        "is_current": is_cur
+                    })
+
+                prev_topic = sib_list[cur_idx - 1] if cur_idx > 0 else None
+                next_topic = sib_list[cur_idx + 1] if (cur_idx >= 0 and cur_idx < len(sib_list) - 1) else None
+
+                return {
+                    "current": {
+                        "topic_id": topic_id,
+                        "name": node["name"] if node else (title or topic_id),
+                        "title": title or (node["name"] if node else topic_id),
+                        "uri": virtual_uri,
+                        "path_text": node["path_text"] if node else None,
+                        "package": node["package"] if node else None,
+                        "depth": node["depth"] if node else None
+                    },
+                    "parent": dict(parent_row) if parent_row else None,
+                    "prev_topic": prev_topic,
+                    "next_topic": next_topic,
+                    "siblings_count": len(sib_list),
+                    "siblings": sib_list,
+                    "children_count": len(child_rows),
+                    "children": [dict(c) for c in child_rows]
+                }
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Failed to fetch topic hierarchy for {virtual_uri or topic_id}: {e}")
+            return None
 
     def scan_onboarding_radar(
         self,
