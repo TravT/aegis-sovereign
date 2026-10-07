@@ -10,6 +10,8 @@ import json
 import logging
 import os
 import re
+import sqlite3
+import threading
 import zipfile
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Callable
@@ -48,6 +50,33 @@ class ArchiveInspector:
         self.router = router
         self.graph_store = graph_store
         self.ingest_callback = ingest_callback
+        self._db_lock = threading.Lock()   # only used for an in-memory router database (see _lookup_record)
+
+    def _lookup_record(self, virtual_uri: str, legacy_uri: str) -> Optional[Any]:
+        """The indexed (title, content) of a document, or None. Never raises: a failure is logged.
+
+        Each call uses its own read-only connection, so concurrent previews never share one (a shared SQLite
+        connection used from several threads sometimes lost the row). An in-memory database cannot be reopened,
+        so there the shared connection is used under a lock.
+        """
+        sql = "SELECT title, content FROM document_records WHERE doc_identifier = ? OR doc_identifier = ? OR metadata LIKE ?"
+        params = (virtual_uri, legacy_uri, f"%{virtual_uri}%")
+        db_path = str(getattr(self.router, "db_path", ":memory:") or ":memory:")
+        try:
+            if db_path != ":memory:" and Path(db_path).exists():
+                conn = sqlite3.connect(db_path, timeout=5.0)
+                try:
+                    conn.execute("PRAGMA query_only = ON")
+                    return conn.execute(sql, params).fetchone()
+                finally:
+                    conn.close()
+            with self._db_lock:
+                cur = self.router._conn.cursor()
+                cur.execute(sql, params)
+                return cur.fetchone()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Archive preview: database lookup failed for {virtual_uri}: {exc}")
+            return None
 
     def inspect_archive(
         self,
@@ -77,22 +106,10 @@ class ArchiveInspector:
             arch_p = archive_path or virtual_uri.split("#", 1)[0].removeprefix("archive://")
             entry_n = virtual_uri.split("#", 1)[1] if "#" in virtual_uri else ""
 
-            try:
-                cur = self.router._conn.cursor()
-                cur.execute(
-                    "SELECT title, content FROM document_records WHERE doc_identifier = ? OR doc_identifier = ? OR metadata LIKE ?",
-                    (
-                        virtual_uri,
-                        virtual_uri.replace(default_hua_dir, "/tmp/docs_rag_gemini"),
-                        f"%{virtual_uri}%",
-                    ),
-                )
-                row = cur.fetchone()
-                if row and row[1]:
-                    title_txt = row[0] or ""
-                    content_txt = row[1]
-            except Exception:
-                pass
+            row = self._lookup_record(virtual_uri, virtual_uri.replace(default_hua_dir, "/tmp/docs_rag_gemini"))
+            if row and row[1]:
+                title_txt = row[0] or ""
+                content_txt = row[1]
 
             if not entry_n and Path(arch_p).is_file() and Path(arch_p).suffix.lower() in (".md", ".txt", ".json", ".yaml", ".yml", ".html"):
                 try:

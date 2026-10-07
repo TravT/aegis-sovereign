@@ -4,6 +4,7 @@ Processes REST requests, streams Dark Obsidian HTML document views,
 and executes Two-Pronged routing with zero cloud tokens.
 """
 
+import contextlib
 import gzip
 import json
 import logging
@@ -20,9 +21,16 @@ from ..security import (
 )
 from .constants import WEB_PORTAL_INDEX, _PROD_VAULT_DIR, _LEGACY_DATA_DIR
 
-# ADR-16 stop-gap: reading a large archive for a preview takes about 1 GB, so only one such read runs at a
-# time; other requests wait their turn. Lifted when the streaming core (ADR-16 phase 1) lands.
-_ARCHIVE_READ_LOCK = threading.Lock()
+# ADR-16: previews stream the archive (tens of MB), so they run concurrently. The diagram path still reads the whole
+# 353 MB inner package into memory (ADR-16 phase 2), so only that path takes this lock: one such read at a time.
+_DIAGRAM_READ_LOCK = threading.Lock()
+_IMAGE_SUFFIXES = (".png", ".jpg", ".gif")
+
+
+def _reads_whole_package(virtual_uri: str, extract_diagram: bool) -> bool:
+    """True for the requests that still load a whole inner package (diagram extraction)."""
+    entry = virtual_uri.split("#", 1)[1] if "#" in virtual_uri else ""
+    return extract_diagram or entry.lower().endswith(_IMAGE_SUFFIXES)
 
 logger = logging.getLogger("sovereign_server.handler")
 
@@ -186,8 +194,7 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": "Missing 'uri' query parameter (e.g. ?uri=archive://...)"})
                 return
             try:
-                with _ARCHIVE_READ_LOCK:
-                    html_out = self.manager.render_archive_document_html(virtual_uri)
+                html_out = self.manager.render_archive_document_html(virtual_uri)
                 self._send_bytes(200, "text/html; charset=utf-8", html_out.encode("utf-8", errors="replace"))
             except KeyError as ke:
                 self._send_json(404, {"error": str(ke)})
@@ -379,7 +386,8 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": "Missing 'archive_path' or 'virtual_uri' in JSON payload"})
                 return
             try:
-                with _ARCHIVE_READ_LOCK:
+                guard = _DIAGRAM_READ_LOCK if _reads_whole_package(virtual_uri, extract_diagram) else contextlib.nullcontext()
+                with guard:
                     res = self.manager.inspect_archive(
                         archive_path=archive_path,
                         virtual_uri=virtual_uri,

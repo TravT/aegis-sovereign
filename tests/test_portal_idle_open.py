@@ -1,5 +1,5 @@
-"""ADR-15 phase 1 / ADR-16 phase 0: the portal opens idle, previews a result only on a tap, and the
-server reads at most one archive for a preview at a time.
+"""ADR-15 phase 1 / ADR-16: the portal opens idle and previews a result only on a tap; the server streams
+previews concurrently and serializes only the diagram path (a whole inner package).
 
 Opening the portal used to fire a search and then an automatic preview of the first result. The preview
 reads a 330 MB zip whole (about 1 GB), which out-of-memory-killed the server on every page load.
@@ -37,7 +37,7 @@ def base_url():
     SovereignHTTPHandler.manager = previous
 
 
-# --- server: one archive preview at a time -----------------------------------------------------------------
+# --- server: previews stream and overlap; only the diagram path (whole inner package) is serialized ----------
 
 def _post(url, payload):
     req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
@@ -45,7 +45,8 @@ def _post(url, payload):
         return resp.status, json.loads(resp.read())
 
 
-def test_concurrent_archive_previews_run_one_at_a_time(base_url):
+def _fire_four_inspects(base_url, payload):
+    """Four simultaneous POST /archive/inspect against a slow fake; returns (statuses, peak concurrency)."""
     manager = SovereignHTTPHandler.manager
     state = {"now": 0, "peak": 0}
     guard = threading.Lock()
@@ -54,7 +55,7 @@ def test_concurrent_archive_previews_run_one_at_a_time(base_url):
         with guard:
             state["now"] += 1
             state["peak"] = max(state["peak"], state["now"])
-        time.sleep(0.2)
+        time.sleep(0.3)
         with guard:
             state["now"] -= 1
         return {"content_text": "ok"}
@@ -63,52 +64,29 @@ def test_concurrent_archive_previews_run_one_at_a_time(base_url):
     manager.inspect_archive = slow_inspect
     try:
         results = []
-        threads = [
-            threading.Thread(target=lambda: results.append(_post(f"{base_url}/archive/inspect", {"virtual_uri": "archive://x.zip!/a"})))
-            for _ in range(4)
-        ]
+        threads = [threading.Thread(target=lambda: results.append(_post(f"{base_url}/archive/inspect", payload))) for _ in range(4)]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
     finally:
         manager.inspect_archive = original
-
-    assert [status for status, _ in results] == [200, 200, 200, 200]   # waiting is fine, failing is not
-    assert state["peak"] == 1
+    return [status for status, _ in results], state["peak"]
 
 
-def test_archive_view_shares_the_same_one_at_a_time_limit(base_url):
-    manager = SovereignHTTPHandler.manager
-    state = {"now": 0, "peak": 0}
-    guard = threading.Lock()
+def test_plain_previews_are_not_serialized(base_url):
+    statuses, peak = _fire_four_inspects(base_url, {"virtual_uri": "archive://x.zip!/a#resources/a.html"})
+    assert statuses == [200, 200, 200, 200]
+    assert peak >= 2          # streaming previews need tens of MB each: no reason to queue them
 
-    def slow(*_args, **_kwargs):
-        with guard:
-            state["now"] += 1
-            state["peak"] = max(state["peak"], state["now"])
-        time.sleep(0.2)
-        with guard:
-            state["now"] -= 1
-        return {"content_text": "ok"} if _kwargs.get("virtual_uri") else "<html></html>"
 
-    original_inspect, original_view = manager.inspect_archive, manager.render_archive_document_html
-    manager.inspect_archive, manager.render_archive_document_html = slow, slow
-    try:
-        def view():
-            urllib.request.urlopen(f"{base_url}/archive/view?uri=archive://x.zip!/a", timeout=30).read()
-
-        threads = [threading.Thread(target=view) for _ in range(2)] + [
-            threading.Thread(target=lambda: _post(f"{base_url}/archive/inspect", {"virtual_uri": "archive://x.zip!/a"})) for _ in range(2)
-        ]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-    finally:
-        manager.inspect_archive, manager.render_archive_document_html = original_inspect, original_view
-
-    assert state["peak"] == 1
+def test_diagram_extraction_still_reads_one_package_at_a_time(base_url):
+    # ADR-16 phase 2 has not landed: this path still loads a whole inner package, so it queues
+    for payload in ({"virtual_uri": "archive://x.zip!/a#resources/a.html", "extract_diagram_to_artifact": True},
+                    {"virtual_uri": "archive://x.zip!/a#figure/pic.png"}):
+        statuses, peak = _fire_four_inspects(base_url, payload)
+        assert statuses == [200, 200, 200, 200]    # waiting is fine, failing is not
+        assert peak == 1
 
 
 # --- portal page: opens idle, previews on tap ---------------------------------------------------------------

@@ -1,8 +1,6 @@
-"""ADR-07: Zero-Decompression In-Memory Virtual Container Streaming Engine.
+"""FROZEN copy of core/containers/archive_streamer.py before ADR-16 phase 1 (commit 04bab5f).
 
-Streams .zip, .tar, .tar.gz, .tar.zst, .epub, and .hdx archives purely in-memory
-(io.BytesIO) using read-only kernel flags (O_RDONLY) without writing temporary
-files to disk. Enforces strict guardrails against Zip-Bombs and Path Traversal.
+Tests compare the streaming implementation against it to prove behaviour is unchanged. Delete after one release.
 """
 
 from __future__ import annotations
@@ -15,8 +13,6 @@ import posixpath
 import re
 import tarfile
 import zipfile
-import contextlib
-import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, List, Optional, Sequence, Set, Tuple, Union
@@ -25,17 +21,6 @@ try:
     import zstandard as zstd
 except ImportError:
     zstd = None  # type: ignore
-
-from .archive_cache import ArchiveCache, shared_cache
-from .archive_io import IndexedInflateFile, InflateIndex, PreadFile, member_data_start
-
-_BINARY_ASSET_EXTS = {
-    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp",
-    ".cfs", ".cfe", ".si", ".ttf", ".woff", ".woff2",
-}
-_ZIP_FAMILY = (".zip", ".epub", ".hdx", ".hwics", ".xlsx", ".xlsm", ".docx")
-_TAR_FAMILY = (".tar.zst", ".tzst", ".tar.gz", ".tgz", ".tar")
-_SHARED = object()  # default for the `cache` argument: use the process-wide cache
 
 
 class ArchiveSecurityError(Exception):
@@ -187,12 +172,7 @@ class SovereignArchiveStreamer:
         max_entry_bytes: int = DEFAULT_MAX_ENTRY_BYTES,
         max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
         allowed_extensions: Optional[Set[str]] = None,
-        cache: Optional[ArchiveCache] = _SHARED,  # type: ignore[assignment]
-        checkpoint_spacing: int = 4 << 20,
     ) -> None:
-        # ADR-16: `cache` is the process-wide cache by default, so streamers built per call share it; None disables it.
-        self.cache: Optional[ArchiveCache] = shared_cache() if cache is _SHARED else cache
-        self.checkpoint_spacing = checkpoint_spacing
         self.max_compression_ratio = float(max_compression_ratio)
         self.max_entry_bytes = int(max_entry_bytes)
         self.max_total_bytes = int(max_total_bytes)
@@ -317,9 +297,9 @@ class SovereignArchiveStreamer:
         max_bytes: int,
         cumulative_bytes: int = 0,
     ) -> bytes:
-        """Read a ZIP member stream in 64KB chunks with strict ratio and size bounds (one growing buffer)."""
-        buf = io.BytesIO()
+        """Read a ZIP member stream in 64KB chunks with strict ratio and size bounds."""
         with zf.open(info, mode="r") as member_fp:
+            chunks: List[bytes] = []
             actual_read = 0
             while True:
                 chunk = member_fp.read(65536)
@@ -339,160 +319,8 @@ class SovereignArchiveStreamer:
                     raise ArchiveSecurityError(
                         "Cumulative archive size exceeds max_total_bytes"
                     )
-                buf.write(chunk)
-        return buf.getvalue()
-
-    @staticmethod
-    def _text_for(filename: str, content_bytes: bytes, sha256_hex: str) -> str:
-        """Per-member text extraction (the same for the fast path and the listing path)."""
-        _, ext = os.path.splitext(filename.lower())
-        if ext in _BINARY_ASSET_EXTS:
-            return f"[Binary Asset: {filename} ({len(content_bytes)} bytes, sha256={sha256_hex[:16]})]"
-        if ext in (".xlsx", ".xlsm", ".docx"):
-            return _extract_openxml_bytes_text(content_bytes, filename)
-        return _clean_markup_text(content_bytes.decode("utf-8", errors="replace"), filename)
-
-    def _check_nested_declared(self, info: zipfile.ZipInfo, cumulative: int) -> None:
-        """Refuse a nested package whose declared size or ratio is beyond the ADR-07 limits, before reading it."""
-        ratio = float(info.file_size) / float(max(1, info.compress_size))
-        if ratio > self.max_compression_ratio:
-            raise ArchiveSecurityError(
-                f"Zip-bomb compression ratio exceeded ({ratio:.2f}:1 > {self.max_compression_ratio:.2f}:1)"
-            )
-        if cumulative + info.file_size > self.max_total_bytes:
-            raise ArchiveSecurityError(
-                f"Cumulative archive size exceeds max_total_bytes ({cumulative + info.file_size} > {self.max_total_bytes})"
-            )
-
-    def _open_nested(
-        self,
-        zf: zipfile.ZipFile,
-        base: Optional[PreadFile],
-        info: zipfile.ZipInfo,
-        cumulative: int,
-        index_key: Optional[tuple] = None,
-    ) -> zipfile.ZipFile:
-        """Open a zip member that is itself a zip without materialising it and without touching the disk.
-
-        STORED: a zero-copy window over the outer descriptor. DEFLATED: an indexed inflate adapter (one pass,
-        then checkpoints). Encrypted or without a random-access outer: the stdlib stream, as before.
-        """
-        if info.flag_bits & 0x1:
-            inner = self._read_member_bytes_bounded(zf=zf, info=info, max_bytes=self.max_total_bytes, cumulative_bytes=cumulative)
-            return zipfile.ZipFile(io.BytesIO(inner), mode="r")
-        self._check_nested_declared(info, cumulative)
-        if isinstance(base, PreadFile):
-            start = member_data_start(base, info)
-            if info.compress_type == zipfile.ZIP_STORED:
-                return zipfile.ZipFile(PreadFile(base.fd, base.start + start, info.compress_size), mode="r")
-            if info.compress_type == zipfile.ZIP_DEFLATED:
-                if self.cache is not None and index_key is not None:
-                    index = self.cache.inflate_index(index_key, self.checkpoint_spacing)
-                else:
-                    index = InflateIndex(self.checkpoint_spacing)
-                return zipfile.ZipFile(IndexedInflateFile(base, start, info.compress_size, info.file_size, info.CRC, index), mode="r")
-        return zipfile.ZipFile(zf.open(info), mode="r")
-
-    def _entry_from_member(
-        self,
-        info: zipfile.ZipInfo,
-        content_bytes: bytes,
-        archive_path_str: str,
-        fallback_ratio: float,
-    ) -> ArchiveEntry:
-        final_ratio = float(len(content_bytes)) / float(max(1, info.compress_size))
-        if final_ratio > self.max_compression_ratio:
-            raise ArchiveSecurityError(
-                f"Zip-bomb compression ratio exceeded ({final_ratio:.2f}:1 > {self.max_compression_ratio:.2f}:1)"
-            )
-        sha256_hex = hashlib.sha256(content_bytes).hexdigest()
-        return ArchiveEntry(
-            virtual_uri=self.build_virtual_uri(archive_path_str, info.filename),
-            archive_path=archive_path_str,
-            entry_name=info.filename,
-            compressed_size=info.compress_size,
-            uncompressed_size=len(content_bytes),
-            compression_ratio=final_ratio if len(content_bytes) > 0 else fallback_ratio,
-            content_text=self._text_for(info.filename, content_bytes, sha256_hex),
-            sha256_hash=sha256_hex,
-            raw_bytes=content_bytes,
-        )
-
-    def _stream_zipfile(
-        self,
-        zf: zipfile.ZipFile,
-        base: Optional[PreadFile],
-        archive_path_str: str,
-        is_epub: bool = False,
-        target_entry: Optional[str] = None,
-        index_key: Optional[tuple] = None,
-    ) -> List[ArchiveEntry]:
-        """Stream entries from an open ZIP/EPUB/HDX/HWICS purely in memory."""
-        entries: List[ArchiveEntry] = []
-        cumulative_bytes = 0
-
-        # v2 Fast-Path: O(1) dictionary lookup when resolving a specific virtual_uri target_entry
-        if target_entry is not None and target_entry in zf.NameToInfo:
-            self._validate_entry_path(target_entry)
-            info = zf.NameToInfo[target_entry]
-            if not info.is_dir() and not info.filename.endswith("/"):
-                ratio = self._validate_sizes_and_ratio(
-                    compressed_size=info.compress_size,
-                    uncompressed_size=info.file_size,
-                    cumulative_uncompressed=0,
-                )
-                content_bytes = self._read_member_bytes_bounded(
-                    zf=zf, info=info, max_bytes=self.max_entry_bytes, cumulative_bytes=0
-                )
-                return [self._entry_from_member(info, content_bytes, archive_path_str, ratio)]
-
-        for info in zf.infolist():
-            # Validate path traversal on EVERY member (including directories)
-            self._validate_entry_path(info.filename)
-
-            if info.is_dir() or info.filename.endswith("/"):
-                continue
-
-            lower_member = info.filename.lower()
-
-            # Transparent nested ZIP-in-ZIP (.zip -> .hwics / .hdx), streamed without materialising the inner package
-            if lower_member.endswith((".hwics", ".hdx")) and target_entry != info.filename:
-                self._check_nested_declared(info, cumulative_bytes)
-                nested_target = target_entry
-                if nested_target and nested_target.startswith(f"{info.filename}/"):
-                    nested_target = nested_target[len(info.filename) + 1 :]
-                key = (index_key, info.filename) if index_key is not None else None
-                with self._open_nested(zf, base, info, cumulative_bytes, index_key=key) as inner_zf:
-                    nested_entries = self._stream_zipfile(
-                        inner_zf, None, f"{archive_path_str}!{info.filename}", is_epub=False, target_entry=nested_target
-                    )
-                for ne in nested_entries:
-                    cumulative_bytes += ne.uncompressed_size
-                    if cumulative_bytes > self.max_total_bytes:
-                        raise ArchiveSecurityError("Cumulative archive size exceeds max_total_bytes")
-                entries.extend(nested_entries)
-                continue
-
-            # Always enforce zip-bomb guardrails across leaf archive members
-            ratio = self._validate_sizes_and_ratio(
-                compressed_size=info.compress_size,
-                uncompressed_size=info.file_size,
-                cumulative_uncompressed=cumulative_bytes,
-            )
-
-            if target_entry is not None and info.filename != target_entry:
-                continue
-
-            if target_entry is None and not self._should_include_entry(info.filename, is_epub=is_epub):
-                continue
-
-            content_bytes = self._read_member_bytes_bounded(
-                zf=zf, info=info, max_bytes=self.max_entry_bytes, cumulative_bytes=cumulative_bytes
-            )
-            cumulative_bytes += len(content_bytes)
-            entries.append(self._entry_from_member(info, content_bytes, archive_path_str, ratio))
-
-        return entries
+                chunks.append(chunk)
+        return b"".join(chunks)
 
     def _stream_zip_buffer(
         self,
@@ -501,9 +329,158 @@ class SovereignArchiveStreamer:
         is_epub: bool = False,
         target_entry: Optional[str] = None,
     ) -> List[ArchiveEntry]:
-        """Stream entries from a ZIP/EPUB/HDX/HWICS byte buffer (callers that already hold the bytes)."""
-        with zipfile.ZipFile(io.BytesIO(raw_bytes), mode="r") as zf:
-            return self._stream_zipfile(zf, None, archive_path_str, is_epub=is_epub, target_entry=target_entry)
+        """Stream entries from a ZIP/EPUB/HDX/HWICS byte buffer purely in memory."""
+        entries: List[ArchiveEntry] = []
+        cumulative_bytes = 0
+        bio = io.BytesIO(raw_bytes)
+
+        _BINARY_ASSET_EXTS = {
+            ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp",
+            ".cfs", ".cfe", ".si", ".ttf", ".woff", ".woff2",
+        }
+
+        with zipfile.ZipFile(bio, mode="r") as zf:
+            # v2 Fast-Path: O(1) dictionary lookup when resolving a specific virtual_uri target_entry
+            if target_entry is not None and target_entry in zf.NameToInfo:
+                self._validate_entry_path(target_entry)
+                info = zf.NameToInfo[target_entry]
+                if not info.is_dir() and not info.filename.endswith("/"):
+                    ratio = self._validate_sizes_and_ratio(
+                        compressed_size=info.compress_size,
+                        uncompressed_size=info.file_size,
+                        cumulative_uncompressed=0,
+                    )
+                    content_bytes = self._read_member_bytes_bounded(
+                        zf=zf,
+                        info=info,
+                        max_bytes=self.max_entry_bytes,
+                        cumulative_bytes=0,
+                    )
+                    final_ratio = float(len(content_bytes)) / float(max(1, info.compress_size))
+                    if final_ratio > self.max_compression_ratio:
+                        raise ArchiveSecurityError(
+                            f"Zip-bomb compression ratio exceeded ({final_ratio:.2f}:1 > {self.max_compression_ratio:.2f}:1)"
+                        )
+                    sha256_hex = hashlib.sha256(content_bytes).hexdigest()
+                    _, ext = os.path.splitext(info.filename.lower())
+                    if ext in _BINARY_ASSET_EXTS:
+                        clean_text = f"[Binary Asset: {info.filename} ({len(content_bytes)} bytes, sha256={sha256_hex[:16]})]"
+                    elif ext in (".xlsx", ".xlsm", ".docx"):
+                        clean_text = _extract_openxml_bytes_text(content_bytes, info.filename)
+                    else:
+                        decoded_text = content_bytes.decode("utf-8", errors="replace")
+                        clean_text = _clean_markup_text(decoded_text, info.filename)
+                    return [
+                        ArchiveEntry(
+                            virtual_uri=self.build_virtual_uri(archive_path_str, info.filename),
+                            archive_path=archive_path_str,
+                            entry_name=info.filename,
+                            compressed_size=info.compress_size,
+                            uncompressed_size=len(content_bytes),
+                            compression_ratio=final_ratio if len(content_bytes) > 0 else ratio,
+                            content_text=clean_text,
+                            sha256_hash=sha256_hex,
+                            raw_bytes=content_bytes,
+                        )
+                    ]
+
+            for info in zf.infolist():
+                # Validate path traversal on EVERY member (including directories)
+                self._validate_entry_path(info.filename)
+
+                if info.is_dir() or info.filename.endswith("/"):
+                    continue
+
+                lower_member = info.filename.lower()
+
+                # Transparent nested ZIP-in-ZIP (.zip -> .hwics / .hdx) in-memory streaming
+                if lower_member.endswith((".hwics", ".hdx")) and target_entry != info.filename:
+                    nested_ratio = float(info.file_size) / float(max(1, info.compress_size))
+                    if nested_ratio > self.max_compression_ratio:
+                        raise ArchiveSecurityError(
+                            f"Zip-bomb compression ratio exceeded ({nested_ratio:.2f}:1 > {self.max_compression_ratio:.2f}:1)"
+                        )
+                    if cumulative_bytes + info.file_size > self.max_total_bytes:
+                        raise ArchiveSecurityError(
+                            f"Cumulative archive size exceeds max_total_bytes "
+                            f"({cumulative_bytes + info.file_size} > {self.max_total_bytes})"
+                        )
+                    inner_bytes = self._read_member_bytes_bounded(
+                        zf=zf,
+                        info=info,
+                        max_bytes=self.max_total_bytes,
+                        cumulative_bytes=cumulative_bytes,
+                    )
+                    compound_archive_path = f"{archive_path_str}!{info.filename}"
+                    nested_target = target_entry
+                    if nested_target and nested_target.startswith(f"{info.filename}/"):
+                        nested_target = nested_target[len(info.filename) + 1 :]
+                    nested_entries = self._stream_zip_buffer(
+                        raw_bytes=inner_bytes,
+                        archive_path_str=compound_archive_path,
+                        is_epub=False,
+                        target_entry=nested_target,
+                    )
+                    for ne in nested_entries:
+                        cumulative_bytes += ne.uncompressed_size
+                        if cumulative_bytes > self.max_total_bytes:
+                            raise ArchiveSecurityError(
+                                "Cumulative archive size exceeds max_total_bytes"
+                            )
+                    entries.extend(nested_entries)
+                    continue
+
+                # Always enforce zip-bomb guardrails across leaf archive members
+                ratio = self._validate_sizes_and_ratio(
+                    compressed_size=info.compress_size,
+                    uncompressed_size=info.file_size,
+                    cumulative_uncompressed=cumulative_bytes,
+                )
+
+                if target_entry is not None and info.filename != target_entry:
+                    continue
+
+                if target_entry is None and not self._should_include_entry(info.filename, is_epub=is_epub):
+                    continue
+
+                content_bytes = self._read_member_bytes_bounded(
+                    zf=zf,
+                    info=info,
+                    max_bytes=self.max_entry_bytes,
+                    cumulative_bytes=cumulative_bytes,
+                )
+                cumulative_bytes += len(content_bytes)
+                final_ratio = float(len(content_bytes)) / float(max(1, info.compress_size))
+                if final_ratio > self.max_compression_ratio:
+                    raise ArchiveSecurityError(
+                        f"Zip-bomb compression ratio exceeded ({final_ratio:.2f}:1 > {self.max_compression_ratio:.2f}:1)"
+                    )
+
+                sha256_hex = hashlib.sha256(content_bytes).hexdigest()
+                _, ext = os.path.splitext(lower_member)
+                if ext in _BINARY_ASSET_EXTS:
+                    clean_text = f"[Binary Asset: {info.filename} ({len(content_bytes)} bytes, sha256={sha256_hex[:16]})]"
+                elif ext in (".xlsx", ".xlsm", ".docx"):
+                    clean_text = _extract_openxml_bytes_text(content_bytes, info.filename)
+                else:
+                    decoded_text = content_bytes.decode("utf-8", errors="replace")
+                    clean_text = _clean_markup_text(decoded_text, info.filename)
+
+                entries.append(
+                    ArchiveEntry(
+                        virtual_uri=self.build_virtual_uri(archive_path_str, info.filename),
+                        archive_path=archive_path_str,
+                        entry_name=info.filename,
+                        compressed_size=info.compress_size,
+                        uncompressed_size=len(content_bytes),
+                        compression_ratio=final_ratio if len(content_bytes) > 0 else ratio,
+                        content_text=clean_text,
+                        sha256_hash=sha256_hex,
+                        raw_bytes=content_bytes,
+                    )
+                )
+
+        return entries
 
     def _decompress_zstd_bounded(self, raw_bytes: bytes) -> bytes:
         """Decompress a .zst stream purely in-memory while enforcing Zip-Bomb guardrails."""
@@ -621,26 +598,12 @@ class SovereignArchiveStreamer:
 
         return entries
 
-    def _limits_key(self) -> tuple:
-        """Settings that change what a read returns or refuses: part of every cached entry's key."""
-        return (self.max_compression_ratio, self.max_entry_bytes, self.max_total_bytes)
-
-    @contextlib.contextmanager
-    def _open_archive(self, path_obj: Path):
-        """The outer zip as (base, zf, cache_entry): shared and kept by the cache, or opened and closed for this call."""
-        if self.cache is not None:
-            with self.cache.archive(path_obj) as arc:
-                yield arc.base, arc.zf, arc
-        else:
-            with PreadFile.open(path_obj) as base, zipfile.ZipFile(base, mode="r") as zf:
-                yield base, zf, None
-
     def _dispatch_archive(
         self,
         archive_path: Union[str, Path],
         target_entry: Optional[str] = None,
     ) -> List[ArchiveEntry]:
-        """Identify the container format and stream its entries: zips by random access, tars in memory."""
+        """Identify container format, read into memory via O_RDONLY, and stream entries."""
         outer_path_str, inner_container_entry = self.parse_compound_archive_path(archive_path)
         path_obj = Path(outer_path_str)
         archive_path_str = str(archive_path)
@@ -648,73 +611,71 @@ class SovereignArchiveStreamer:
 
         if inner_container_entry is not None:
             self._validate_entry_path(inner_container_entry)
-        is_zip = inner_container_entry is not None or lower_name.endswith(_ZIP_FAMILY)
-        if not is_zip and not lower_name.endswith(_TAR_FAMILY):
-            with PreadFile.open(path_obj) as probe:  # unknown extension: look at the magic bytes
-                is_zip = probe.pread(4, 0) == b"PK\x03\x04"
-        if not is_zip:
-            return self._dispatch_buffered(path_obj, archive_path_str, lower_name, target_entry)
-
-        with self._open_archive(path_obj) as (base, zf, arc):
-            cache = self.cache
-            entry_key = None
-            if cache is not None and target_entry is not None and arc is not None:
-                entry_key = (arc.key, inner_container_entry, target_entry, archive_path_str, self._limits_key())
-                cached = cache.get_entry(entry_key)
-                if cached is not None:
-                    return [cached]
-
-            if inner_container_entry is None:
-                res = self._stream_zipfile(
-                    zf, base, archive_path_str, is_epub=lower_name.endswith(".epub"),
-                    target_entry=target_entry, index_key=arc.key if arc is not None else None,
+            outer_bytes = self._read_file_readonly_bytes(path_obj)
+            with zipfile.ZipFile(io.BytesIO(outer_bytes), mode="r") as outer_zf:
+                try:
+                    inner_info = outer_zf.getinfo(inner_container_entry)
+                except KeyError as exc:
+                    raise KeyError(
+                        f"Nested container {inner_container_entry!r} not found in {outer_path_str!r}"
+                    ) from exc
+                inner_bytes = self._read_member_bytes_bounded(
+                    zf=outer_zf,
+                    info=inner_info,
+                    max_bytes=self.max_total_bytes,
+                    cumulative_bytes=0,
                 )
-            else:
-                res = self._stream_inner_container(zf, base, arc, outer_path_str, inner_container_entry, archive_path_str, target_entry)
+            return self._stream_zip_buffer(
+                raw_bytes=inner_bytes,
+                archive_path_str=archive_path_str,
+                is_epub=inner_container_entry.lower().endswith(".epub"),
+                target_entry=target_entry,
+            )
 
-            if entry_key is not None and len(res) == 1:
-                cache.put_entry(entry_key, res[0])
-            return res
-
-    def _stream_inner_container(self, zf, base, arc, outer_path_str, inner_name, archive_path_str, target_entry):
-        """Compound path `<outer.zip>!<inner.hwics>`: the inner package is opened once and reused when cached."""
-        def open_inner() -> zipfile.ZipFile:
-            try:
-                inner_info = zf.getinfo(inner_name)
-            except KeyError as exc:
-                raise KeyError(f"Nested container {inner_name!r} not found in {outer_path_str!r}") from exc
-            return self._open_nested(zf, base, inner_info, 0, index_key=(arc.key, inner_name) if arc is not None else None)
-
-        is_epub = inner_name.lower().endswith(".epub")
-        if arc is None:
-            with open_inner() as inner_zf:
-                return self._stream_zipfile(inner_zf, None, archive_path_str, is_epub=is_epub, target_entry=target_entry)
-        with arc.lock:  # one opener, and one reader at a time on the shared inner zip
-            inner_zf = arc.inner.get(inner_name)
-            if inner_zf is None:
-                inner_zf = arc.inner[inner_name] = open_inner()
-                self.cache.stats["inner_open"] += 1
-            return self._stream_zipfile(inner_zf, None, archive_path_str, is_epub=is_epub, target_entry=target_entry)
-
-    def _dispatch_buffered(self, path_obj: Path, archive_path_str: str, lower_name: str, target_entry: Optional[str]) -> List[ArchiveEntry]:
-        """Tar family and magic-byte detection: these formats are not random access, so they are read whole."""
         raw_bytes = self._read_file_readonly_bytes(path_obj)
 
         if lower_name.endswith((".tar.zst", ".tzst")):
             return self._stream_tar_buffer(
-                raw_bytes=raw_bytes, archive_path_str=archive_path_str, compression_mode="zst", target_entry=target_entry,
+                raw_bytes=raw_bytes,
+                archive_path_str=archive_path_str,
+                compression_mode="zst",
+                target_entry=target_entry,
             )
         if lower_name.endswith((".tar.gz", ".tgz")):
             return self._stream_tar_buffer(
-                raw_bytes=raw_bytes, archive_path_str=archive_path_str, compression_mode="gz", target_entry=target_entry,
+                raw_bytes=raw_bytes,
+                archive_path_str=archive_path_str,
+                compression_mode="gz",
+                target_entry=target_entry,
             )
         if lower_name.endswith(".tar"):
             return self._stream_tar_buffer(
-                raw_bytes=raw_bytes, archive_path_str=archive_path_str, compression_mode="", target_entry=target_entry,
+                raw_bytes=raw_bytes,
+                archive_path_str=archive_path_str,
+                compression_mode="",
+                target_entry=target_entry,
+            )
+        if lower_name.endswith((".zip", ".epub", ".hdx", ".hwics", ".xlsx", ".xlsm", ".docx")):
+            return self._stream_zip_buffer(
+                raw_bytes=raw_bytes,
+                archive_path_str=archive_path_str,
+                is_epub=lower_name.endswith(".epub"),
+                target_entry=target_entry,
+            )
+
+        # Fallback magic-byte detection
+        if raw_bytes.startswith(b"PK\x03\x04"):
+            return self._stream_zip_buffer(
+                raw_bytes=raw_bytes,
+                archive_path_str=archive_path_str,
+                target_entry=target_entry,
             )
         if raw_bytes.startswith(b"\x28\xb5\x2f\xfd"):
             return self._stream_tar_buffer(
-                raw_bytes=raw_bytes, archive_path_str=archive_path_str, compression_mode="zst", target_entry=target_entry,
+                raw_bytes=raw_bytes,
+                archive_path_str=archive_path_str,
+                compression_mode="zst",
+                target_entry=target_entry,
             )
 
         raise ValueError(f"Unsupported archive container format: {archive_path_str}")

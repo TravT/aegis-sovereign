@@ -15,15 +15,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml requirements.txt /app/
+# Quoted: unquoted, the shell reads ">=42.0.0" as a redirect and the version floors are silently dropped.
 RUN pip install --no-cache-dir \
-    cryptography>=42.0.0 \
-    zstandard>=0.22.0 \
-    pydantic>=2.0.0 \
-    qdrant-client>=1.12.0 \
-    requests>=2.31.0 \
-    pyyaml>=6.0 \
-    watchdog>=4.0.0 \
-    fastembed>=0.3.0
+    "cryptography>=42.0.0" \
+    "zstandard>=0.22.0" \
+    "pydantic>=2.0.0" \
+    "qdrant-client>=1.12.0" \
+    "requests>=2.31.0" \
+    "pyyaml>=6.0" \
+    "watchdog>=4.0.0" \
+    "fastembed>=0.3.0"
 
 LABEL org.opencontainers.image.source="https://github.com/TravT/aegis-sovereign"
 LABEL org.opencontainers.image.description="Aegis Sovereign Knowledge Appliance (AS)"
