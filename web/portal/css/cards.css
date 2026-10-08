@@ -180,6 +180,18 @@
       background: var(--gold-soft);
     }
 
+    /* Staggered Card Entrance Animation */
+    @keyframes cardEntrance {
+      0% {
+        opacity: 0;
+        transform: translateY(18px) scale(0.99);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
     /* Static Answer & Source Cards */
     .source-card {
       background: var(--bg-card);
@@ -187,15 +199,19 @@
       border: 1px solid var(--border-subtle);
       border-radius: 15px;
       padding: 1.35rem 1.5rem;
-      margin-bottom: 1.1rem;
-      transition: all 0.2s ease;
+      margin-bottom: 1.15rem;
+      transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease;
       box-shadow: var(--shadow-glass);
       position: relative;
       overflow: hidden;
+      animation: cardEntrance 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+      animation-delay: calc(var(--card-index, 0) * 55ms);
     }
 
     .source-card:hover {
-      border-color: rgba(255, 255, 255, 0.18);
+      border-color: rgba(255, 255, 255, 0.24);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
     }
 
     .source-card.prong1-card {
@@ -223,6 +239,211 @@
       font-weight: 800;
       color: var(--text-primary);
       line-height: 1.35;
+    }
+
+    .card-num-badge {
+      color: var(--gold-bright);
+      font-family: var(--font-mono);
+      font-weight: 700;
+      margin-right: 0.25rem;
+    }
+
+    .card-quick-viewer-btn {
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.28);
+      color: var(--cyan-bright);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.3rem 0.6rem;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .card-quick-viewer-btn:hover {
+      background: rgba(56, 189, 248, 0.25);
+      border-color: var(--cyan-bright);
+      color: #FFF;
+    }
+
+    .archetype-badge {
+      background: rgba(168, 85, 247, 0.15) !important;
+      border-color: rgba(168, 85, 247, 0.35) !important;
+      color: #D8B4FE !important;
+    }
+
+    /* Glassmorphic Breadcrumb Header */
+    .card-breadcrumb-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 0.38rem 0.75rem;
+      margin-bottom: 0.95rem;
+      font-size: 0.76rem;
+      font-family: var(--font-mono);
+    }
+
+    .bc-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .bc-hub {
+      color: var(--text-secondary);
+    }
+
+    .bc-section {
+      color: #94A3B8;
+    }
+
+    .bc-leaf {
+      color: var(--gold-bright);
+      font-weight: 600;
+    }
+
+    .btn-copy-path {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      font-size: 0.68rem;
+      padding: 0.18rem 0.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+
+    .btn-copy-path:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #FFF;
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    /* Metadata Pills */
+    .card-meta-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 0.85rem;
+      padding-bottom: 0.65rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .meta-pill {
+      font-size: 0.7rem;
+      font-family: var(--font-mono);
+      padding: 0.2rem 0.55rem;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .pill-emerald {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--emerald-bright);
+    }
+
+    .pill-gold {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: var(--gold-bright);
+    }
+
+    .pill-cyan {
+      background: rgba(6, 182, 212, 0.12);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      color: var(--cyan-bright);
+    }
+
+    .pill-purple {
+      background: rgba(168, 85, 247, 0.12);
+      border: 1px solid rgba(168, 85, 247, 0.3);
+      color: #C084FC;
+    }
+
+    .pill-neutral {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-secondary);
+    }
+
+    .pill-tag {
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px dashed rgba(56, 189, 248, 0.3);
+      color: #7DD3FC;
+    }
+
+    /* Ambient Knowledge Mesh card */
+    .ambient-mesh-card {
+      background: rgba(10, 14, 22, 0.85);
+      border: 1px solid rgba(212, 175, 55, 0.35);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      border-radius: 14px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+      animation: cardEntrance 0.3s ease both;
+    }
+
+    .mesh-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .mesh-card-title {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+    }
+
+    .mesh-card-icon {
+      font-size: 1.3rem;
+    }
+
+    .mesh-status-sub {
+      font-size: 0.74rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    .mesh-body-wrap {
+      margin-top: 0.85rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.07);
+      padding-top: 0.85rem;
+    }
+
+    .ambient-mesh-canvas {
+      width: 100%;
+      height: 260px;
+      display: block;
+      background: radial-gradient(circle at center, rgba(15, 23, 42, 0.8) 0%, rgba(5, 7, 11, 0.95) 100%);
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      cursor: crosshair;
+    }
+
+    .mesh-tooltip {
+      position: absolute;
+      background: rgba(11, 14, 20, 0.95);
+      border: 1px solid var(--gold-bright);
+      padding: 0.45rem 0.75rem;
+      border-radius: 8px;
+      pointer-events: none;
+      z-index: 100;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
+      font-family: var(--font-sans);
     }
 
     .confidence-ring-wrap {
@@ -568,4 +789,17 @@
     }
     .inspector-sib-list .current-topic {
       color: var(--gold-bright);
+    }
+
+    @media (max-width: 640px) {
+      .inspector-drawer {
+        width: 100vw !important;
+        padding: 1rem !important;
+      }
+      .ambient-mesh-canvas {
+        height: 200px !important;
+      }
+      .action-btn-row {
+        flex-direction: column !important;
+      }
     }

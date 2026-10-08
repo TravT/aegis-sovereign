@@ -8,6 +8,7 @@ import contextlib
 import gzip
 import json
 import logging
+import os
 import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler
@@ -42,14 +43,17 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
 
     def _send_json(self, status_code: int, data: Dict[str, Any]):
         body = json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")
-        self.send_response(status_code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _send_graph_json(self, data: Any, version: str):
         """Compact JSON, gzipped when the client accepts it, revalidated with an ETag: a full
@@ -106,6 +110,14 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                     arg("q"), clearance, layer=arg("layer", "tree"), limit=int(arg("limit", "50")),
                     node_id=arg("id") if "id" in query else None,
                 )
+            elif operation == "ego":
+                target = arg("target") or arg("q") or arg("id") or arg("uri")
+                if not target:
+                    self._send_json(400, {"error": "Missing 'target', 'q', 'id', or 'uri' query parameter"})
+                    return
+                depth = int(arg("depth", "2"))
+                limit = int(arg("limit", "50"))
+                payload = view.ego_subgraph(target=target, clearance=clearance, depth=depth, limit=limit)
             else:
                 self._send_json(404, {"error": f"Unknown graph operation '{operation}'"})
                 return
@@ -330,6 +342,49 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                 self._send_json(200, res)
             except Exception as e:
                 self._send_json(500, {"error": str(e)})
+        elif parsed.path == "/graph/ego":
+            self._handle_graph_v2(urllib.parse.urlparse("/graph/v2/ego?" + parsed.query))
+        elif (
+            parsed.path.startswith("/docs/wiki/")
+            or parsed.path.startswith("/wiki/")
+            or parsed.path.startswith("/adrs/")
+            or parsed.path.startswith("/projects/")
+        ):
+            clean_rel = parsed.path.lstrip("/")
+            if clean_rel.startswith("docs/wiki/"):
+                subpath = clean_rel[len("docs/wiki/"):]
+            elif clean_rel.startswith("wiki/"):
+                subpath = clean_rel[len("wiki/"):]
+            elif clean_rel.startswith("docs/"):
+                subpath = clean_rel[len("docs/"):]
+            else:
+                subpath = clean_rel
+
+            manager_wiki = getattr(getattr(self, "manager", None), "_wiki_dir", None)
+            candidates = []
+            if manager_wiki:
+                candidates.append(os.path.join(manager_wiki, subpath))
+                candidates.append(os.path.join(manager_wiki, clean_rel))
+
+            candidates.extend([
+                f"/home/tlima/Enterprise_Hub/docs/wiki/{subpath}",
+                f"/home/tlima/Enterprise_Hub/{clean_rel}",
+                f"/home/tlima/Enterprise_Hub/docs/{clean_rel}",
+            ])
+
+            found_target = None
+            for cand in candidates:
+                if os.path.exists(cand):
+                    found_target = cand
+                    break
+
+            if found_target:
+                virtual_uri = f"archive://{found_target}"
+                self.send_response(302)
+                self.send_header("Location", f"/archive/view?uri={urllib.parse.quote(virtual_uri)}")
+                self.end_headers()
+                return
+            self._send_json(404, {"error": "Wiki document not found", "path": parsed.path})
         else:
             self._send_json(404, {"error": "Not Found", "path": parsed.path})
 

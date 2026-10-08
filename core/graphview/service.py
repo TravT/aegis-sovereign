@@ -180,3 +180,193 @@ class GraphService:
                 for n in ids
             ]
         return columnar(layer, level, version, ids, view.nodes, view.edges, extra)
+
+    def ego_subgraph(
+        self,
+        target: str,
+        clearance: Clearance = "restricted",
+        depth: int = 2,
+        limit: int = 50,
+    ) -> Dict[str, Any]:
+        """Returns the local ego-subgraph centered around target (URI, identifier, or node ID),
+        connecting tree topics, entities, and wiki notes up to limit nodes."""
+        level = int(ClearanceLevel.from_string(clearance))
+        version = self.content_version()
+
+        target_str = (target or "").strip()
+        if not target_str:
+            return {"center": None, "nodes": [], "edges": []}
+
+        wv = self._view("wiki", level, version) if self._wiki else None
+        ev = self._view("entity", level, version)
+        tv = self._view("tree", level, version)
+
+        center_id = None
+        center_layer = None
+        center_node = None
+
+        # 1. Resolve Center Node
+        # A) Check Wiki
+        if wv:
+            clean_target = target_str.replace("archive://", "")
+            if "/docs/wiki/" in clean_target:
+                rel = clean_target.split("/docs/wiki/")[-1]
+                w_id = f"w:{rel}"
+                if w_id in wv.nodes:
+                    center_id, center_layer, center_node = w_id, "wiki", wv.nodes[w_id]
+            if not center_id:
+                for nid, node in wv.nodes.items():
+                    if target_str in nid or target_str.lower() in node.label.lower():
+                        center_id, center_layer, center_node = nid, "wiki", node
+                        break
+
+        # B) Check Entity
+        if not center_id and ev:
+            for nid, node in ev.nodes.items():
+                lbl_low = node.label.lower()
+                tgt_low = target_str.lower()
+                if lbl_low == tgt_low or tgt_low in nid.lower() or (len(tgt_low) > 4 and tgt_low in lbl_low):
+                    center_id, center_layer, center_node = nid, "entity", node
+                    break
+
+        # C) Check Tree
+        if not center_id and tv:
+            clean_t = target_str
+            if "#resources/" in clean_t:
+                try:
+                    import sqlite3
+                    con = sqlite3.connect(f"file:{self._router_db}?mode=ro", uri=True)
+                    row = con.execute(
+                        "SELECT topic_id, title FROM document_records WHERE doc_identifier = ? OR metadata LIKE ? LIMIT 1",
+                        (target_str, f"%{target_str}%"),
+                    ).fetchone()
+                    con.close()
+                    if row and row[0]:
+                        tid = f"t:{row[0]}"
+                        if tid in tv.nodes:
+                            center_id, center_layer, center_node = tid, "tree", tv.nodes[tid]
+                except Exception:
+                    pass
+            if not center_id:
+                for nid, node in tv.nodes.items():
+                    if target_str.lower() in node.label.lower() or target_str in nid:
+                        center_id, center_layer, center_node = nid, "tree", node
+                        break
+
+        if not center_id:
+            return {"center": None, "nodes": [], "edges": []}
+
+        # 2. Collect 1-hop and 2-hop Neighbors
+        chosen_nodes = {center_id: (center_layer, center_node)}
+        chosen_edges = []
+        frontier = {center_id}
+
+        for _ in range(max(1, depth)):
+            next_frontier = set()
+            for curr in frontier:
+                curr_layer = chosen_nodes[curr][0]
+
+                if curr_layer == "wiki" and wv:
+                    for s, t, k in wv.edges:
+                        if s == curr and t in wv.nodes and t not in chosen_nodes and len(chosen_nodes) < limit:
+                            chosen_nodes[t] = ("wiki", wv.nodes[t])
+                            chosen_edges.append({"source": s, "target": t, "kind": k})
+                            next_frontier.add(t)
+                        elif t == curr and s in wv.nodes and s not in chosen_nodes and len(chosen_nodes) < limit:
+                            chosen_nodes[s] = ("wiki", wv.nodes[s])
+                            chosen_edges.append({"source": s, "target": t, "kind": k})
+                            next_frontier.add(s)
+
+                elif curr_layer == "entity" and ev:
+                    for s, t, k in ev.edges:
+                        if s == curr and t in ev.nodes and t not in chosen_nodes and len(chosen_nodes) < limit:
+                            chosen_nodes[t] = ("entity", ev.nodes[t])
+                            chosen_edges.append({"source": s, "target": t, "kind": k})
+                            next_frontier.add(t)
+                        elif t == curr and s in ev.nodes and s not in chosen_nodes and len(chosen_nodes) < limit:
+                            chosen_nodes[s] = ("entity", ev.nodes[s])
+                            chosen_edges.append({"source": s, "target": t, "kind": k})
+                            next_frontier.add(s)
+
+                elif curr_layer == "tree" and tv:
+                    p = tv.parents.get(curr)
+                    if p and p in tv.nodes and p not in chosen_nodes and len(chosen_nodes) < limit:
+                        chosen_nodes[p] = ("tree", tv.nodes[p])
+                        chosen_edges.append({"source": curr, "target": p, "kind": "CHILD_OF"})
+                        next_frontier.add(p)
+                    for c in tv.children.get(curr, ())[:10]:
+                        if c in tv.nodes and c not in chosen_nodes and len(chosen_nodes) < limit:
+                            chosen_nodes[c] = ("tree", tv.nodes[c])
+                            chosen_edges.append({"source": c, "target": curr, "kind": "CHILD_OF"})
+                            next_frontier.add(c)
+                    if p:
+                        for sib in tv.children.get(p, ())[:10]:
+                            if sib != curr and sib in tv.nodes and sib not in chosen_nodes and len(chosen_nodes) < limit:
+                                chosen_nodes[sib] = ("tree", tv.nodes[sib])
+                                chosen_edges.append({"source": sib, "target": p, "kind": "CHILD_OF"})
+                                next_frontier.add(sib)
+
+                # Cross-layer links
+                if curr_layer == "entity" and tv:
+                    lbl = chosen_nodes[curr][1].label.split("(")[0].strip()
+                    if is_alarm_id(lbl):
+                        topics = self._cached(("alarm_topics", level), version, lambda: alarm_topics(tv))
+                        for t_lbl in topics.get(lbl, ())[:5]:
+                            for t_id, t_node in tv.nodes.items():
+                                if t_node.label == t_lbl and t_id not in chosen_nodes and len(chosen_nodes) < limit:
+                                    chosen_nodes[t_id] = ("tree", t_node)
+                                    chosen_edges.append({"source": curr, "target": t_id, "kind": "CANONICAL_TOPIC"})
+                                    next_frontier.add(t_id)
+                                    break
+
+                if curr_layer == "wiki" and ev:
+                    w_title = chosen_nodes[curr][1].label
+                    for e_id, e_node in ev.nodes.items():
+                        if len(chosen_nodes) >= limit:
+                            break
+                        if (len(e_node.label) > 4 and e_node.label in w_title) or (len(e_node.label) > 5 and e_node.label in curr):
+                            if e_id not in chosen_nodes:
+                                chosen_nodes[e_id] = ("entity", e_node)
+                                chosen_edges.append({"source": curr, "target": e_id, "kind": "MENTIONS_ENTITY"})
+                                next_frontier.add(e_id)
+
+            frontier = next_frontier
+            if len(chosen_nodes) >= limit:
+                break
+
+        def node_uri(nid: str, lyr: str) -> str:
+            if lyr == "wiki":
+                rel = nid[2:] if nid.startswith("w:") else nid
+                return f"archive:///home/tlima/Enterprise_Hub/docs/wiki/{rel}"
+            elif lyr == "tree":
+                return f"tree://{nid}"
+            elif lyr == "entity":
+                return f"entity://{nid}"
+            return nid
+
+        result_nodes = [
+            {
+                "id": nid,
+                "label": n_obj.label,
+                "kind": n_obj.kind,
+                "layer": lyr,
+                "theme": getattr(n_obj, "theme", ""),
+                "uri": node_uri(nid, lyr),
+                "is_center": (nid == center_id),
+            }
+            for nid, (lyr, n_obj) in chosen_nodes.items()
+        ]
+
+        return {
+            "target": target_str,
+            "center": {
+                "id": center_id,
+                "label": center_node.label,
+                "kind": center_node.kind,
+                "layer": center_layer,
+                "theme": getattr(center_node, "theme", ""),
+                "uri": node_uri(center_id, center_layer),
+            },
+            "nodes": result_nodes,
+            "edges": chosen_edges,
+        }

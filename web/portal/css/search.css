@@ -768,3 +768,23 @@
       font-family: var(--font-mono);
       font-size: 0.76rem;
     }
+
+    @media (max-width: 640px) {
+      .kbd-shortcut-badge {
+        display: none !important;
+      }
+      .search-bar-row.google-style {
+        flex-wrap: wrap !important;
+        gap: 0.5rem !important;
+      }
+      .search-input-wrap {
+        min-width: 100% !important;
+      }
+      .btn-clear-query {
+        right: 0.8rem !important;
+      }
+      .search-btn {
+        width: 100% !important;
+        justify-content: center !important;
+      }
+    }

@@ -50,6 +50,9 @@
       <div>
         <div class="diag-section-title">🧭 Sovereign Modules &amp; Tools</div>
         <div class="diag-pills-list">
+          <button type="button" class="action-btn" style="text-align: left; width: 100%; justify-content: flex-start; padding: 0.5rem 0.75rem;" onclick="switchCommandTab('search'); toggleDiagnosticsDrawer();">
+            <span>🔍</span> <span>Search &amp; Source Explorer</span>
+          </button>
           <button type="button" class="action-btn" style="text-align: left; width: 100%; justify-content: flex-start; padding: 0.5rem 0.75rem;" onclick="switchCommandTab('graph'); toggleDiagnosticsDrawer();">
             <span>🕸️</span> <span>Server &amp; Knowledge Graph Visualizer</span>
           </button>
@@ -126,7 +129,7 @@
   <div id="inspector-backdrop" class="inspector-backdrop" onclick="closeSourceInspector()"></div>
   <aside class="inspector-drawer" id="source-inspector-drawer">
     <div class="inspector-header">
-      <div class="inspector-title">📄 SOURCE INSPECTOR (O_RDONLY)</div>
+      <div class="inspector-title">📄 LIVE ARCHIVE SOURCE INSPECTOR (O_RDONLY)</div>
       <div style="display: flex; align-items: center; gap: 0.6rem;">
         <span class="metric-tag" id="inspector-badge">Zero-Disk Stream</span>
         <button type="button" class="drawer-close-btn" onclick="closeSourceInspector()" title="Close Inspector">✕</button>
@@ -134,11 +137,6 @@
     </div>
     <div class="inspector-tabs" id="inspector-section-tabs">
       <button class="inspector-tab active" onclick="inspectCurrentSource('')">Full Entry</button>
-      <button class="inspector-tab" onclick="inspectCurrentSource('Description')">Description</button>
-      <button class="inspector-tab" onclick="inspectCurrentSource('Possible Causes')">Possible Causes</button>
-      <button class="inspector-tab" onclick="inspectCurrentSource('Procedure')">Procedure</button>
-      <button class="inspector-tab" onclick="inspectCurrentSource('Impact on the System')">Impact</button>
-      <button class="inspector-tab" onclick="inspectCurrentSource('', true)">🖼️ Render Diagram</button>
     </div>
     <div id="inspector-topic-tree" class="inspector-topic-strip" style="display: none;"></div>
     <div class="inspector-meta" id="inspector-meta">
@@ -164,7 +162,7 @@
         <div class="search-hero">
           <div class="search-hero-shield">Æ</div>
           <h1 class="search-hero-title">AEGIS SOVEREIGN</h1>
-          <div class="search-hero-subtitle">Deterministic &amp; Cognitive Sovereign Knowledge Engine (ADR-40)</div>
+          <div class="search-hero-subtitle">Two-Pronged Cognitive &amp; Deterministic Search Portal • ADR-40</div>
         </div>
 
         <!-- Google-Style Centered Search Bar -->
@@ -314,6 +312,9 @@
 
           <!-- Connected Knowledge Graph Dossier Panel -->
           <div id="graph-dossier-container"></div>
+
+          <!-- Ambient Knowledge Mesh Container (Closest connected articles & topics) -->
+          <div id="ambient-mesh-container" class="ambient-mesh-card" style="display: none;"></div>
 
           <!-- Verified Answer / Source Cards -->
           <div id="source-cards-container"><p id="idle-hint" class="idle-hint">Type a question or tap an example to search. Nothing is read until you ask.</p></div>

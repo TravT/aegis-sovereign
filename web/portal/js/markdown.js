@@ -52,7 +52,94 @@ function scrollToSource(index) {
   }
 }
 
-function formatInlineMd(text) {
+function resolveRelativeWikiPath(baseUri, relHref) {
+  if (!relHref) return "";
+  if (/^(https?:|mailto:|#|\/archive\/view)/i.test(relHref)) {
+    return relHref;
+  }
+  let isArchive = (baseUri || "").startsWith("archive://");
+  let rawBase = isArchive ? baseUri.slice("archive://".length) : (baseUri || "");
+  
+  if (!rawBase) {
+    rawBase = "/home/tlima/Enterprise_Hub/docs/wiki/README.md";
+  }
+
+  if (relHref.startsWith("/home/tlima/Enterprise_Hub/")) {
+    return isArchive ? `archive://${relHref}` : relHref;
+  }
+
+  let baseDir = rawBase.includes("/") ? rawBase.substring(0, rawBase.lastIndexOf("/")) : "/home/tlima/Enterprise_Hub/docs/wiki";
+  let parts = baseDir.split("/").filter(Boolean);
+  let relParts = relHref.split("/").filter(Boolean);
+
+  for (let p of relParts) {
+    if (p === ".") continue;
+    if (p === "..") {
+      if (parts.length > 0) parts.pop();
+    } else {
+      parts.push(p);
+    }
+  }
+
+  let resolved = "/" + parts.join("/");
+  return isArchive ? `archive://${resolved}` : `archive://${resolved}`;
+}
+
+function parseYamlFrontmatter(text) {
+  if (!text || typeof text !== "string") return { meta: {}, cleanText: text || "" };
+  const match = text.match(/^\s*---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/);
+  if (!match) return { meta: {}, cleanText: text };
+
+  const rawMeta = match[1];
+  const cleanText = text.slice(match[0].length).trim();
+  const meta = {};
+
+  const lines = rawMeta.split("\n");
+  for (let line of lines) {
+    const colonIdx = line.indexOf(":");
+    if (colonIdx > 0) {
+      const key = line.slice(0, colonIdx).trim();
+      let val = line.slice(colonIdx + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      meta[key] = val;
+    }
+  }
+
+  return { meta, cleanText };
+}
+
+function renderMetaPillsHtml(meta) {
+  if (!meta || Object.keys(meta).length === 0) return "";
+  let pills = [];
+
+  if (meta.status) {
+    const st = escapeHtml(meta.status);
+    const cls = st.toLowerCase().includes("active") || st.toLowerCase().includes("completed") ? "pill-emerald" : "pill-gold";
+    pills.push(`<span class="meta-pill ${cls}">Status: <strong>${st}</strong></span>`);
+  }
+  if (meta.type) {
+    pills.push(`<span class="meta-pill pill-cyan">Type: <strong>${escapeHtml(meta.type)}</strong></span>`);
+  }
+  if (meta.domain) {
+    pills.push(`<span class="meta-pill pill-purple">Domain: <strong>${escapeHtml(meta.domain)}</strong></span>`);
+  }
+  if (meta.tags) {
+    const tags = String(meta.tags).replace(/[\[\]"]/g, "").split(",").map(t => t.trim()).filter(Boolean);
+    tags.slice(0, 3).forEach(t => {
+      pills.push(`<span class="meta-pill pill-tag">#${escapeHtml(t)}</span>`);
+    });
+  }
+  if (meta.last_reviewed) {
+    pills.push(`<span class="meta-pill pill-neutral">Reviewed: ${escapeHtml(meta.last_reviewed)}</span>`);
+  }
+
+  if (!pills.length) return "";
+  return `<div class="card-meta-pills">${pills.join("")}</div>`;
+}
+
+function formatInlineMd(text, currentUri) {
   if (!text) return "";
   let s = escapeHtml(text);
   
@@ -65,9 +152,16 @@ function formatInlineMd(text) {
   // Inline code: `code`
   s = s.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
   
-  // Markdown links: [Text](URL) -> styled portal-doc-link
+  // Markdown links: [Text](URL) -> smart relative wiki link or external link
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(match, label, url) {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="portal-doc-link" title="Open source document in new tab">${label}</a>`;
+    const isExternal = /^(https?:|mailto:)/i.test(url);
+    if (isExternal) {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="portal-doc-link external" title="External Link: ${url}">${label} ↗</a>`;
+    }
+    const base = currentUri || (typeof window !== "undefined" && window.currentInspectedUri) || "";
+    const resolved = resolveRelativeWikiPath(base, url);
+    const viewerUrl = `/archive/view?uri=${encodeURIComponent(resolved)}`;
+    return `<a href="${viewerUrl}" onclick="if (typeof handleWikiLinkClick === 'function') { return handleWikiLinkClick('${escapeHtml(resolved)}', event); }" class="portal-doc-link wiki-link internal-wiki-link" title="Open ${escapeHtml(label)} in drawer">${label}</a>`;
   });
   
   // Citation chips: [1], [2]
@@ -76,10 +170,18 @@ function formatInlineMd(text) {
   return s;
 }
 
-function renderMarkdown(md) {
+function renderMarkdown(md, currentUri) {
   if (!md) return "";
-  const lines = md.split("\n");
+  
+  // Extract and cleanly format YAML frontmatter if present
+  const { meta, cleanText } = parseYamlFrontmatter(md);
+  const pillsHeader = renderMetaPillsHtml(meta);
+  
+  const lines = cleanText.split("\n");
   let html = [];
+  if (pillsHeader) {
+    html.push(pillsHeader);
+  }
   let inUl = false;
   let inOl = false;
   let inTable = false;

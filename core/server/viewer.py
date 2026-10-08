@@ -322,7 +322,7 @@ class DocumentViewer:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{html.escape(doc_display_title)} — Sovereign Knowledge Appliance</title>
+  <title>{html.escape(doc_display_title)} — Sovereign Vault Document Viewer</title>
   <style>
     :root {{
       --bg: #07090D;
@@ -860,6 +860,9 @@ class DocumentViewer:
       </div>
     </div>
     <div class="header-actions">
+      <span style="font-family: var(--font-mono); font-size: 0.74rem; color: var(--emerald); display: inline-flex; align-items: center; gap: 0.35rem; margin-right: 0.75rem;">
+        <span>🛡️</span> <span>O_RDONLY Stream</span> • <span>Zero-Disk Verified</span>
+      </span>
       <a href="/portal" class="btn-header btn-header-primary">
         <span>⬅</span> <span>Back to Search</span>
       </a>

@@ -222,6 +222,15 @@
       z-index: 10;
     }
 
+    @media (max-width: 640px) {
+      .main-container {
+        padding: 0.75rem 0.5rem 3rem !important;
+      }
+      .search-console {
+        padding: 1rem 0.75rem !important;
+      }
+    }
+
     /* Toast Notification Banner */
     .toast-banner {
       display: none;

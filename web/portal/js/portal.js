@@ -17,12 +17,168 @@ function setDomainFilter(val) {
   });
 }
 
-function renderStructuredContent(text) {
+let drawerHistory = [];
+let currentInspectedUri = "";
+window.currentInspectedUri = "";
+let currentInspectedArchetype = "general_manual";
+let ambientMeshExpanded = true;
+let activeMeshSimulation = null;
+
+function renderStructuredContent(text, vUri) {
   if (!text) return "";
-  if (typeof renderMarkdown === "function" && text.includes("|") && text.includes("\n")) {
-    return renderMarkdown(text);
+  if (typeof renderMarkdown === "function" && (text.includes("|") || text.includes("# ") || text.includes("- ") || text.includes("```") || (vUri && vUri.endsWith(".md")))) {
+    return renderMarkdown(text, vUri);
   }
   return escapeHtml(text);
+}
+
+function detectArchetype(r, vUri) {
+  const uri = (vUri || "").toLowerCase();
+  const id = (r.doc_identifier || "").toUpperCase();
+  const meta = r.metadata || {};
+  const domain = (meta.domain || "").toLowerCase();
+
+  if (
+    uri.includes("docs/wiki") ||
+    uri.includes(".agents/skills") ||
+    uri.endsWith(".md") ||
+    domain === "homelab_wiki" ||
+    domain === "agent_skills" ||
+    domain === "homelab_and_huawei" ||
+    domain.includes("homelab") ||
+    id.startsWith("ADR-") ||
+    id.startsWith("SKILL-") ||
+    id.startsWith("HOMELAB-") ||
+    id === "MOC_PROJECTS"
+  ) {
+    return "homelab_wiki";
+  }
+
+  if (
+    /^(DSP|MOD|LST|ADD|RMV|SET|RST|STR|STP|EXP|IMP|ACT|DEA|CHK|PING|NGPING)\s+/i.test(id) ||
+    uri.includes("/mml/") ||
+    uri.includes("/reference/mml/")
+  ) {
+    return "telecom_command";
+  }
+
+  if (/^ALM-\d+/i.test(id) || uri.includes("/alarms/") || uri.includes("/alarm_")) {
+    return "telecom_alarm";
+  }
+
+  return "general_manual";
+}
+
+function formatBreadcrumb(vUri, r, archetype) {
+  const uri = vUri || "";
+  if (archetype === "homelab_wiki") {
+    if (uri.includes("docs/wiki/adrs/")) {
+      const stem = uri.split("/").pop().replace(".md", "");
+      return `<span class="bc-wrap">📜 <span class="bc-hub">Homelab Wiki</span> › <span class="bc-section">ADRs</span> › <strong class="bc-leaf">${escapeHtml(stem)}</strong></span>`;
+    }
+    if (uri.includes("docs/wiki/projects/")) {
+      const stem = uri.split("/").pop().replace(".md", "");
+      return `<span class="bc-wrap">🚀 <span class="bc-hub">Homelab Wiki</span> › <span class="bc-section">Projects</span> › <strong class="bc-leaf">${escapeHtml(stem)}</strong></span>`;
+    }
+    if (uri.includes("docs/wiki/mocs/")) {
+      const stem = uri.split("/").pop().replace(".md", "");
+      return `<span class="bc-wrap">🗺️ <span class="bc-hub">Homelab Wiki</span> › <span class="bc-section">MOCs</span> › <strong class="bc-leaf">${escapeHtml(stem)}</strong></span>`;
+    }
+    if (uri.includes(".agents/skills/")) {
+      const skillName = uri.split(".agents/skills/")[1].split("/")[0];
+      return `<span class="bc-wrap">🤖 <span class="bc-hub">Agent Skills</span> › <strong class="bc-leaf">${escapeHtml(skillName)}</strong></span>`;
+    }
+    const filename = uri.split("/").pop() || "Document";
+    return `<span class="bc-wrap">🏠 <span class="bc-hub">Homelab Wiki</span> › <strong class="bc-leaf">${escapeHtml(filename)}</strong></span>`;
+  }
+
+  if (archetype === "telecom_alarm") {
+    const pkg = uri.includes("UPCF") ? "Huawei UPCF 26.1.0" : "Huawei USC 26.1.0";
+    const alarmId = r.doc_identifier || "Alarm";
+    return `<span class="bc-wrap">📡 <span class="bc-hub">${escapeHtml(pkg)}</span> › <span class="bc-section">Alarms</span> › <strong class="bc-leaf">${escapeHtml(alarmId)}</strong></span>`;
+  }
+
+  if (archetype === "telecom_command") {
+    const pkg = uri.includes("UPCF") ? "Huawei UPCF 26.1.0" : "Huawei USC 26.1.0";
+    const cmd = r.doc_identifier || "MML Command";
+    return `<span class="bc-wrap">⚡ <span class="bc-hub">${escapeHtml(pkg)}</span> › <span class="bc-section">MML Reference</span> › <strong class="bc-leaf">${escapeHtml(cmd)}</strong></span>`;
+  }
+
+  const cleanUri = uri.replace("archive://", "");
+  const pkg = cleanUri.includes("UPCF") ? "UPCF 26.1.0" : (cleanUri.includes("USC") ? "USC 26.1.0" : "Manual");
+  const topic = r.title || "Manual Topic";
+  return `<span class="bc-wrap">📖 <span class="bc-hub">${escapeHtml(pkg)}</span> › <strong class="bc-leaf">${escapeHtml(topic.slice(0, 45))}</strong></span>`;
+}
+
+function copyWikiRelativePath(vUri) {
+  let clean = vUri.replace("archive://", "");
+  if (clean.includes("/Enterprise_Hub/")) {
+    clean = clean.split("/Enterprise_Hub/")[1];
+  }
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(clean);
+  }
+  showPortalToast(`📋 Copied path: <code>${escapeHtml(clean)}</code>`);
+}
+
+function handleWikiLinkClick(resolvedUri, event) {
+  if (event && (event.metaKey || event.ctrlKey)) {
+    return true; // Let browser open in new tab
+  }
+  if (event) {
+    event.preventDefault();
+  }
+  if (currentInspectedUri && currentInspectedUri !== resolvedUri) {
+    drawerHistory.push(currentInspectedUri);
+  }
+  openSourceInInspector(resolvedUri, "", false, true);
+  return false;
+}
+
+function drawerGoBack() {
+  if (!drawerHistory.length) return;
+  const prevUri = drawerHistory.pop();
+  openSourceInInspector(prevUri, "", false, true);
+}
+
+function updateInspectorTabs(archetype, currentSection) {
+  const tabsContainer = document.getElementById("inspector-section-tabs");
+  if (!tabsContainer) return;
+
+  let tabs = [];
+  if (drawerHistory.length > 0) {
+    tabs.push(`<button type="button" class="inspector-tab back-btn" onclick="drawerGoBack()" title="Back to previous document">⬅ Back (${drawerHistory.length})</button>`);
+  }
+
+  if (archetype === "homelab_wiki") {
+    tabs.push(`<button class="inspector-tab ${!currentSection ? 'active' : ''}" onclick="inspectCurrentSource('')">Full Document</button>`);
+    tabs.push(`<button class="inspector-tab" onclick="fetchAndRenderAmbientMesh(currentInspectedUri)">🕸️ Knowledge Mesh</button>`);
+  } else if (archetype === "telecom_command") {
+    tabs.push(`<button class="inspector-tab ${!currentSection ? 'active' : ''}" onclick="inspectCurrentSource('')">Full Entry</button>`);
+    tabs.push(`<button class="inspector-tab ${currentSection === 'Parameters' ? 'active' : ''}" onclick="inspectCurrentSource('Parameters')">Parameters</button>`);
+    tabs.push(`<button class="inspector-tab" onclick="fetchAndRenderAmbientMesh(currentInspectedUri)">🕸️ Knowledge Mesh</button>`);
+  } else if (archetype === "telecom_alarm") {
+    tabs.push(`<button class="inspector-tab ${!currentSection ? 'active' : ''}" onclick="inspectCurrentSource('')">Full Entry</button>`);
+    tabs.push(`<button class="inspector-tab ${currentSection === 'Description' ? 'active' : ''}" onclick="inspectCurrentSource('Description')">Description</button>`);
+    tabs.push(`<button class="inspector-tab ${currentSection === 'Possible Causes' ? 'active' : ''}" onclick="inspectCurrentSource('Possible Causes')">Possible Causes</button>`);
+    tabs.push(`<button class="inspector-tab ${currentSection === 'Procedure' ? 'active' : ''}" onclick="inspectCurrentSource('Procedure')">Procedure</button>`);
+    tabs.push(`<button class="inspector-tab ${currentSection === 'Impact on the System' ? 'active' : ''}" onclick="inspectCurrentSource('Impact on the System')">Impact</button>`);
+    tabs.push(`<button class="inspector-tab" onclick="inspectCurrentSource('', true)">🖼️ Render Diagram</button>`);
+    tabs.push(`<button class="inspector-tab" onclick="fetchAndRenderAmbientMesh(currentInspectedUri)">🕸️ Knowledge Mesh</button>`);
+  } else {
+    tabs.push(`<button class="inspector-tab ${!currentSection ? 'active' : ''}" onclick="inspectCurrentSource('')">Full Manual</button>`);
+    tabs.push(`<button class="inspector-tab" onclick="fetchAndRenderAmbientMesh(currentInspectedUri)">🕸️ Knowledge Mesh</button>`);
+  }
+
+  tabsContainer.innerHTML = tabs.join("");
+}
+
+function focusEgoGraphFor(uri) {
+  fetchAndRenderAmbientMesh(uri);
+  const cont = document.getElementById("ambient-mesh-container");
+  if (cont) {
+    cont.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function showPortalToast(msg) {
@@ -211,6 +367,252 @@ function showPortalToast(msg) {
       `;
     }
 
+    function fetchAndRenderAmbientMesh(target) {
+      const container = document.getElementById("ambient-mesh-container");
+      if (!container) return;
+      if (!target) {
+        container.style.display = "none";
+        return;
+      }
+
+      container.style.display = "block";
+      container.innerHTML = `
+        <div class="mesh-card-header">
+          <div class="mesh-card-title">
+            <span class="mesh-card-icon">🕸️</span>
+            <div>
+              <div style="font-weight: 600; font-size: 0.92rem; color: var(--gold-bright);">Ambient Knowledge Mesh &amp; Topic Topology</div>
+              <div class="mesh-status-sub" id="mesh-status-lbl">Extracting local interconnected ego-subgraph...</div>
+            </div>
+          </div>
+          <div class="mesh-header-btns">
+            <button type="button" class="action-btn" onclick="toggleAmbientMesh()" id="mesh-toggle-btn">
+              ${ambientMeshExpanded ? "▾ Hide Mesh" : "▸ Show Mesh"}
+            </button>
+          </div>
+        </div>
+        <div id="mesh-body-wrap" class="mesh-body-wrap" style="${ambientMeshExpanded ? '' : 'display: none;'}">
+          <div class="mesh-canvas-container" style="position: relative;">
+            <canvas id="ambient-mesh-canvas" width="860" height="260" class="ambient-mesh-canvas"></canvas>
+            <div id="mesh-tooltip" class="mesh-tooltip" style="display: none;"></div>
+          </div>
+        </div>
+      `;
+
+      fetch(`/graph/ego?target=${encodeURIComponent(target)}&limit=36`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data || !data.center || !data.nodes || !data.nodes.length) {
+            container.style.display = "none";
+            return;
+          }
+          const lbl = document.getElementById("mesh-status-lbl");
+          if (lbl) {
+            lbl.innerHTML = `Focus: <strong style="color: #FFF;">${escapeHtml(data.center.label)}</strong> • <strong>${data.nodes.length}</strong> related articles &amp; entities interconnected`;
+          }
+          if (ambientMeshExpanded) {
+            renderAmbientMeshCanvas(data);
+          }
+        })
+        .catch(() => {
+          container.style.display = "none";
+        });
+    }
+
+    function toggleAmbientMesh() {
+      ambientMeshExpanded = !ambientMeshExpanded;
+      const wrap = document.getElementById("mesh-body-wrap");
+      const btn = document.getElementById("mesh-toggle-btn");
+      if (wrap) wrap.style.display = ambientMeshExpanded ? "block" : "none";
+      if (btn) btn.textContent = ambientMeshExpanded ? "▾ Hide Mesh" : "▸ Show Mesh";
+    }
+
+    function renderAmbientMeshCanvas(data) {
+      const canvas = document.getElementById("ambient-mesh-canvas");
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const tooltip = document.getElementById("mesh-tooltip");
+      const width = canvas.width;
+      const height = canvas.height;
+      const cx = width / 2;
+      const cy = height / 2;
+
+      const nodes = [];
+      const nodeMap = new Map();
+
+      const centerNode = {
+        id: data.center.id,
+        label: data.center.label,
+        kind: data.center.kind,
+        layer: data.center.layer,
+        uri: data.center.uri,
+        x: cx,
+        y: cy,
+        r: 10,
+        isCenter: true,
+        color: "#FBBF24"
+      };
+      nodes.push(centerNode);
+      nodeMap.set(centerNode.id, centerNode);
+
+      const otherNodes = (data.nodes || []).filter(n => n.id !== data.center.id);
+      const ring1 = otherNodes.slice(0, 14);
+      const ring2 = otherNodes.slice(14);
+
+      const getLayerColor = (layer, theme) => {
+        if (layer === "wiki") return "#10B981";
+        if (layer === "entity") return "#A855F7";
+        return "#38BDF8";
+      };
+
+      ring1.forEach((n, i) => {
+        const angle = (i / ring1.length) * Math.PI * 2;
+        const dist = 75 + (i % 2) * 15;
+        const nodeObj = {
+          id: n.id,
+          label: n.label,
+          kind: n.kind,
+          layer: n.layer,
+          uri: n.uri,
+          x: cx + Math.cos(angle) * dist,
+          y: cy + Math.sin(angle) * dist,
+          r: 6.5,
+          isCenter: false,
+          color: getLayerColor(n.layer, n.theme)
+        };
+        nodes.push(nodeObj);
+        nodeMap.set(n.id, nodeObj);
+      });
+
+      ring2.forEach((n, i) => {
+        const angle = ((i + 0.5) / ring2.length) * Math.PI * 2;
+        const dist = 120 + (i % 3) * 12;
+        const nodeObj = {
+          id: n.id,
+          label: n.label,
+          kind: n.kind,
+          layer: n.layer,
+          uri: n.uri,
+          x: cx + Math.cos(angle) * dist,
+          y: cy + Math.sin(angle) * dist,
+          r: 5,
+          isCenter: false,
+          color: getLayerColor(n.layer, n.theme)
+        };
+        nodes.push(nodeObj);
+        nodeMap.set(n.id, nodeObj);
+      });
+
+      const edges = [];
+      (data.edges || []).forEach(e => {
+        const sNode = nodeMap.get(e.source);
+        const tNode = nodeMap.get(e.target);
+        if (sNode && tNode) {
+          edges.push({ s: sNode, t: tNode, kind: e.kind });
+        }
+      });
+
+      let hoveredNode = null;
+
+      function draw() {
+        ctx.clearRect(0, 0, width, height);
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 75, 0, Math.PI * 2);
+        ctx.arc(cx, cy, 120, 0, Math.PI * 2);
+        ctx.stroke();
+
+        edges.forEach(e => {
+          const isHighlighted = hoveredNode && (e.s === hoveredNode || e.t === hoveredNode);
+          ctx.beginPath();
+          ctx.moveTo(e.s.x, e.s.y);
+          ctx.lineTo(e.t.x, e.t.y);
+          ctx.strokeStyle = isHighlighted ? "rgba(245, 158, 11, 0.85)" : "rgba(255, 255, 255, 0.12)";
+          ctx.lineWidth = isHighlighted ? 2 : 1;
+          ctx.stroke();
+        });
+
+        nodes.forEach(n => {
+          const isHovered = (n === hoveredNode);
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, isHovered ? n.r + 3 : n.r, 0, Math.PI * 2);
+          ctx.fillStyle = n.color;
+          ctx.shadowColor = n.color;
+          ctx.shadowBlur = isHovered ? 12 : (n.isCenter ? 10 : 3);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          if (n.isCenter || isHovered) {
+            ctx.strokeStyle = "#FFFFFF";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+
+          if (n.isCenter || isHovered) {
+            ctx.font = isHovered ? "bold 11px sans-serif" : "10px sans-serif";
+            ctx.fillStyle = "#F8FAFC";
+            ctx.textAlign = "center";
+            const txt = n.label.length > 28 ? n.label.slice(0, 27) + "…" : n.label;
+            ctx.fillText(txt, n.x, n.y - n.r - 4);
+          }
+        });
+      }
+
+      draw();
+
+      canvas.onmousemove = function(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mx = (e.clientX - rect.left) * scaleX;
+        const my = (e.clientY - rect.top) * scaleY;
+
+        let found = null;
+        for (let n of nodes) {
+          const d = Math.hypot(n.x - mx, n.y - my);
+          if (d <= n.r + 5) {
+            found = n;
+            break;
+          }
+        }
+
+        if (found !== hoveredNode) {
+          hoveredNode = found;
+          draw();
+          if (hoveredNode && tooltip) {
+            tooltip.style.display = "block";
+            tooltip.style.left = (e.clientX - rect.left + 15) + "px";
+            tooltip.style.top = (e.clientY - rect.top + 10) + "px";
+            tooltip.innerHTML = `
+              <div style="font-weight: 600; color: #FFF; font-size: 0.82rem;">${escapeHtml(hoveredNode.label)}</div>
+              <div style="font-size: 0.72rem; color: var(--gold-bright); margin-top: 2px;">
+                ${escapeHtml(hoveredNode.layer.toUpperCase())} • ${escapeHtml(hoveredNode.kind || '')}
+              </div>
+              <div style="font-size: 0.7rem; color: #38BDF8; margin-top: 3px;">Click to inspect document ↗</div>
+            `;
+          } else if (tooltip) {
+            tooltip.style.display = "none";
+          }
+        }
+      };
+
+      canvas.onmouseleave = function() {
+        hoveredNode = null;
+        draw();
+        if (tooltip) tooltip.style.display = "none";
+      };
+
+      canvas.onclick = function() {
+        if (hoveredNode && hoveredNode.uri) {
+          openSourceInInspector(hoveredNode.uri, "", false);
+        }
+      };
+    }
+
     function renderPortalResponse(data) {
       const routeType = data.route_type || data.route || "deterministic_direct";
       const status = data.status || "success";
@@ -333,8 +735,10 @@ function showPortalToast(msg) {
 
       cardsContainer.innerHTML = suggestionHtml + fallbackHeader + results.map((r, idx) => {
         const vUri = r.virtual_uri || r.source_uri || r.file_path || "";
+        const archetype = detectArchetype(r, vUri);
+        const breadcrumbHtml = formatBreadcrumb(vUri, r, archetype);
         const secs = r.structured_sections || {};
-        const desc = secs["Description"] || (r.content || "").slice(0, 600);
+        const desc = secs["Description"] || (r.content || "").slice(0, 800);
         const causes = secs["Possible Causes"] || "";
         const proc = secs["Procedure"] || "";
         const params = secs["Parameters"] || "";
@@ -342,38 +746,100 @@ function showPortalToast(msg) {
         const tagText = isDeterministicMiss ? '⚡ RELATED TOPIC (FALLBACK)' : (isProng1Card ? '⚡ PRONG 1 EXACT' : '🧠 PRONG 2 VERIFIED');
         const tagColor = isDeterministicMiss ? '#FBBF24' : (isProng1Card ? 'var(--emerald-bright)' : 'var(--cyan-bright)');
 
+        let actionButtonsHtml = "";
+        if (archetype === "homelab_wiki") {
+          actionButtonsHtml = `
+            <button class="action-btn primary-emerald" onclick="openSourceInInspector('${escapeHtml(vUri)}', '', false)">
+              📄 Open in Side Drawer
+            </button>
+            <a href="/archive/view?uri=${encodeURIComponent(vUri)}" target="_blank" class="action-btn" style="text-decoration: none;">
+              📖 Open in Viewer Tab ↗
+            </a>
+            <button class="action-btn" onclick="copyWikiRelativePath('${escapeHtml(vUri)}')">
+              📋 Copy Path
+            </button>
+            <button class="action-btn" onclick="focusEgoGraphFor('${escapeHtml(vUri)}')">
+              🕸️ Knowledge Mesh
+            </button>
+          `;
+        } else if (archetype === "telecom_command") {
+          actionButtonsHtml = `
+            <a href="/archive/view?uri=${encodeURIComponent(vUri)}" target="_blank" class="action-btn primary-emerald" style="text-decoration: none;">
+              📖 View Manual ↗
+            </a>
+            <button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', '', false)">
+              📄 Open in Side Drawer
+            </button>
+            ${proc || params ? `<button class="action-btn" onclick="copyMmlFromCard('${escapeHtml((proc || r.doc_identifier || '').replace(/'/g, "\\'"))}')">📋 Copy MML</button>` : ""}
+            ${params ? `<button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', 'Parameters', false)">⚙️ Parameters</button>` : ""}
+            <button class="action-btn" onclick="focusEgoGraphFor('${escapeHtml(vUri)}')">
+              🕸️ Knowledge Mesh
+            </button>
+          `;
+        } else if (archetype === "telecom_alarm") {
+          actionButtonsHtml = `
+            <a href="/archive/view?uri=${encodeURIComponent(vUri)}" target="_blank" class="action-btn primary-emerald" style="text-decoration: none;">
+              📖 View Manual ↗
+            </a>
+            <button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', '', false)">
+              📄 Open in Side Drawer
+            </button>
+            ${causes ? `<button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', 'Possible Causes', false)">🔍 Causes</button>` : ""}
+            ${proc ? `<button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', 'Procedure', false)">🛠️ Procedure</button>` : ""}
+            <button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', '', true)">
+              🖼️ Render Diagram
+            </button>
+            <button class="action-btn" onclick="focusEgoGraphFor('${escapeHtml(vUri)}')">
+              🕸️ Knowledge Mesh
+            </button>
+          `;
+        } else {
+          actionButtonsHtml = `
+            <a href="/archive/view?uri=${encodeURIComponent(vUri)}" target="_blank" class="action-btn primary-emerald" style="text-decoration: none;">
+              📖 View Manual ↗
+            </a>
+            <button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', '', false)">
+              📄 Open in Side Drawer
+            </button>
+            <button class="action-btn" onclick="focusEgoGraphFor('${escapeHtml(vUri)}')">
+              🕸️ Knowledge Mesh
+            </button>
+          `;
+        }
+
         return `
-          <article class="source-card ${isProng1Card ? 'prong1-card' : 'prong2-card'}" id="source-card-${idx + 1}">
+          <article class="source-card ${isProng1Card ? 'prong1-card' : 'prong2-card'}" id="source-card-${idx + 1}" style="--card-index: ${idx};">
             <div class="source-card-header">
               <div class="source-title-wrap">
-                <div class="source-title">[${idx + 1}] ${escapeHtml(r.title || r.doc_identifier)}</div>
-                <div style="margin-top: 0.25rem; display: flex; gap: 0.45rem; align-items: center;">
+                <div class="source-title"><span class="card-num-badge">[${idx + 1}]</span> ${escapeHtml(r.title || r.doc_identifier)}</div>
+                <div class="card-meta-line" style="margin-top: 0.35rem; display: flex; gap: 0.45rem; align-items: center; flex-wrap: wrap;">
                   <span class="metric-tag">${escapeHtml(r.confidence_band || confLevel)}</span>
-                  <span class="metric-tag" style="color: ${tagColor};">
-                    ${tagText}
-                  </span>
+                  <span class="metric-tag" style="color: ${tagColor};">${tagText}</span>
+                  <span class="metric-tag archetype-badge">${escapeHtml(archetype.replace('_', ' ').toUpperCase())}</span>
                 </div>
               </div>
-              ${buildConfidenceRingSvg(confScore, isProng1Card)}
+              <div class="header-right-actions" style="display: flex; align-items: center; gap: 0.65rem;">
+                ${buildConfidenceRingSvg(confScore, isProng1Card)}
+                <a href="/archive/view?uri=${encodeURIComponent(vUri)}" target="_blank" class="card-quick-viewer-btn" title="Open formatted document in viewer tab">↗ View</a>
+              </div>
             </div>
-            <div class="source-uri">
-              <a href="/archive/view?uri=${encodeURIComponent(vUri)}" target="_blank" class="source-link-btn" title="Open formatted document in new browser tab">
-                🔗 ${escapeHtml(vUri)} <span style="font-size: 0.72rem; color: #38BDF8;">↗ View in Document Viewer</span>
-              </a>
-              <span style="color: var(--text-secondary); font-size: 0.7rem;">O_RDONLY STREAM</span>
+
+            <div class="card-breadcrumb-bar">
+              ${breadcrumbHtml}
+              <button type="button" class="btn-copy-path" onclick="copyWikiRelativePath('${escapeHtml(vUri)}')" title="Copy relative path to clipboard">📋 Copy</button>
             </div>
 
             <div class="structured-grid">
               <div class="sec-block">
                 <div class="sec-block-title">
-                  <span>📋 Description &amp; Specification</span>
+                  <span>${archetype === 'homelab_wiki' ? '📄 Summary & Specification' : '📋 Description & Specification'}</span>
                 </div>
-                <div class="sec-block-content">${renderStructuredContent(desc)}</div>
+                <div class="sec-block-content">${renderStructuredContent(desc, vUri)}</div>
               </div>
               ${causes ? `
               <div class="sec-block">
                 <div class="sec-block-title"><span>🔍 Possible Causes</span></div>
-                <div class="sec-block-content">${renderStructuredContent(causes)}</div>
+                <div class="sec-block-content">${renderStructuredContent(causes, vUri)}</div>
               </div>` : ""}
               ${proc ? `
               <div class="sec-block">
@@ -381,35 +847,29 @@ function showPortalToast(msg) {
                   <span>🛠️ Remediation Procedure</span>
                   <button type="button" class="inspector-tab" style="padding: 0.12rem 0.45rem; font-size: 0.68rem;" onclick="copyMmlFromCard('${escapeHtml(proc.slice(0, 240).replace(/'/g, "\\'"))}')">📋 Copy MML</button>
                 </div>
-                <div class="sec-block-content" style="font-family: var(--font-mono); font-size: 0.81rem;">${renderStructuredContent(proc)}</div>
+                <div class="sec-block-content" style="font-family: var(--font-mono); font-size: 0.81rem;">${renderStructuredContent(proc, vUri)}</div>
               </div>` : ""}
               ${params ? `
               <div class="sec-block">
                 <div class="sec-block-title"><span>⚙️ Parameters</span></div>
-                <div class="sec-block-content">${renderStructuredContent(params)}</div>
+                <div class="sec-block-content">${renderStructuredContent(params, vUri)}</div>
               </div>` : ""}
             </div>
 
             <div class="action-btn-row">
-              <a href="/archive/view?uri=${encodeURIComponent(vUri)}" target="_blank" class="action-btn primary-emerald" style="text-decoration: none;">
-                📖 Open Full Manual in Viewer Tab ↗
-              </a>
-              <button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', '', false)">
-                📄 Open in Side Drawer
-              </button>
-              <button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', 'Possible Causes', false)">
-                🔍 Jump to Causes
-              </button>
-              <button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', 'Procedure', false)">
-                🛠️ Jump to Procedure
-              </button>
-              <button class="action-btn" onclick="openSourceInInspector('${escapeHtml(vUri)}', '', true)">
-                🖼️ Render Diagram
-              </button>
+              ${actionButtonsHtml}
             </div>
           </article>
         `;
       }).join("");
+
+      if (results.length > 0) {
+        const topTarget = results[0].virtual_uri || results[0].source_uri || results[0].file_path || results[0].doc_identifier;
+        fetchAndRenderAmbientMesh(topTarget);
+      } else {
+        const meshCont = document.getElementById("ambient-mesh-container");
+        if (meshCont) meshCont.style.display = "none";
+      }
     }
 
     function renderGraphDossier(dossier) {
@@ -468,9 +928,13 @@ function showPortalToast(msg) {
       `;
     }
 
-    async function openSourceInInspector(virtualUri, sectionFilter = "", extractDiagram = false) {
+    async function openSourceInInspector(virtualUri, sectionFilter = "", extractDiagram = false, isInternalTransition = false) {
       if (!virtualUri) return;
+      if (!isInternalTransition) {
+        drawerHistory = [];
+      }
       currentInspectedUri = virtualUri;
+      window.currentInspectedUri = virtualUri;
 
       openSourceInspector();
       loadTopicNavigation(virtualUri);
@@ -478,6 +942,9 @@ function showPortalToast(msg) {
       const metaEl = document.getElementById("inspector-meta");
       const contentEl = document.getElementById("inspector-content");
       const diagBox = document.getElementById("inspector-diagram-container");
+
+      contentEl.className = "inspector-content-pre";
+      contentEl.textContent = "Streaming document in-memory (O_RDONLY)...";
 
       const rawName = virtualUri.split("#").pop().split("/").pop() || "Document";
       metaEl.innerHTML = `Streaming <strong style="color: var(--gold-bright);">${escapeHtml(rawName)}</strong> in-memory (O_RDONLY)...`;
@@ -495,10 +962,17 @@ function showPortalToast(msg) {
         });
         const data = await resp.json();
         const entryDisplay = data.entry_name || rawName;
+        const detectedArch = detectArchetype({ doc_identifier: entryDisplay, metadata: { file_path: virtualUri } }, virtualUri);
+        currentInspectedArchetype = detectedArch;
+        updateInspectorTabs(detectedArch, sectionFilter);
+
         metaEl.innerHTML = `
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
             <div><strong>Document:</strong> <span style="color: var(--gold-bright); font-weight: 600;">${escapeHtml(entryDisplay)}</span></div>
-            <span class="metric-tag">${escapeHtml(data.section_filter_applied || "Full Document")}</span>
+            <div style="display: flex; gap: 0.4rem; align-items: center;">
+              <span class="metric-tag archetype-badge">${escapeHtml(detectedArch.replace('_', ' ').toUpperCase())}</span>
+              <span class="metric-tag">${escapeHtml(data.section_filter_applied || "Full Document")}</span>
+            </div>
           </div>
           <div style="font-size: 0.72rem; color: var(--text-secondary); display: flex; gap: 0.85rem; align-items: center;">
             <span>🛡️ <strong>Zero-Disk Stream</strong> (O_RDONLY)</span>
@@ -506,9 +980,10 @@ function showPortalToast(msg) {
           </div>
         `;
         const rawContent = data.content_text || data.extracted_text || "No text content in entry.";
-        if (typeof renderMarkdown === "function" && rawContent.includes("|") && rawContent.includes("\n")) {
+        const isMarkdownDoc = virtualUri.endsWith(".md") || rawContent.startsWith("#") || rawContent.startsWith("---") || rawContent.includes("|") || (detectedArch === "homelab_wiki");
+        if (typeof renderMarkdown === "function" && isMarkdownDoc) {
           contentEl.className = "inspector-content-rendered";
-          contentEl.innerHTML = renderMarkdown(rawContent);
+          contentEl.innerHTML = renderMarkdown(rawContent, virtualUri);
         } else {
           contentEl.className = "inspector-content-pre";
           contentEl.textContent = rawContent;
