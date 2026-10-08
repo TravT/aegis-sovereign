@@ -227,6 +227,21 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
             package = query_params.get("package", [""])[0]
             source = query_params.get("source", [""])[0]
             mode = query_params.get("mode", ["hierarchy"])[0]
+            if mode == "children":
+                parent_id = query_params.get("parent_id", [""])[0] or topic_id
+                children = self.manager.get_topic_children(parent_id)
+                self._send_json(200, {"parent_id": parent_id, "children": children})
+                return
+
+            if mode == "book":
+                root_nodes = self.manager.get_book_root_nodes(package=package, source=source)
+                self._send_json(200, {"package": package, "source": source, "nodes": root_nodes})
+                return
+
+            if mode == "catalog":
+                catalog = self.manager.get_package_catalog(package=package)
+                self._send_json(200, {"package": package, "catalog": catalog})
+                return
 
             if mode in ("bookmap", "full", "package"):
                 try:
@@ -272,6 +287,11 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
             if not virtual_uri:
                 self._send_json(400, {"error": "Missing 'uri' query parameter (e.g. ?uri=archive://...)"})
                 return
+            while "%" in virtual_uri:
+                unquoted = urllib.parse.unquote(virtual_uri)
+                if unquoted == virtual_uri:
+                    break
+                virtual_uri = unquoted
             try:
                 html_out = self.manager.render_archive_document_html(virtual_uri)
                 self._send_bytes(200, "text/html; charset=utf-8", html_out.encode("utf-8", errors="replace"))

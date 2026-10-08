@@ -839,6 +839,190 @@ class SovereignApplianceManager:
             logger.warning(f"Failed to fetch topic hierarchy for {virtual_uri or topic_id}: {e}")
             return None
 
+    def init_package_catalog(self, conn: sqlite3.Connection) -> None:
+        """Initializes package_books table in SQLite if not yet created."""
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS package_books (
+                package TEXT NOT NULL,
+                category TEXT NOT NULL,
+                nav_item TEXT NOT NULL,
+                book_id TEXT NOT NULL,
+                book_name TEXT NOT NULL,
+                book_source TEXT NOT NULL,
+                topic_count INTEGER NOT NULL DEFAULT 0,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (package, book_source)
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_pkg_books_pkg_cat ON package_books(package, category)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_doc_records_topic_id ON document_records(topic_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_topic_edges_parent ON topic_edges(parent)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_topic_edges_child ON topic_edges(child)")
+
+        row_cnt = cur.execute("SELECT COUNT(*) FROM package_books").fetchone()[0]
+        if row_cnt > 0:
+            return
+
+        import zipfile
+        import xml.etree.ElementTree as ET
+        hua_dir = Path("/home/tlima/Enterprise_Hub/docs/Hua_Docs")
+        if not hua_dir.exists():
+            return
+
+        packages = [
+            ("UPCF", "UPCF 26.1.0 Product Documentation (Virtual Machine Container) 02 (Online Information Center).zip"),
+            ("USC", "HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.zip")
+        ]
+
+        order = 0
+        for pkg, zip_name in packages:
+            zip_path = hua_dir / zip_name
+            if not zip_path.exists():
+                continue
+            try:
+                with zipfile.ZipFile(zip_path) as outer:
+                    inners = [i.filename for i in outer.infolist() if i.filename.endswith(".hwics")]
+                    if not inners:
+                        continue
+                    with zipfile.ZipFile(io.BytesIO(outer.read(inners[0]))) as hwics:
+                        docnavs = sorted([n for n in hwics.namelist() if "docnav" in n and n.endswith(".xml")])
+                        for d in docnavs:
+                            root = ET.fromstring(hwics.read(d))
+                            cat = root.attrib.get("type") or "General"
+                            for item in root.findall("navItem"):
+                                sec = item.attrib.get("value") or "General"
+                                for doc in item.findall("doc"):
+                                    order += 1
+                                    book_id = doc.attrib.get("id") or ""
+                                    book_name = doc.attrib.get("name") or book_id
+                                    src_file = f"{book_id}.xml"
+                                    cur.execute("SELECT COUNT(*) FROM topic_nodes WHERE source = ?", (src_file,))
+                                    cnt = cur.fetchone()[0]
+                                    cur.execute("""
+                                        INSERT OR REPLACE INTO package_books
+                                        (package, category, nav_item, book_id, book_name, book_source, topic_count, sort_order)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                    """, (pkg, cat, sec, book_id, book_name, src_file, cnt, order))
+            except Exception as e:
+                logger.warning(f"Error indexing package catalog from {zip_name}: {e}")
+        conn.commit()
+
+    def get_topic_children(self, parent_id: str) -> List[Dict[str, Any]]:
+        """Returns direct child topics for lazy tree expansion in sub-millisecond time."""
+        db_path = getattr(self.router, "db_path", None)
+        if not db_path or db_path == ":memory:" or not Path(db_path).exists():
+            return []
+        try:
+            conn = sqlite3.connect(db_path, timeout=5.0)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            try:
+                cur.execute("""
+                    SELECT n.topic_id, n.name, n.depth,
+                           (SELECT doc_identifier FROM document_records WHERE topic_id = n.topic_id LIMIT 1) AS uri,
+                           (SELECT COUNT(*) FROM topic_edges WHERE parent = n.topic_id) AS child_count
+                    FROM topic_edges e
+                    JOIN topic_nodes n ON n.topic_id = e.child
+                    WHERE e.parent = ?
+                    ORDER BY n.rowid ASC
+                """, (parent_id,))
+                rows = cur.fetchall()
+                return [
+                    {
+                        "topic_id": r["topic_id"],
+                        "name": r["name"],
+                        "depth": r["depth"],
+                        "uri": r["uri"] or "",
+                        "child_count": r["child_count"],
+                    }
+                    for r in rows
+                ]
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Error fetching topic children: {e}")
+            return []
+
+    def get_book_root_nodes(self, package: str, source: str) -> List[Dict[str, Any]]:
+        """Returns depth-1 / root topics of a book for lazy expansion."""
+        db_path = getattr(self.router, "db_path", None)
+        if not db_path or db_path == ":memory:" or not Path(db_path).exists():
+            return []
+        try:
+            conn = sqlite3.connect(db_path, timeout=5.0)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            try:
+                cur.execute("""
+                    SELECT n.topic_id, n.name, n.depth,
+                           (SELECT doc_identifier FROM document_records WHERE topic_id = n.topic_id LIMIT 1) AS uri,
+                           (SELECT COUNT(*) FROM topic_edges WHERE parent = n.topic_id) AS child_count
+                    FROM topic_nodes n
+                    WHERE n.source = ? AND (n.package = ? OR ? = '') AND n.depth = 1
+                    ORDER BY n.rowid ASC
+                """, (source, package, package))
+                rows = cur.fetchall()
+                return [
+                    {
+                        "topic_id": r["topic_id"],
+                        "name": r["name"],
+                        "depth": r["depth"],
+                        "uri": r["uri"] or "",
+                        "child_count": r["child_count"],
+                    }
+                    for r in rows
+                ]
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Error fetching book root nodes: {e}")
+            return []
+
+    def get_package_catalog(self, package: str) -> List[Dict[str, Any]]:
+        """Returns full category and book catalog for a package."""
+        db_path = getattr(self.router, "db_path", None)
+        if not db_path or db_path == ":memory:" or not Path(db_path).exists():
+            return []
+        try:
+            conn = sqlite3.connect(db_path, timeout=5.0)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            try:
+                self.init_package_catalog(conn)
+                cur.execute("""
+                    SELECT category, nav_item, book_id, book_name, book_source, topic_count
+                    FROM package_books
+                    WHERE package = ?
+                    ORDER BY sort_order ASC
+                """, (package,))
+                rows = cur.fetchall()
+                cat_map: Dict[str, List[Dict[str, Any]]] = {}
+                for r in rows:
+                    cat = r["category"]
+                    if cat not in cat_map:
+                        cat_map[cat] = []
+                    cat_map[cat].append({
+                        "id": r["book_id"],
+                        "name": r["book_name"],
+                        "source": r["book_source"],
+                        "nav_item": r["nav_item"],
+                        "topic_count": r["topic_count"],
+                    })
+                return [
+                    {
+                        "category": cat_name,
+                        "topic_count": sum(b["topic_count"] for b in books),
+                        "books": books,
+                    }
+                    for cat_name, books in cat_map.items()
+                ]
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Error fetching package catalog: {e}")
+            return []
+
     def get_package_bookmap_tree(
         self,
         virtual_uri: str = "",
@@ -846,7 +1030,7 @@ class SovereignApplianceManager:
         package: str = "",
         source: str = "",
     ) -> Optional[Dict[str, Any]]:
-        """Returns the full hierarchical manual tree (bookmap/TOC) for the active manual in a package."""
+        """Returns the full hierarchical manual tree (bookmap/TOC) and package library catalog."""
         db_path = getattr(self.router, "db_path", None)
         if not db_path or db_path == ":memory:" or not Path(db_path).exists():
             return None
@@ -856,6 +1040,8 @@ class SovereignApplianceManager:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             try:
+                self.init_package_catalog(conn)
+
                 # 1. Resolve topic_id if virtual_uri is provided
                 if not topic_id and virtual_uri:
                     default_hua_dir = "/home/tlima/Enterprise_Hub/docs/Hua_Docs"
@@ -875,7 +1061,7 @@ class SovereignApplianceManager:
                         if row and row["topic_id"]:
                             topic_id = row["topic_id"]
 
-                # 2. Get active node info (if topic_id known)
+                # 2. Get active node info
                 node = None
                 if topic_id:
                     node = cur.execute(
@@ -894,7 +1080,7 @@ class SovereignApplianceManager:
                     active_topic_id = topic_id
                     active_path = ""
 
-                # If no active_source, pick the largest manual in the package
+                # If no active_source, pick largest manual in package
                 if not active_source:
                     first_src = cur.execute(
                         "SELECT source FROM topic_nodes WHERE package = ? GROUP BY source ORDER BY count(*) DESC LIMIT 1",
@@ -906,56 +1092,79 @@ class SovereignApplianceManager:
                 if not active_source:
                     return None
 
-                # 3. Query all manuals in the package
-                manuals_rows = cur.execute("""
-                    SELECT tn.source,
-                           COALESCE((SELECT name FROM topic_nodes WHERE source = tn.source AND depth = 1 LIMIT 1), tn.source) as manual_name,
-                           COUNT(*) as topic_count
-                    FROM topic_nodes tn
+                # 3. Query all package categories and books from package_books
+                cur.execute("""
+                    SELECT category, nav_item, book_id, book_name, book_source, topic_count
+                    FROM package_books
                     WHERE package = ?
-                    GROUP BY tn.source
-                    ORDER BY topic_count DESC
-                """, (active_package,)).fetchall()
+                    ORDER BY sort_order ASC
+                """, (active_package,))
+                book_rows = cur.fetchall()
 
-                manuals = [
-                    {
-                        "source": m["source"],
-                        "name": m["manual_name"],
-                        "count": m["topic_count"],
-                        "is_active": (m["source"] == active_source),
-                    }
-                    for m in manuals_rows
-                ]
-
-                # Manual title
+                active_category = ""
                 active_manual_title = active_source
-                for m in manuals:
-                    if m["is_active"]:
-                        active_manual_title = m["name"]
-                        break
+                categories_map: Dict[str, Dict[str, Any]] = {}
 
-                # 4. Query all topics in the active bookmap (deduplicating multiple document records)
+                for br in book_rows:
+                    cat_name = br["category"]
+                    is_book_active = (br["book_source"] == active_source)
+                    if is_book_active:
+                        active_category = cat_name
+                        active_manual_title = br["book_name"]
+
+                    if cat_name not in categories_map:
+                        categories_map[cat_name] = {
+                            "name": cat_name,
+                            "topic_count": 0,
+                            "is_active": False,
+                            "books": [],
+                        }
+
+                    categories_map[cat_name]["topic_count"] += br["topic_count"]
+                    if is_book_active:
+                        categories_map[cat_name]["is_active"] = True
+
+                    categories_map[cat_name]["books"].append({
+                        "id": br["book_id"],
+                        "name": br["book_name"],
+                        "source": br["book_source"],
+                        "topic_count": br["topic_count"],
+                        "is_active": is_book_active,
+                    })
+
+                categories = list(categories_map.values())
+
+                # 4. Query all topics in active book with parent_id and child_count
                 nodes_rows = cur.execute("""
-                    SELECT n.topic_id, n.name, n.depth, n.path_text, d.doc_identifier AS uri
+                    SELECT n.topic_id, n.name, n.depth, n.path_text,
+                           (SELECT parent FROM topic_edges WHERE child = n.topic_id AND is_primary = 1 LIMIT 1) AS parent_id,
+                           (SELECT doc_identifier FROM document_records WHERE topic_id = n.topic_id LIMIT 1) AS uri,
+                           (SELECT COUNT(*) FROM topic_edges WHERE parent = n.topic_id) AS child_count
                     FROM topic_nodes n
-                    LEFT JOIN (
-                        SELECT topic_id, min(doc_identifier) AS doc_identifier
-                        FROM document_records
-                        GROUP BY topic_id
-                    ) d ON d.topic_id = n.topic_id
                     WHERE n.source = ? AND n.package = ?
                     ORDER BY n.rowid ASC
                 """, (active_source, active_package)).fetchall()
 
-                # If manual is huge (>300 topics like Commands with 10k), filter to active branch & siblings
+                # Build active ancestor chain
+                active_chain = []
+                cur_ancestor = active_topic_id
+                while cur_ancestor:
+                    active_chain.append(cur_ancestor)
+                    p_row = cur.execute(
+                        "SELECT parent FROM topic_edges WHERE child = ? AND is_primary = 1 LIMIT 1",
+                        (cur_ancestor,)
+                    ).fetchone()
+                    cur_ancestor = p_row["parent"] if (p_row and p_row["parent"]) else None
+
                 parent_prefix = active_path.rsplit(" > ", 1)[0] if (" > " in active_path) else ""
                 filter_large = len(nodes_rows) > 300
 
                 nodes = []
                 for r in nodes_rows:
                     p = r["path_text"] or ""
-                    is_active = (r["topic_id"] == active_topic_id)
-                    is_ancestor = bool(active_path and active_path.startswith(p + " > "))
+                    tid = r["topic_id"]
+                    is_active = (tid == active_topic_id)
+                    is_ancestor = (tid in active_chain and not is_active)
                     is_sibling = bool(parent_prefix and " > " in p and p.rsplit(" > ", 1)[0] == parent_prefix)
                     is_child = bool(active_path and p.startswith(active_path + " > "))
                     is_top_level = (r["depth"] <= 1)
@@ -964,11 +1173,13 @@ class SovereignApplianceManager:
                         continue
 
                     nodes.append({
-                        "topic_id": r["topic_id"],
+                        "topic_id": tid,
                         "name": r["name"],
                         "depth": r["depth"],
                         "path_text": r["path_text"],
+                        "parent_id": r["parent_id"],
                         "uri": r["uri"] or "",
+                        "child_count": r["child_count"],
                         "is_active": is_active,
                         "is_ancestor": is_ancestor,
                     })
@@ -976,9 +1187,11 @@ class SovereignApplianceManager:
                 return {
                     "package": active_package,
                     "active_source": active_source,
+                    "active_category": active_category,
                     "manual_title": active_manual_title,
                     "active_topic_id": active_topic_id,
-                    "manuals": manuals,
+                    "active_chain": active_chain,
+                    "categories": categories,
                     "nodes": nodes,
                 }
             finally:

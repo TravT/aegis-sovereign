@@ -153,52 +153,147 @@ class DocumentViewer:
                 </nav>
                 """
 
-        # Build Sidebar Tree HTML
+        # Build Multi-Tiered HedEx "Tree of Trees" Sidebar HTML
         sidebar_tree_html = ""
-        manual_title = "Document Outline"
-        manual_count = 0
-        if bookmap_tree and bookmap_tree.get("nodes"):
-            manual_title = bookmap_tree.get("manual_title") or "Manual Contents"
-            nodes = bookmap_tree["nodes"]
-            manual_count = len(nodes)
-            tree_items = []
+        package_name = "Huawei Documentation"
+        if bookmap_tree:
+            package_name = bookmap_tree.get("package") or "Documentation"
+            categories = bookmap_tree.get("categories", [])
+            nodes = bookmap_tree.get("nodes", [])
+            active_chain = set(bookmap_tree.get("active_chain", []))
+            active_topic_id = bookmap_tree.get("active_topic_id", "")
+
+            # Group topics in active book by parent_id for hierarchical nesting
+            node_ids = {n["topic_id"] for n in nodes}
+            children_by_parent: Dict[Optional[str], List[Dict[str, Any]]] = {}
             for n in nodes:
-                depth = max(1, min(6, n.get("depth", 1)))
-                n_name = html.escape(n.get("name") or "Topic")
-                n_uri = n.get("uri")
-                is_act = n.get("is_active", False)
-                is_anc = n.get("is_ancestor", False)
+                pid = n.get("parent_id")
+                key = pid if (pid in node_ids) else None
+                children_by_parent.setdefault(key, []).append(n)
 
-                cls_list = ["tree-node", f"depth-{depth}"]
-                if is_act:
-                    cls_list.append("active")
-                elif is_anc:
-                    cls_list.append("ancestor")
+            def _render_topic_sublist(parent_key: Optional[str], depth: int = 1) -> str:
+                subnodes = children_by_parent.get(parent_key, [])
+                if not subnodes:
+                    return ""
+                items = []
+                for n in subnodes:
+                    tid = n["topic_id"]
+                    n_name = html.escape(n.get("name") or "Topic")
+                    n_uri = n.get("uri")
+                    is_act = n.get("is_active", False)
+                    is_anc = n.get("is_ancestor", False) or (tid in active_chain and not is_act)
+                    child_count = n.get("child_count", 0)
+                    has_sublist = tid in children_by_parent
 
-                pad_left = (depth - 1) * 14 + 10
-                if n_uri:
-                    target_url = f"/archive/view?uri={urllib.parse.quote(n_uri)}"
-                    marker = "●" if is_act else "📄"
-                    tree_items.append(
-                        f'<li class="{" ".join(cls_list)}" style="padding-left: {pad_left}px;" data-title="{n_name.lower()}">'
-                        f'<a href="{target_url}" title="{n_name}"><span class="tree-bullet">{marker}</span> {n_name}</a>'
-                        f'</li>'
+                    cls_list = ["tree-node", f"depth-{min(depth, 6)}"]
+                    if is_act:
+                        cls_list.append("active")
+                    elif is_anc:
+                        cls_list.append("ancestor")
+
+                    pad_left = (depth - 1) * 12 + 6
+                    if n_uri:
+                        target_url = f"/archive/view?uri={urllib.parse.quote(n_uri)}"
+                        link_html = f'<a href="{target_url}" class="node-link" title="{n_name}">{n_name}</a>'
+                    else:
+                        link_html = f'<span class="node-title" title="{n_name}">{n_name}</span>'
+
+                    if child_count > 0:
+                        cls_list.append("folder-node")
+                        is_expanded = is_act or is_anc or has_sublist
+                        chevron = "▼" if is_expanded else "▶"
+                        sub_html = _render_topic_sublist(tid, depth + 1)
+                        disp = "display: block;" if is_expanded else "display: none;"
+                        items.append(
+                            f'<li class="{" ".join(cls_list)}" id="node-{tid}" data-title="{n_name.lower()}">'
+                            f'<div class="node-row" style="padding-left: {pad_left}px;">'
+                            f'<span class="node-toggle" onclick="toggleTopicChildren(event, \'{tid}\')">{chevron}</span>'
+                            f'<span class="node-icon">📁</span>'
+                            f'{link_html}'
+                            f'<span class="node-badge">{child_count}</span>'
+                            f'</div>'
+                            f'<ul class="node-children-list" id="children-{tid}" style="{disp}">{sub_html}</ul>'
+                            f'</li>'
+                        )
+                    else:
+                        cls_list.append("leaf-node")
+                        marker = "●" if is_act else "📄"
+                        items.append(
+                            f'<li class="{" ".join(cls_list)}" id="node-{tid}" data-title="{n_name.lower()}">'
+                            f'<div class="node-row" style="padding-left: {pad_left}px;">'
+                            f'<span class="node-spacer"></span>'
+                            f'<span class="node-icon">{marker}</span>'
+                            f'{link_html}'
+                            f'</div>'
+                            f'</li>'
+                        )
+                return "".join(items)
+
+            active_topics_html = _render_topic_sublist(None, 1)
+
+            if categories:
+                cat_items = []
+                for cat in categories:
+                    cat_name = html.escape(cat["name"])
+                    cat_is_active = cat.get("is_active", False)
+                    open_attr = "open" if cat_is_active else ""
+                    books = cat.get("books", [])
+
+                    book_items = []
+                    for b in books:
+                        b_name = html.escape(b["name"])
+                        b_src = html.escape(b["source"])
+                        b_count = b["topic_count"]
+                        b_active = b.get("is_active", False)
+                        pkg = html.escape(bookmap_tree.get("package", ""))
+
+                        if b_active:
+                            book_items.append(
+                                f'<li class="book-entry active-book-entry">'
+                                f'<details class="book-details" open>'
+                                f'<summary class="book-summary active-book-summary">'
+                                f'<span class="book-icon">📘</span>'
+                                f'<span class="book-title" title="{b_name}">{b_name}</span>'
+                                f'<span class="book-count">{b_count}</span>'
+                                f'</summary>'
+                                f'<ul class="tree-list active-tree-list" id="tree-list">{active_topics_html}</ul>'
+                                f'</details>'
+                                f'</li>'
+                            )
+                        else:
+                            book_items.append(
+                                f'<li class="book-entry">'
+                                f'<details class="book-details" data-package="{pkg}" data-source="{b_src}">'
+                                f'<summary class="book-summary" onclick="loadBookTopicsLazy(this, \'{pkg}\', \'{b_src}\')">'
+                                f'<span class="book-icon">📘</span>'
+                                f'<span class="book-title" title="{b_name}">{b_name}</span>'
+                                f'<span class="book-count">{b_count}</span>'
+                                f'</summary>'
+                                f'<ul class="tree-list lazy-tree-list"></ul>'
+                                f'</details>'
+                                f'</li>'
+                            )
+
+                    cat_items.append(
+                        f'<div class="cat-group">'
+                        f'<details class="cat-details" {open_attr}>'
+                        f'<summary class="cat-summary">'
+                        f'<span class="cat-icon">📁</span>'
+                        f'<span class="cat-title">{cat_name}</span>'
+                        f'<span class="cat-badge">{len(books)} manuals</span>'
+                        f'</summary>'
+                        f'<ul class="books-list">{"".join(book_items)}</ul>'
+                        f'</details>'
+                        f'</div>'
                     )
-                else:
-                    marker = "●" if is_act else "📁"
-                    tree_items.append(
-                        f'<li class="{" ".join(cls_list)} muted" style="padding-left: {pad_left}px;" data-title="{n_name.lower()}">'
-                        f'<span><span class="tree-bullet">{marker}</span> {n_name}</span>'
-                        f'</li>'
-                    )
-            sidebar_tree_html = "".join(tree_items)
+                sidebar_tree_html = "".join(cat_items)
+            else:
+                sidebar_tree_html = f'<ul class="tree-list" id="tree-list">{active_topics_html}</ul>'
 
         # Fallback to local siblings if bookmap_tree not present
         if not sidebar_tree_html and topic_hierarchy and topic_hierarchy.get("siblings"):
             sibs = topic_hierarchy["siblings"]
             cur = topic_hierarchy["current"]
-            manual_title = "Chapter Sections"
-            manual_count = len(sibs)
             tree_items = []
             for s in sibs:
                 s_name = html.escape(s.get("name") or "Topic")
@@ -211,16 +306,16 @@ class DocumentViewer:
                     target_url = f"/archive/view?uri={urllib.parse.quote(s_uri)}"
                     tree_items.append(
                         f'<li class="{" ".join(cls_list)}" style="padding-left: 10px;" data-title="{s_name.lower()}">'
-                        f'<a href="{target_url}"><span class="tree-bullet">{"●" if is_act else "📄"}</span> {s_name}</a>'
+                        f'<a href="{target_url}" class="node-link"><span class="node-icon">{"●" if is_act else "📄"}</span> {s_name}</a>'
                         f'</li>'
                     )
                 else:
                     tree_items.append(
                         f'<li class="{" ".join(cls_list)} muted" style="padding-left: 10px;" data-title="{s_name.lower()}">'
-                        f'<span><span class="tree-bullet">{"●" if is_act else "📄"}</span> {s_name}</span>'
+                        f'<span class="node-title"><span class="node-icon">{"●" if is_act else "📄"}</span> {s_name}</span>'
                         f'</li>'
                     )
-            sidebar_tree_html = "".join(tree_items)
+            sidebar_tree_html = f'<ul class="tree-list" id="tree-list">{"".join(tree_items)}</ul>'
 
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -432,52 +527,173 @@ class DocumentViewer:
       overflow-y: auto;
       padding: 0.65rem 0.5rem 2rem 0.5rem;
     }}
-    .tree-list {{
-      list-style: none;
+    /* Multi-Tier HedEx Library Accordions */
+    .cat-group {{
+      margin-bottom: 0.45rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      padding-bottom: 0.35rem;
+    }}
+    .cat-details {{
+      margin-bottom: 0.2rem;
+    }}
+    .cat-summary {{
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #E2E8F0;
+      padding: 0.38rem 0.5rem;
+      border-radius: 6px;
+      cursor: pointer;
       display: flex;
-      flex-direction: column;
-      gap: 0.15rem;
+      align-items: center;
+      gap: 0.45rem;
+      user-select: none;
+      transition: background 0.15s;
+    }}
+    .cat-summary:hover {{
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--gold-bright);
+    }}
+    .cat-badge {{
+      font-size: 0.68rem;
+      font-family: var(--font-mono);
+      color: #8492A6;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 0.05rem 0.35rem;
+      border-radius: 4px;
+      margin-left: auto;
+    }}
+    .books-list {{
+      list-style: none;
+      padding-left: 0.4rem;
+      margin: 0.2rem 0;
+    }}
+    .book-entry {{
+      list-style: none;
+      margin-bottom: 0.2rem;
+    }}
+    .book-summary {{
+      font-size: 0.77rem;
+      font-weight: 600;
+      color: #94A3B8;
+      padding: 0.32rem 0.5rem;
+      border-radius: 5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      user-select: none;
+      transition: all 0.15s;
+    }}
+    .book-summary:hover {{
+      color: #FFF;
+      background: rgba(255, 255, 255, 0.05);
+    }}
+    .book-entry.active-book-entry .book-summary {{
+      color: var(--gold-bright);
+      background: rgba(212, 175, 55, 0.12);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+    }}
+    .book-title {{
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }}
+    .book-count {{
+      font-size: 0.68rem;
+      font-family: var(--font-mono);
+      color: #64748B;
+      flex-shrink: 0;
+    }}
+    .tree-list, .node-children-list {{
+      list-style: none;
+      margin: 0.15rem 0 0.3rem 0;
+      padding: 0;
     }}
     .tree-node {{
-      border-radius: 5px;
-      font-size: 0.82rem;
-      line-height: 1.45;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      margin-bottom: 1px;
+    }}
+    .node-row {{
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.24rem 0.4rem;
+      border-radius: 4px;
       transition: background 0.12s;
     }}
-    .tree-node a, .tree-node span {{
-      display: flex;
-      align-items: baseline;
-      gap: 0.45rem;
-      padding: 0.35rem 0.5rem;
-      color: var(--text-muted);
-      text-decoration: none;
-      word-break: break-word;
+    .node-row:hover {{
+      background: rgba(255, 255, 255, 0.05);
     }}
-    .tree-node a:hover {{
-      color: #FFF;
-      background: rgba(255, 255, 255, 0.04);
-      border-radius: 5px;
-    }}
-    .tree-node.active {{
-      background: rgba(212, 175, 55, 0.12);
-      border: 1px solid rgba(212, 175, 55, 0.35);
-    }}
-    .tree-node.active a {{
-      color: var(--gold-bright);
-      font-weight: 600;
-    }}
-    .tree-node.ancestor a {{
-      color: var(--text);
-      font-weight: 500;
-    }}
-    .tree-node.muted span {{
-      color: var(--text-muted);
-      opacity: 0.75;
-    }}
-    .tree-bullet {{
-      font-size: 0.72rem;
-      opacity: 0.7;
+    .node-toggle {{
+      width: 14px;
+      height: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.62rem;
+      color: #8492A6;
+      cursor: pointer;
       flex-shrink: 0;
+      user-select: none;
+      transition: color 0.15s;
+    }}
+    .node-toggle:hover {{
+      color: #FFF;
+    }}
+    .node-spacer {{
+      width: 14px;
+      height: 14px;
+      display: inline-block;
+      flex-shrink: 0;
+    }}
+    .node-icon {{
+      font-size: 0.72rem;
+      flex-shrink: 0;
+      opacity: 0.8;
+    }}
+    .node-link {{
+      color: #CBD5E1;
+      text-decoration: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+      transition: color 0.12s;
+    }}
+    .node-link:hover {{
+      color: var(--cyan);
+      text-decoration: underline;
+    }}
+    .node-title {{
+      color: #94A3B8;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }}
+    .node-badge {{
+      font-size: 0.65rem;
+      font-family: var(--font-mono);
+      color: #64748B;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 0.02rem 0.28rem;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }}
+    .tree-node.active > .node-row {{
+      background: rgba(212, 175, 55, 0.18);
+      border: 1px solid rgba(212, 175, 55, 0.4);
+    }}
+    .tree-node.active > .node-row .node-link {{
+      color: var(--gold-bright);
+      font-weight: 700;
+    }}
+    .tree-node.ancestor > .node-row .node-link {{
+      color: #FFF;
+      font-weight: 600;
     }}
 
     /* Right Main Content Pane */
@@ -637,16 +853,13 @@ class DocumentViewer:
   <header class="app-header">
     <div class="header-left">
       <button type="button" class="toggle-sidebar-btn" onclick="toggleSidebar()" title="Toggle Outline Sidebar (Cmd+B)">
-        <span>◨</span> <span>Outline</span>
+        <span>◨</span> <span>Library Tree</span>
       </button>
       <div class="header-doc-title" title="{html.escape(doc_display_title)}">
         📖 {html.escape(doc_display_title)}
       </div>
     </div>
     <div class="header-actions">
-      <button type="button" class="btn-header" onclick="copyVirtualUri()" title="Copy Virtual Archive URI">
-        <span>📋</span> <span>Copy URI</span>
-      </button>
       <a href="/portal" class="btn-header btn-header-primary">
         <span>⬅</span> <span>Back to Search</span>
       </a>
@@ -654,26 +867,23 @@ class DocumentViewer:
   </header>
 
   <!-- Toast Notification -->
-  <div id="doc-toast">Copied URI to clipboard!</div>
+  <div id="doc-toast">Notification</div>
 
   <!-- Body Container -->
   <div class="app-body" id="app-body">
-    <!-- Left Sidebar: HedEx Tree -->
+    <!-- Left Sidebar: HedEx Tree of Trees -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <div class="manual-tag">
-          <span>📘</span>
-          <span title="{html.escape(manual_title)}">{html.escape(manual_title)}</span>
-          <span class="manual-count">{manual_count}</span>
+          <span>📦</span>
+          <span title="{html.escape(package_name)} Library">{html.escape(package_name)} Documentation Library</span>
         </div>
         <div class="sidebar-search">
-          <input type="text" id="tree-search" placeholder="🔍 Filter manual topics..." oninput="filterTreeTopics(this.value)" />
+          <input type="text" id="tree-search" placeholder="🔍 Filter manuals &amp; topics..." oninput="filterTreeTopics(this.value)" />
         </div>
       </div>
       <div class="sidebar-tree-container">
-        <ul class="tree-list" id="tree-list">
-          {sidebar_tree_html}
-        </ul>
+        {sidebar_tree_html}
       </div>
     </aside>
 
@@ -695,37 +905,9 @@ class DocumentViewer:
   <script>
     const VIRTUAL_URI = "{html.escape(virtual_uri)}";
 
-    function copyVirtualUri() {{
-      const uri = VIRTUAL_URI;
-      if (navigator.clipboard && navigator.clipboard.writeText) {{
-        navigator.clipboard.writeText(uri).then(() => {{
-          showToast("Virtual URI copied to clipboard!");
-        }}).catch(() => {{
-          fallbackCopyText(uri);
-        }});
-      }} else {{
-        fallbackCopyText(uri);
-      }}
-    }}
-
-    function fallbackCopyText(text) {{
-      try {{
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed";
-        ta.style.left = "-9999px";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-        showToast("Virtual URI copied to clipboard!");
-      }} catch (err) {{
-        showToast("Failed to copy URI.");
-      }}
-    }}
-
     function showToast(msg) {{
       const toast = document.getElementById("doc-toast");
+      if (!toast) return;
       toast.innerText = msg;
       toast.style.display = "block";
       setTimeout(() => {{
@@ -737,22 +919,162 @@ class DocumentViewer:
       document.getElementById("app-body").classList.toggle("sidebar-collapsed");
     }}
 
+    function escapeHtml(str) {{
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }}
+
+    function toggleTopicChildren(event, topicId) {{
+      if (event) {{
+        event.stopPropagation();
+        event.preventDefault();
+      }}
+      const li = document.getElementById("node-" + topicId);
+      const ul = document.getElementById("children-" + topicId);
+      if (!li || !ul) return;
+      const toggleBtn = li.querySelector(".node-toggle");
+
+      if (ul.style.display !== "none") {{
+        ul.style.display = "none";
+        if (toggleBtn) toggleBtn.textContent = "▶";
+      }} else {{
+        if (ul.children.length > 0) {{
+          ul.style.display = "block";
+          if (toggleBtn) toggleBtn.textContent = "▼";
+        }} else {{
+          if (toggleBtn) toggleBtn.textContent = "⏳";
+          fetch("/topic/tree?mode=children&parent_id=" + encodeURIComponent(topicId))
+            .then(res => res.json())
+            .then(data => {{
+              const children = data.children || [];
+              if (children.length === 0) {{
+                ul.innerHTML = '<li class="tree-empty" style="padding-left: 20px; font-size: 0.75rem; color: #64748B;">(No subtopics)</li>';
+              }} else {{
+                let htmlStr = "";
+                children.forEach(c => {{
+                  const hasSub = c.child_count > 0;
+                  const cUri = c.uri ? `/archive/view?uri=${{encodeURIComponent(c.uri)}}` : "";
+                  const linkOrSpan = cUri
+                    ? `<a href="${{cUri}}" class="node-link" title="${{escapeHtml(c.name)}}">${{escapeHtml(c.name)}}</a>`
+                    : `<span class="node-title" title="${{escapeHtml(c.name)}}">${{escapeHtml(c.name)}}</span>`;
+                  const pad = ((c.depth || 2) - 1) * 12 + 6;
+                  if (hasSub) {{
+                    htmlStr += `
+                      <li class="tree-node folder-node depth-${{c.depth || 2}}" id="node-${{c.topic_id}}" data-title="${{escapeHtml(c.name.toLowerCase())}}">
+                        <div class="node-row" style="padding-left: ${{pad}}px;">
+                          <span class="node-toggle" onclick="toggleTopicChildren(event, '${{c.topic_id}}')">▶</span>
+                          <span class="node-icon">📁</span>
+                          ${{linkOrSpan}}
+                          <span class="node-badge">${{c.child_count}}</span>
+                        </div>
+                        <ul class="node-children-list" id="children-${{c.topic_id}}" style="display: none;"></ul>
+                      </li>
+                    `;
+                  }} else {{
+                    htmlStr += `
+                      <li class="tree-node leaf-node depth-${{c.depth || 2}}" id="node-${{c.topic_id}}" data-title="${{escapeHtml(c.name.toLowerCase())}}">
+                        <div class="node-row" style="padding-left: ${{pad}}px;">
+                          <span class="node-spacer"></span>
+                          <span class="node-icon">📄</span>
+                          ${{linkOrSpan}}
+                        </div>
+                      </li>
+                    `;
+                  }}
+                }});
+                ul.innerHTML = htmlStr;
+              }}
+              ul.style.display = "block";
+              if (toggleBtn) toggleBtn.textContent = "▼";
+            }})
+            .catch(err => {{
+              console.error("Failed to load topic children:", err);
+              if (toggleBtn) toggleBtn.textContent = "▶";
+            }});
+        }}
+      }}
+    }}
+
+    function loadBookTopicsLazy(summaryEl, package, source) {{
+      const details = summaryEl.closest(".book-details");
+      if (!details) return;
+      const listEl = details.querySelector(".lazy-tree-list");
+      if (!listEl || listEl.children.length > 0) return;
+
+      listEl.innerHTML = '<li class="tree-loading" style="padding: 0.5rem 1rem; font-size: 0.75rem; color: #8492A6;">⏳ Loading manual chapters...</li>';
+
+      fetch("/topic/tree?mode=book&package=" + encodeURIComponent(package) + "&source=" + encodeURIComponent(source))
+        .then(res => res.json())
+        .then(data => {{
+          const nodes = data.nodes || [];
+          if (nodes.length === 0) {{
+            listEl.innerHTML = '<li class="tree-empty" style="padding: 0.5rem 1rem; font-size: 0.75rem; color: #64748B;">(Empty manual)</li>';
+            return;
+          }}
+          let htmlStr = "";
+          nodes.forEach(n => {{
+            const hasSub = n.child_count > 0;
+            const nUri = n.uri ? `/archive/view?uri=${{encodeURIComponent(n.uri)}}` : "";
+            const linkOrSpan = nUri
+              ? `<a href="${{nUri}}" class="node-link" title="${{escapeHtml(n.name)}}">${{escapeHtml(n.name)}}</a>`
+              : `<span class="node-title" title="${{escapeHtml(n.name)}}">${{escapeHtml(n.name)}}</span>`;
+            const pad = ((n.depth || 1) - 1) * 12 + 6;
+            if (hasSub) {{
+              htmlStr += `
+                <li class="tree-node folder-node depth-${{n.depth || 1}}" id="node-${{n.topic_id}}" data-title="${{escapeHtml(n.name.toLowerCase())}}">
+                  <div class="node-row" style="padding-left: ${{pad}}px;">
+                    <span class="node-toggle" onclick="toggleTopicChildren(event, '${{n.topic_id}}')">▶</span>
+                    <span class="node-icon">📁</span>
+                    ${{linkOrSpan}}
+                    <span class="node-badge">${{n.child_count}}</span>
+                  </div>
+                  <ul class="node-children-list" id="children-${{n.topic_id}}" style="display: none;"></ul>
+                </li>
+              `;
+            }} else {{
+              htmlStr += `
+                <li class="tree-node leaf-node depth-${{n.depth || 1}}" id="node-${{n.topic_id}}" data-title="${{escapeHtml(n.name.toLowerCase())}}">
+                  <div class="node-row" style="padding-left: ${{pad}}px;">
+                    <span class="node-spacer"></span>
+                    <span class="node-icon">📄</span>
+                    ${{linkOrSpan}}
+                  </div>
+                </li>
+              `;
+            }}
+          }});
+          listEl.innerHTML = htmlStr;
+        }})
+        .catch(err => {{
+          console.error("Failed to load book topics:", err);
+          listEl.innerHTML = '<li class="tree-error" style="padding: 0.5rem 1rem; font-size: 0.75rem; color: #EF4444;">Failed to load topics</li>';
+        }});
+    }}
+
     function filterTreeTopics(query) {{
       const q = (query || "").trim().toLowerCase();
-      const items = document.querySelectorAll("#tree-list .tree-node");
+      const items = document.querySelectorAll(".tree-node, .book-entry");
       items.forEach(el => {{
-        const title = el.getAttribute("data-title") || "";
+        const title = el.getAttribute("data-title") || el.innerText.toLowerCase();
         if (!q || title.includes(q)) {{
           el.style.display = "";
         }} else {{
           el.style.display = "none";
         }}
       }});
+      if (q) {{
+        document.querySelectorAll(".cat-details, .book-details").forEach(d => d.open = true);
+      }}
     }}
 
     // Auto-scroll active topic into center view on load
     window.addEventListener("DOMContentLoaded", () => {{
-      const activeEl = document.querySelector("#tree-list .tree-node.active");
+      const activeEl = document.querySelector(".tree-node.active");
       if (activeEl) {{
         activeEl.scrollIntoView({{ block: "center", behavior: "auto" }});
       }}

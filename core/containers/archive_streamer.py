@@ -212,6 +212,11 @@ class SovereignArchiveStreamer:
     def parse_compound_archive_path(archive_path: Union[str, Path]) -> Tuple[str, Optional[str]]:
         """Split a compound archive path `<outer.zip>!<inner.hwics>` into (outer_path, inner_entry)."""
         path_str = str(archive_path)
+        while "%" in path_str:
+            unquoted = urllib.parse.unquote(path_str)
+            if unquoted == path_str:
+                break
+            path_str = unquoted
         if "!" in path_str and not Path(path_str).exists():
             outer, inner = path_str.split("!", 1)
             return outer, inner.lstrip("/")
@@ -233,6 +238,11 @@ class SovereignArchiveStreamer:
             )
 
         archive_path, internal_entry_path = body.split("#", 1)
+        while "%" in archive_path:
+            unquoted = urllib.parse.unquote(archive_path)
+            if unquoted == archive_path:
+                break
+            archive_path = unquoted
         if not archive_path or not internal_entry_path:
             raise ValueError(f"Incomplete virtual URI: {virtual_uri!r}")
         return archive_path, internal_entry_path

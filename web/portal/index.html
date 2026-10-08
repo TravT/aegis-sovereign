@@ -18,13 +18,12 @@
 
   <!-- Top Header & Modern Status Bar -->
   <header class="top-bar">
-    <div class="brand-group">
+    <div class="brand-group" onclick="switchCommandTab('search')" style="cursor: pointer;">
       <div class="brand-shield" title="Aegis Sovereign (AS) Cryptographic Vault">Æ</div>
       <div>
         <div class="brand-title">
           <span>AEGIS SOVEREIGN</span>
         </div>
-        <div class="brand-subtitle">Two-Pronged Knowledge Appliance (ADR-40)</div>
       </div>
     </div>
     <div style="display: flex; align-items: center; gap: 0.85rem;">
@@ -33,7 +32,7 @@
         <span>RAG.HOME.ARPA</span>
       </div>
       <button type="button" class="btn-diagnostics" onclick="toggleDiagnosticsDrawer()" title="Appliance Diagnostics & Settings">
-        <span>⚙</span> <span>Diagnostics &amp; Cluster</span>
+        <span>⚙</span> <span>Diagnostics &amp; Modules</span>
       </button>
     </div>
   </header>
@@ -48,6 +47,21 @@
       <button type="button" class="btn-close-drawer" onclick="toggleDiagnosticsDrawer()" title="Close Drawer">✕</button>
     </div>
     <div class="diagnostics-body">
+      <div>
+        <div class="diag-section-title">🧭 Sovereign Modules &amp; Tools</div>
+        <div class="diag-pills-list">
+          <button type="button" class="action-btn" style="text-align: left; width: 100%; justify-content: flex-start; padding: 0.5rem 0.75rem;" onclick="switchCommandTab('graph'); toggleDiagnosticsDrawer();">
+            <span>🕸️</span> <span>Server &amp; Knowledge Graph Visualizer</span>
+          </button>
+          <button type="button" class="action-btn" style="text-align: left; width: 100%; justify-content: flex-start; padding: 0.5rem 0.75rem;" onclick="switchCommandTab('sources'); toggleDiagnosticsDrawer();">
+            <span>📂</span> <span>Monitored Directories &amp; Data Purge</span>
+          </button>
+          <button type="button" class="action-btn" style="text-align: left; width: 100%; justify-content: flex-start; padding: 0.5rem 0.75rem;" onclick="switchCommandTab('license'); toggleDiagnosticsDrawer();">
+            <span>🔐</span> <span>Platform License &amp; AI Harnesses</span>
+          </button>
+        </div>
+      </div>
+
       <div>
         <div class="diag-section-title">📊 Live Engine Telemetry</div>
         <div class="diag-pills-list">
@@ -108,26 +122,31 @@
     </div>
   </aside>
 
-  <!-- 4-Tab Sovereign Command Center Navigation Bar -->
-  <nav class="command-tabs-bar">
-    <div class="command-tabs-list">
-      <button type="button" class="cmd-tab-btn active" id="tab-btn-search" onclick="switchCommandTab('search')">
-        🔍 Search &amp; Source Explorer
-      </button>
-      <button type="button" class="cmd-tab-btn" id="tab-btn-graph" onclick="switchCommandTab('graph')">
-        🕸️ Server &amp; Knowledge Graph
-      </button>
-      <button type="button" class="cmd-tab-btn" id="tab-btn-sources" onclick="switchCommandTab('sources')">
-        📂 Monitored Directories &amp; Data Purge
-      </button>
-      <button type="button" class="cmd-tab-btn" id="tab-btn-license" onclick="switchCommandTab('license')">
-        🔐 Platform License &amp; AI Harnesses
-      </button>
+  <!-- Live Source Inspector Slide-Over Drawer (Root Body Level) -->
+  <div id="inspector-backdrop" class="inspector-backdrop" onclick="closeSourceInspector()"></div>
+  <aside class="inspector-drawer" id="source-inspector-drawer">
+    <div class="inspector-header">
+      <div class="inspector-title">📄 SOURCE INSPECTOR (O_RDONLY)</div>
+      <div style="display: flex; align-items: center; gap: 0.6rem;">
+        <span class="metric-tag" id="inspector-badge">Zero-Disk Stream</span>
+        <button type="button" class="drawer-close-btn" onclick="closeSourceInspector()" title="Close Inspector">✕</button>
+      </div>
     </div>
-    <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.65rem;">
-      <span style="color: var(--emerald-bright);">⚡ &lt;0.8ms B-Tree Index</span>
+    <div class="inspector-tabs" id="inspector-section-tabs">
+      <button class="inspector-tab active" onclick="inspectCurrentSource('')">Full Entry</button>
+      <button class="inspector-tab" onclick="inspectCurrentSource('Description')">Description</button>
+      <button class="inspector-tab" onclick="inspectCurrentSource('Possible Causes')">Possible Causes</button>
+      <button class="inspector-tab" onclick="inspectCurrentSource('Procedure')">Procedure</button>
+      <button class="inspector-tab" onclick="inspectCurrentSource('Impact on the System')">Impact</button>
+      <button class="inspector-tab" onclick="inspectCurrentSource('', true)">🖼️ Render Diagram</button>
     </div>
-  </nav>
+    <div id="inspector-topic-tree" class="inspector-topic-strip" style="display: none;"></div>
+    <div class="inspector-meta" id="inspector-meta">
+      Select <strong>[📄 Open Full Source from Archive]</strong>, <strong>[🔍 Jump to Possible Causes]</strong>, or <strong>[🖼️ Render Signaling / Alarm Diagram]</strong> on any card to stream the canonical <code>archive://</code> container in memory.
+    </div>
+    <div id="inspector-diagram-container" style="display: none;" class="inspector-diagram-box"></div>
+    <pre class="inspector-content-pre" id="inspector-content">Waiting for source inspection selection...</pre>
+  </aside>
 
   <main class="main-container">
     <!-- Global Feedback / Purge Toast Banner -->
@@ -162,7 +181,6 @@
               id="portal-query-input"
               class="search-input"
               placeholder="Search commands (SET DMERRDACFG), alarms (ALM-20104), or ask an engineering question..."
-              value="ALM-20104"
               autocomplete="off"
               oninput="updateLiveRoutePrediction(this.value)"
             />
@@ -191,7 +209,7 @@
 
         <!-- Centered Subtle Route Predictor -->
         <div class="live-route-strip-centered">
-          <div id="live-route-predictor" class="live-route-predictor">
+          <div id="live-route-predictor" class="live-route-predictor" style="display: none;">
             <span>⚡ Route:</span>
             <strong id="live-route-predictor-label">PRONG 1 • Deterministic B-Tree Identifier Match (&lt;0.8ms)</strong>
           </div>
@@ -276,8 +294,8 @@
         </details>
       </section>
 
-      <!-- Dynamic Route Banner -->
-      <div id="route-banner" class="route-banner prong1">
+      <!-- Dynamic Route Banner (Hidden on idle) -->
+      <div id="route-banner" class="route-banner prong1" style="display: none;">
         <div id="route-banner-title">
           ⚡ <strong>PRONG 1: DETERMINISTIC B-TREE / FTS5 FAST-PATH</strong> • Ready for sub-2ms exact verification
         </div>
@@ -288,8 +306,8 @@
         </div>
       </div>
 
-      <!-- Main Split Workspace: Left = Prong Results + Graph Dossier, Right = Live Archive Source Inspector Drawer -->
-      <div class="workspace-grid">
+      <!-- Main Centered Results Workspace (Google-Style) -->
+      <div class="workspace-container">
         <div id="results-column">
           <!-- Minimal LLM Summary Box (Hidden in Prong 1, Prominent in Prong 2) -->
           <div id="nano-summary-container" style="display: none;"></div>
@@ -300,28 +318,6 @@
           <!-- Verified Answer / Source Cards -->
           <div id="source-cards-container"><p id="idle-hint" class="idle-hint">Type a question or tap an example to search. Nothing is read until you ask.</p></div>
         </div>
-
-        <!-- Live Source Inspector Drawer -->
-        <aside class="inspector-drawer" id="source-inspector-drawer">
-          <div class="inspector-header">
-            <div class="inspector-title">📄 LIVE ARCHIVE SOURCE INSPECTOR (O_RDONLY)</div>
-            <span class="metric-tag" id="inspector-badge">Zero-Disk Stream</span>
-          </div>
-          <div class="inspector-tabs" id="inspector-section-tabs">
-            <button class="inspector-tab active" onclick="inspectCurrentSource('')">Full Entry</button>
-            <button class="inspector-tab" onclick="inspectCurrentSource('Description')">Description</button>
-            <button class="inspector-tab" onclick="inspectCurrentSource('Possible Causes')">Possible Causes</button>
-            <button class="inspector-tab" onclick="inspectCurrentSource('Procedure')">Procedure</button>
-            <button class="inspector-tab" onclick="inspectCurrentSource('Impact on the System')">Impact</button>
-            <button class="inspector-tab" onclick="inspectCurrentSource('', true)">🖼️ Render Diagram</button>
-          </div>
-          <div id="inspector-topic-tree" class="inspector-topic-strip" style="display: none;"></div>
-          <div class="inspector-meta" id="inspector-meta">
-            Select <strong>[📄 Open Full Source from Archive]</strong>, <strong>[🔍 Jump to Possible Causes]</strong>, or <strong>[🖼️ Render Signaling / Alarm Diagram]</strong> on any card to stream the canonical <code>archive://</code> container in memory.
-          </div>
-          <div id="inspector-diagram-container" style="display: none;" class="inspector-diagram-box"></div>
-          <pre class="inspector-content-pre" id="inspector-content">Waiting for source inspection selection...</pre>
-        </aside>
       </div>
     </div>
 

@@ -55,11 +55,49 @@ function showPortalToast(msg) {
       updateLiveRoutePrediction(document.getElementById("portal-query-input").value);
     }
 
+    function openSourceInspector() {
+      const drawer = document.getElementById("source-inspector-drawer");
+      const backdrop = document.getElementById("inspector-backdrop");
+      if (drawer) drawer.classList.add("open");
+      if (backdrop) backdrop.classList.add("open");
+    }
+
+    function closeSourceInspector() {
+      const drawer = document.getElementById("source-inspector-drawer");
+      const backdrop = document.getElementById("inspector-backdrop");
+      if (drawer) drawer.classList.remove("open");
+      if (backdrop) backdrop.classList.remove("open");
+    }
+
+    function clearSearchInput() {
+      const input = document.getElementById("portal-query-input");
+      if (input) {
+        input.value = "";
+        input.focus();
+      }
+      updateLiveRoutePrediction("");
+      const banner = document.getElementById("route-banner");
+      if (banner) banner.style.display = "none";
+      const cards = document.getElementById("source-cards-container");
+      if (cards) cards.innerHTML = '<p id="idle-hint" class="idle-hint">Type a question or tap an example to search. Nothing is read until you ask.</p>';
+      const nano = document.getElementById("nano-summary-container");
+      if (nano) nano.style.display = "none";
+      const dossier = document.getElementById("graph-dossier-container");
+      if (dossier) dossier.innerHTML = "";
+      closeSourceInspector();
+    }
+
     function updateLiveRoutePrediction(val) {
       const q = (val || "").trim();
       const box = document.getElementById("live-route-predictor");
       const label = document.getElementById("live-route-predictor-label");
       if (!box || !label) return;
+
+      if (!q) {
+        box.style.display = "none";
+        return;
+      }
+      box.style.display = "inline-flex";
 
       const isIdMatch = /^(ALM-\d+|ADR-\d+|DSP\s+[A-Z0-9_]+|LST\s+[A-Z0-9_]+|MOD\s+[A-Z0-9_]+|ADD\s+[A-Z0-9_]+|RMV\s+[A-Z0-9_]+|LOTE-[A-Z0-9_-]+|SKILL-[A-Z0-9_-]+)$/i.test(q);
       const useProng1 = currentRouterMode === "prong1" || (currentRouterMode === "auto" && isIdMatch);
@@ -185,6 +223,7 @@ function showPortalToast(msg) {
       const banner = document.getElementById("route-banner");
       const bannerTitle = document.getElementById("route-banner-title");
       const bannerMetrics = document.getElementById("route-banner-metrics");
+      if (banner) banner.style.display = "flex";
 
       if (isDeterministicMiss) {
         banner.className = "route-banner prong-warning";
@@ -433,13 +472,15 @@ function showPortalToast(msg) {
       if (!virtualUri) return;
       currentInspectedUri = virtualUri;
 
+      openSourceInspector();
       loadTopicNavigation(virtualUri);
 
       const metaEl = document.getElementById("inspector-meta");
       const contentEl = document.getElementById("inspector-content");
       const diagBox = document.getElementById("inspector-diagram-container");
 
-      metaEl.innerHTML = `Streaming <code>${escapeHtml(virtualUri)}</code> in-memory (O_RDONLY)...`;
+      const rawName = virtualUri.split("#").pop().split("/").pop() || "Document";
+      metaEl.innerHTML = `Streaming <strong style="color: var(--gold-bright);">${escapeHtml(rawName)}</strong> in-memory (O_RDONLY)...`;
 
       try {
         const resp = await fetch("/archive/inspect", {
@@ -453,10 +494,16 @@ function showPortalToast(msg) {
           })
         });
         const data = await resp.json();
+        const entryDisplay = data.entry_name || rawName;
         metaEl.innerHTML = `
-          <div><strong>Virtual URI:</strong> <code>${escapeHtml(data.virtual_uri || virtualUri)}</code></div>
-          <div><strong>Entry:</strong> ${escapeHtml(data.entry_name || "N/A")} | <strong>Filter:</strong> ${escapeHtml(data.section_filter_applied || "Full Document")}</div>
-          <div><strong>SHA-256:</strong> <code>${escapeHtml((data.sha256_hash || "").slice(0, 24))}...</code> | <strong>O_RDONLY Zero-Disk:</strong> ${Boolean(data.zero_disk_extraction)}</div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+            <div><strong>Document:</strong> <span style="color: var(--gold-bright); font-weight: 600;">${escapeHtml(entryDisplay)}</span></div>
+            <span class="metric-tag">${escapeHtml(data.section_filter_applied || "Full Document")}</span>
+          </div>
+          <div style="font-size: 0.72rem; color: var(--text-secondary); display: flex; gap: 0.85rem; align-items: center;">
+            <span>🛡️ <strong>Zero-Disk Stream</strong> (O_RDONLY)</span>
+            <span>SHA: <code>${escapeHtml((data.sha256_hash || "").slice(0, 16))}...</code></span>
+          </div>
         `;
         const rawContent = data.content_text || data.extracted_text || "No text content in entry.";
         if (typeof renderMarkdown === "function" && rawContent.includes("|") && rawContent.includes("\n")) {
