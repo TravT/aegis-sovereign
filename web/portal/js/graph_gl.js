@@ -339,12 +339,14 @@ void main() { outColor = vColor; }`;
       this._emitView();
     }
 
-    /** Screen position (CSS px) and view depth of node i under the current camera, or null if behind. */
     project(i, out) {
+      if (typeof i !== "number" || i < 0 || i >= this.n) return null;
       const m = this.mvp, p = this.pos, x = p[i * 3], y = p[i * 3 + 1], z = p[i * 3 + 2];
+      if (isNaN(x) || isNaN(y) || isNaN(z)) return null;
       const w = m[3] * x + m[7] * y + m[11] * z + m[15];
-      if (w <= 0) return null;
+      if (w <= 0 || isNaN(w)) return null;
       const cx = (m[0] * x + m[4] * y + m[8] * z + m[12]) / w, cy = (m[1] * x + m[5] * y + m[9] * z + m[13]) / w;
+      if (isNaN(cx) || isNaN(cy)) return null;
       out.x = (cx * 0.5 + 0.5) * this.w; out.y = (1 - (cy * 0.5 + 0.5)) * this.h; out.w = w;
       return out;
     }

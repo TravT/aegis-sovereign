@@ -1058,12 +1058,12 @@ class SovereignApplianceManager:
             try:
                 like_pattern = f"%{query.strip()}%"
                 uri_sql = """
-                    COALESCE(
+                    MAX(COALESCE(
                         NULLIF(json_extract(d.metadata, '$.virtual_uri'), ''),
                         NULLIF(json_extract(d.metadata, '$.file_path'), ''),
                         CASE WHEN d.doc_identifier LIKE 'archive://%' THEN d.doc_identifier ELSE '' END,
                         ''
-                    ) AS uri
+                    )) AS uri
                 """
                 if package and source:
                     cur.execute(f"""
@@ -1071,6 +1071,7 @@ class SovereignApplianceManager:
                         FROM topic_nodes n
                         LEFT JOIN document_records d ON d.topic_id = n.topic_id
                         WHERE n.name LIKE ? AND n.package = ? AND n.source = ?
+                        GROUP BY n.topic_id
                         ORDER BY n.depth ASC, n.name ASC
                         LIMIT ?
                     """, (like_pattern, package, source, limit))
@@ -1080,6 +1081,7 @@ class SovereignApplianceManager:
                         FROM topic_nodes n
                         LEFT JOIN document_records d ON d.topic_id = n.topic_id
                         WHERE n.name LIKE ? AND (n.package = ? OR n.package LIKE ?)
+                        GROUP BY n.topic_id
                         ORDER BY n.depth ASC, n.name ASC
                         LIMIT ?
                     """, (like_pattern, package, f"%{package}%", limit))
@@ -1089,6 +1091,7 @@ class SovereignApplianceManager:
                         FROM topic_nodes n
                         LEFT JOIN document_records d ON d.topic_id = n.topic_id
                         WHERE n.name LIKE ?
+                        GROUP BY n.topic_id
                         ORDER BY n.depth ASC, n.name ASC
                         LIMIT ?
                     """, (like_pattern, limit))

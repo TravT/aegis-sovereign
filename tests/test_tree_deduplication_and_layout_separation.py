@@ -54,3 +54,20 @@ def test_2d_layout_sibling_separation():
         c2 = pos[f"topic:child_{i+1}"]
         dist_2d = math.hypot(c2[0] - c1[0], c2[1] - c1[1])
         assert dist_2d >= 20.0, f"Distance between child {i} and {i+1} is too small: {dist_2d:.2f} px (expected >= 20.0 px)"
+
+
+@pytest.mark.skipif(not VAULT_ROUTER_DB.exists(), reason="Vault sovereign_router.db required")
+def test_search_topics_deduplication():
+    server = SovereignApplianceManager(
+        router_db_path=str(VAULT_ROUTER_DB),
+    )
+    # Test searching for 'add dmlnk' in USC
+    results = server.search_topics(query="add dmlnk", package="USC")
+    assert len(results) > 0, "Expected at least one search result for 'add dmlnk'"
+    tids = [r["topic_id"] for r in results]
+    assert len(tids) == len(set(tids)), f"Duplicate topic_id in search results: {len(tids)} vs {len(set(tids))}"
+    # Verify exact match for 'Add Diameter Link (ADD DMLNK)'
+    dmlnk_results = [r for r in results if "Add Diameter Link" in r["name"]]
+    assert len(dmlnk_results) == 1, f"Expected exactly 1 result for Add Diameter Link, got {len(dmlnk_results)}"
+    assert dmlnk_results[0]["uri"].startswith("archive://")
+

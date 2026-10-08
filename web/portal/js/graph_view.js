@@ -55,7 +55,9 @@
       }
       const e = slice.edges;
       for (let k = 0; k < e.s.length; k++) {
-        const s = remap[e.s[k]], t = remap[e.t[k]], key = s + "|" + t + "|" + e.k[k];
+        const s = remap[e.s[k]], t = remap[e.t[k]];
+        if (s === undefined || t === undefined) continue;
+        const key = s + "|" + t + "|" + e.k[k];
         if (this.edgeKeys.has(key)) continue;
         this.edgeKeys.add(key); this.edges.push([s, t, e.k[k]]);
         if (e.k[k] === "CHILD_OF") this.childCount[t]++;
@@ -308,7 +310,7 @@
     onHover(i, e) {
       this.hover = i;
       const tip = $("gv-tooltip");
-      if (i < 0) { tip.style.display = "none"; this.updateLabels(); return; }
+      if (i < 0 || i >= this.store.size) { tip.style.display = "none"; this.updateLabels(); return; }
       const c = this.store.col, r = $("gv-stage").getBoundingClientRect();
       tip.innerHTML = `<b>${esc(c.label[i])}</b><br>${esc(c.kind[i])}${c.theme[i] ? " · " + esc(c.theme[i]) : ""}` +
         (this.layer === "tree" ? `<br>${fmt(c.n_desc[i])} descendants` : `<br>${fmt(c.degree[i])} connections`);
@@ -378,29 +380,52 @@
       const host = $("gv-labels"); if (!host || !this.gl || !this.order) return;
       const gl = this.gl, out = { x: 0, y: 0, w: 0 }, taken = [], wanted = [];
       const place = (i, cls) => {
-        if (i < 0 || !gl.project(i, out)) return;
+        if (typeof i !== "number" || i < 0 || i >= this.store.size) return;
+        const rawLabel = this.store.col.label ? this.store.col.label[i] : null;
+        if (!rawLabel || rawLabel === "undefined" || rawLabel === "null") return;
+        if (!gl.project(i, out)) return;
+        if (isNaN(out.x) || isNaN(out.y)) return;
         if (out.x < 4 || out.y < 4 || out.x > gl.w - 4 || out.y > gl.h - 4) return;
-        const text = String(this.store.col.label[i]).slice(0, 28), w = text.length * 6.4 + 10;
+        const text = String(rawLabel).trim().slice(0, 28);
+        if (!text || text === "undefined" || text === "null") return;
+        const w = text.length * 6.4 + 10;
         const box = [out.x + 6, out.y - 9, out.x + 6 + w, out.y + 9];
         if (cls === "gv-label" && taken.some((t) => box[0] < t[2] && box[2] > t[0] && box[1] < t[3] && box[3] > t[1])) return;
-        taken.push(box); wanted.push([text, out.x, out.y, cls]);
+        taken.push(box); wanted.push([text, Math.round(out.x), Math.round(out.y), cls]);
       };
-      place(this.selected, "gv-label gv-sel"); place(this.hover, "gv-label gv-sel");
-      this.hits.forEach((i) => { if (wanted.length < 14) place(i, "gv-label gv-hit"); });
+      if (this.selected >= 0 && this.selected < this.store.size) place(this.selected, "gv-label gv-sel");
+      if (this.hover >= 0 && this.hover < this.store.size) place(this.hover, "gv-label gv-sel");
+      this.hits.forEach((i) => {
+        if (typeof i === "number" && i >= 0 && i < this.store.size && wanted.length < 14) {
+          place(i, "gv-label gv-hit");
+        }
+      });
       const budget = this.layer === "tree" ? 26 : 40;
-      for (let k = 0; k < this.order.length && wanted.length < budget; k++) { if (gl.flags[this.order[k]] !== 1) place(this.order[k], "gv-label"); }
+      for (let k = 0; k < this.order.length && wanted.length < budget; k++) {
+        const idx = this.order[k];
+        if (typeof idx === "number" && idx >= 0 && idx < this.store.size && gl.flags[idx] !== 1) {
+          place(idx, "gv-label");
+        }
+      }
       while (host.childNodes.length < wanted.length) host.appendChild(document.createElement("div"));
       for (let k = 0; k < host.childNodes.length; k++) {
         const el = host.childNodes[k], w = wanted[k];
-        if (!w) { el.style.display = "none"; continue; }
-        el.style.display = ""; el.className = w[3]; el.textContent = w[0]; el.style.transform = `translate(${w[1] + 7}px, ${w[2] - 8}px)`;
+        if (!w || !w[0] || w[0] === "undefined" || isNaN(w[1]) || isNaN(w[2])) {
+          el.style.display = "none";
+          el.textContent = "";
+          continue;
+        }
+        el.style.display = "";
+        el.className = w[3];
+        el.textContent = w[0];
+        el.style.transform = `translate(${w[1] + 7}px, ${w[2] - 8}px)`;
       }
     }
 
     // ---- inspector -----------------------------------------------------------------------------
     renderInspector(i) {
       const box = $("graph-node-details"), tag = $("graph-node-category");
-      if (i < 0) { tag.textContent = this.layer; box.innerHTML = `<p class="gv-hint">Click a node to see its connections. Double-click a node with <b>+</b> descendants to expand it. Drag to ${this.dims === "3d" ? "orbit (Shift-drag to pan)" : "pan"}, scroll to zoom.</p>`; return; }
+      if (i < 0 || i >= this.store.size) { tag.textContent = this.layer; box.innerHTML = `<p class="gv-hint">Click a node to see its connections. Double-click a node with <b>+</b> descendants to expand it. Drag to ${this.dims === "3d" ? "orbit (Shift-drag to pan)" : "pan"}, scroll to zoom.</p>`; return; }
       const c = this.store.col, color = this.scale.depth ? "#3987e5" : this.scale.hexOf(i);
       tag.textContent = c.kind[i];
       const rows = this.layer === "tree"
@@ -474,6 +499,7 @@
           layer: this.layer,
           dims: this.dims,
           selectedId: targetId,
+          hits: new Set(this.hits),
           storeIds: [...this.store.ids],
           storeEdges: this.store.edges.map((e) => [...e]),
           storeCol: {},
@@ -495,13 +521,13 @@
         if (this.adj && this.adj[curr]) {
           for (const edgeIdx of this.adj[curr]) {
             const e = this.store.edges[edgeIdx];
-            if (e[0] === curr && e[2] === "CHILD_OF") {
+            if (e && e[0] === curr && e[2] === "CHILD_OF") {
               parentIdx = e[1];
               break;
             }
           }
         }
-        if (parentIdx >= 0 && !subIndices.has(parentIdx)) {
+        if (typeof parentIdx === "number" && parentIdx >= 0 && parentIdx < this.store.size && !subIndices.has(parentIdx)) {
           subIndices.add(parentIdx);
           curr = parentIdx;
         } else {
@@ -514,16 +540,16 @@
       if (this.adj && this.adj[i]) {
         for (const edgeIdx of this.adj[i]) {
           const e = this.store.edges[edgeIdx];
-          if (e[0] === i && e[2] === "CHILD_OF") {
+          if (e && e[0] === i && e[2] === "CHILD_OF") {
             immParent = e[1];
             break;
           }
         }
       }
-      if (immParent >= 0 && this.adj && this.adj[immParent]) {
+      if (typeof immParent === "number" && immParent >= 0 && immParent < this.store.size && this.adj && this.adj[immParent]) {
         for (const edgeIdx of this.adj[immParent]) {
           const e = this.store.edges[edgeIdx];
-          if (e[1] === immParent && e[2] === "CHILD_OF") {
+          if (e && e[1] === immParent && e[2] === "CHILD_OF" && typeof e[0] === "number" && e[0] >= 0 && e[0] < this.store.size) {
             subIndices.add(e[0]); // sibling
           }
         }
@@ -533,7 +559,7 @@
       if (this.adj && this.adj[i]) {
         for (const edgeIdx of this.adj[i]) {
           const e = this.store.edges[edgeIdx];
-          if (e[1] === i && e[2] === "CHILD_OF") {
+          if (e && e[1] === i && e[2] === "CHILD_OF" && typeof e[0] === "number" && e[0] >= 0 && e[0] < this.store.size) {
             subIndices.add(e[0]);
           }
         }
@@ -543,15 +569,18 @@
       if (this.adj && this.adj[i]) {
         for (const edgeIdx of this.adj[i]) {
           const e = this.store.edges[edgeIdx];
+          if (!e) continue;
           const peer = e[0] === i ? e[1] : e[0];
-          subIndices.add(peer);
+          if (typeof peer === "number" && peer >= 0 && peer < this.store.size) {
+            subIndices.add(peer);
+          }
         }
       }
 
       // 3. Build local store
       const localStore = new Store();
       const oldToNew = new Map();
-      const chosenArray = [...subIndices];
+      const chosenArray = [...subIndices].filter((idx) => typeof idx === "number" && idx >= 0 && idx < this.store.size);
 
       chosenArray.forEach((oldIdx, newIdx) => {
         oldToNew.set(oldIdx, newIdx);
@@ -568,6 +597,7 @@
         if (subIndices.has(e[0]) && subIndices.has(e[1])) {
           const newSrc = oldToNew.get(e[0]);
           const newTgt = oldToNew.get(e[1]);
+          if (newSrc === undefined || newTgt === undefined) return;
           const key = newSrc + "|" + newTgt + "|" + e[2];
           if (!localStore.edgeKeys.has(key)) {
             localStore.edgeKeys.add(key);
@@ -580,6 +610,15 @@
       this.store = localStore;
       this.localMode = true;
 
+      // Remap hits and reset selection/hover BEFORE rebuild
+      const nextHits = new Set();
+      this.hits.forEach((oldHit) => {
+        if (oldToNew.has(oldHit)) nextHits.add(oldToNew.get(oldHit));
+      });
+      this.hits = nextHits;
+      this.selected = oldToNew.get(i) ?? -1;
+      this.hover = -1;
+
       // 4. Update banner
       const banner = $("gv-local-banner");
       if (banner) {
@@ -591,9 +630,8 @@
 
       // 5. Rebuild with local force
       this.rebuild(true);
-      const newTargetIdx = this.store.idx.get(targetId);
-      if (newTargetIdx !== undefined) {
-        this.select(newTargetIdx);
+      if (this.selected >= 0) {
+        this.select(this.selected);
       }
     }
 
@@ -620,6 +658,10 @@
         this.store.edgeKeys.add(e[0] + "|" + e[1] + "|" + e[2]);
       });
 
+      this.hits = saved.hits || new Set();
+      this.selected = -1;
+      this.hover = -1;
+
       this.rebuild(false);
       this.gl.pos.set(saved.pos);
       this.gl.updatePositions();
@@ -627,7 +669,7 @@
       this.status(`${fmt(this.store.size)} nodes · ${fmt(this.store.edges.length)} edges`);
 
       const targetIdx = this.store.idx.get(saved.selectedId);
-      if (targetIdx !== undefined) {
+      if (targetIdx !== undefined && targetIdx >= 0 && targetIdx < this.store.size) {
         this.select(targetIdx);
         this.gl.focusOn(targetIdx);
       }
