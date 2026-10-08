@@ -1447,7 +1447,7 @@ class DocumentViewer:
       font-family: var(--font-mono);
       color: var(--text-muted);
     }}
-    .embedded-attachment-plate {
+    .embedded-attachment-plate {{
       display: flex;
       align-items: center;
       gap: 1.15rem;
@@ -1458,41 +1458,41 @@ class DocumentViewer:
       margin: 1.35rem 0;
       box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
       transition: all 0.2s ease;
-    }
-    .embedded-attachment-plate:hover {
+    }}
+    .embedded-attachment-plate:hover {{
       border-color: rgba(56, 189, 248, 0.6);
       transform: translateY(-1px);
       box-shadow: 0 6px 24px rgba(6, 182, 212, 0.15);
-    }
-    .attachment-plate-icon {
+    }}
+    .attachment-plate-icon {{
       font-size: 2.2rem;
       flex: none;
       line-height: 1;
-    }
-    .attachment-plate-details {
+    }}
+    .attachment-plate-details {{
       flex: 1;
       min-width: 0;
-    }
-    .attachment-plate-title {
+    }}
+    .attachment-plate-title {{
       font-size: 1.05rem;
       font-weight: 700;
       color: #FFF;
       margin-bottom: 0.25rem;
       word-break: break-word;
-    }
-    .attachment-plate-meta {
+    }}
+    .attachment-plate-meta {{
       font-size: 0.76rem;
       font-family: var(--font-mono);
       color: var(--cyan);
       opacity: 0.85;
-    }
-    .attachment-plate-actions {
+    }}
+    .attachment-plate-actions {{
       display: flex;
       gap: 0.65rem;
       flex-wrap: wrap;
       align-items: center;
-    }
-    .plate-btn {
+    }}
+    .plate-btn {{
       display: inline-flex;
       align-items: center;
       gap: 0.4rem;
@@ -1504,27 +1504,27 @@ class DocumentViewer:
       cursor: pointer;
       transition: all 0.15s ease;
       white-space: nowrap;
-    }
-    .plate-btn.preview-btn {
+    }}
+    .plate-btn.preview-btn {{
       background: rgba(6, 182, 212, 0.18);
       color: #38BDF8;
       border: 1px solid rgba(56, 189, 248, 0.45);
-    }
-    .plate-btn.preview-btn:hover {
+    }}
+    .plate-btn.preview-btn:hover {{
       background: rgba(6, 182, 212, 0.35);
       border-color: #38BDF8;
       color: #FFF;
-    }
-    .plate-btn.download-btn {
+    }}
+    .plate-btn.download-btn {{
       background: rgba(245, 158, 11, 0.15);
       color: #FBBF24;
       border: 1px solid rgba(245, 158, 11, 0.38);
-    }
-    .plate-btn.download-btn:hover {
+    }}
+    .plate-btn.download-btn:hover {{
       background: rgba(245, 158, 11, 0.3);
       border-color: #FBBF24;
       color: #FFF;
-    }
+    }}
     .doc-callout {{
       border-radius: 6px;
       padding: 0.85rem 1.1rem;
