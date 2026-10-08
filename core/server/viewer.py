@@ -34,7 +34,7 @@ class DocumentViewer:
                 for rel in rels_root:
                     r_id = rel.get("Id")
                     target = rel.get("Target")
-                    if r_id and target:
+                    if r_id and target and target.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".svg", ".bmp", ".webp")):
                         if not target.startswith("word/"):
                             target = "word/" + target.lstrip("/")
                         rel_map[r_id] = target
@@ -43,7 +43,7 @@ class DocumentViewer:
             for r_id, target in rel_map.items():
                 if target in z.namelist():
                     ext = target.rsplit(".", 1)[-1].lower()
-                    mime = "image/png" if ext == "png" else ("image/jpeg" if ext in ("jpg", "jpeg") else ("image/svg+xml" if ext == "svg" else "image/gif"))
+                    mime = "image/png" if ext == "png" else ("image/jpeg" if ext in ("jpg", "jpeg") else ("image/svg+xml" if ext == "svg" else "image/png"))
                     b64_str = base64.b64encode(z.read(target)).decode("ascii")
                     img_data_uris[r_id] = f"data:{mime};base64,{b64_str}"
 
@@ -76,7 +76,7 @@ class DocumentViewer:
                     p_xml = p._p.xml
                     para_images = []
                     for r_id, data_uri in img_data_uris.items():
-                        if f'"{r_id}"' in p_xml:
+                        if f'r:id="{r_id}"' in p_xml or f'r:embed="{r_id}"' in p_xml or f':id="{r_id}"' in p_xml or f':embed="{r_id}"' in p_xml:
                             para_images.append((r_id, data_uri))
 
                     if not p_text and not para_images:
