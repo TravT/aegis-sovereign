@@ -4,6 +4,7 @@ import re
 import sqlite3
 import threading
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from ..security import ClearanceLevel
@@ -144,26 +145,36 @@ class TreeLayer:
         if PACKAGE_PREFIX + "UPCF" in nodes and PACKAGE_PREFIX + "USC" in nodes:
             out_edges.append((PACKAGE_PREFIX + "UPCF", PACKAGE_PREFIX + "USC", "CORE_NETWORK_PEER"))
 
-        # 2. Release-to-HedEx Functional Domain Bridges
-        rel_docs = [t for t in topics if t[1].startswith("REL_") and t[3] in (2, 3) and (TOPIC_PREFIX + t[0]) in nodes]
-        hedex_docs = [t for t in topics if not t[1].startswith("REL_") and t[3] in (1, 2) and (TOPIC_PREFIX + t[0]) in nodes]
-        keywords = [
-            ("Health Check", ["Health Check", "OM Reference", "Inspection"]),
-            ("Capacity", ["Capacity", "Deployment", "Scaling"]),
-            ("Upgrade", ["Upgrade", "Routine Maintenance", "Installation"]),
-            ("Communication Matrix", ["Communication Matrix"]),
-            ("Trace Extension", ["Basic O&M", "Message Tracing", "Operations and Maintenance"]),
-            ("Mediation", ["Deployment", "Installation"]),
-        ]
-        for r_tid, r_pkg, r_name, _ in rel_docs:
-            companion_pkg = "UPCF" if "UPCF" in r_pkg else "USC"
-            for kw, target_kws in keywords:
-                if kw.lower() in r_name.lower():
-                    for h_tid, h_pkg, h_name, _ in hedex_docs:
-                        if h_pkg == companion_pkg:
-                            if any(tk.lower() in h_name.lower() for tk in target_kws):
-                                out_edges.append((TOPIC_PREFIX + r_tid, TOPIC_PREFIX + h_tid, "FUNCTIONAL_BRIDGE"))
-                                break
+        # 2. Release-to-HedEx Semantic Vector Bridges (Option A / Option C)
+        sem_bridges = []
+        if self._router_db and self._router_db != ":memory:" and Path(self._router_db).exists():
+            try:
+                from .semantic_engine import SemanticBridgeEngine
+                sem_engine = SemanticBridgeEngine(self._router_db, threshold=0.25)
+                sem_bridges = sem_engine.get_offline_bridges(min_similarity=0.25)
+                if not sem_bridges:
+                    # Auto-compute once if table is empty
+                    sem_engine.compute_and_store_offline_bridges(k=3, threshold=0.25)
+                    sem_bridges = sem_engine.get_offline_bridges(min_similarity=0.25)
+            except Exception as se:
+                logger.warning(f"Could not load semantic vector bridges: {se}")
+
+        if sem_bridges:
+            for b in sem_bridges:
+                src = b.source_id if b.source_id.startswith("t:") else f"t:{b.source_id.replace('topic:', '')}"
+                tgt = b.target_id if b.target_id.startswith("t:") else f"t:{b.target_id.replace('topic:', '')}"
+                if src in nodes and tgt in nodes:
+                    out_edges.append((src, tgt, "FUNCTIONAL_BRIDGE"))
+        else:
+            # Fallback only if semantic engine failed
+            rel_docs = [t for t in topics if t[1].startswith("REL_") and t[3] in (2, 3) and (TOPIC_PREFIX + t[0]) in nodes]
+            hedex_docs = [t for t in topics if not t[1].startswith("REL_") and t[3] in (1, 2) and (TOPIC_PREFIX + t[0]) in nodes]
+            for r_tid, r_pkg, r_name, _ in rel_docs:
+                companion_pkg = "UPCF" if "UPCF" in r_pkg else "USC"
+                for h_tid, h_pkg, h_name, _ in hedex_docs:
+                    if h_pkg == companion_pkg and ("upgrade reference" in h_name.lower() or "installation" in h_name.lower()):
+                        out_edges.append((TOPIC_PREFIX + r_tid, TOPIC_PREFIX + h_tid, "FUNCTIONAL_BRIDGE"))
+                        break
 
         # 3. In-Memory Entity Co-occurrence Bridges (Alarms & MML Commands)
         alarm_re = re.compile(r"^(ALM-\d+)")

@@ -4,6 +4,7 @@ from .base import FormatHandler, HandlerError, ParsedDocument, Section
 from .registry import handler_for, register, registered
 from . import handlers  # noqa: F401  (registration side effect)
 from .chunking import Chunk, chunk_document, coverage_gaps
+from .deletion import purge_document
 
 __all__ = [
     "FormatHandler",
@@ -14,6 +15,7 @@ __all__ = [
     "chunk_document",
     "coverage_gaps",
     "handler_for",
+    "purge_document",
     "register",
     "registered",
 ]
