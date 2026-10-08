@@ -433,6 +433,8 @@ function showPortalToast(msg) {
       if (!virtualUri) return;
       currentInspectedUri = virtualUri;
 
+      loadTopicNavigation(virtualUri);
+
       const metaEl = document.getElementById("inspector-meta");
       const contentEl = document.getElementById("inspector-content");
       const diagBox = document.getElementById("inspector-diagram-container");
