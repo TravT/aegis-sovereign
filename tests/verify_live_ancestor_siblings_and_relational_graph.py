@@ -17,18 +17,22 @@ def verify_all():
         context = browser.new_context(viewport={"width": 1440, "height": 900})
         page = context.new_page()
 
-        # Deep article: "Services Management" under USC Commands
-        deep_topic_id = "USC:CONCEPT_0234031539"
-        url = f"{BASE_URL}/archive/view?package=USC&topic_id={urllib.parse.quote(deep_topic_id)}"
+        article_uri = (
+            "archive:///home/tlima/Enterprise_Hub/docs/Hua_Docs/"
+            "HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.zip!"
+            "HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.hwics#"
+            "resources/emml/linkddoc/service_n_services_management.html"
+        )
+        url = f"{BASE_URL}/archive/view?uri={urllib.parse.quote(article_uri)}"
         print(f"Navigating to deep article: {url}")
         page.goto(url)
-        page.wait_for_selector(".hierarchy-sidebar", timeout=12000)
+        page.wait_for_selector("#sidebar", timeout=12000)
 
         # Allow lazy tree rendering
-        page.wait_for_timeout(1500)
+        page.wait_for_timeout(2000)
 
         # Verify ancestor sibling folders are present in the sidebar
-        sidebar_text = page.locator(".hierarchy-sidebar").inner_text()
+        sidebar_text = page.locator("#sidebar").inner_text()
         print("Checking sibling categories in sidebar...")
 
         # Siblings of Operation and Maintenance Commands (under Commands)
@@ -58,9 +62,12 @@ def verify_all():
         # =====================================================================
         print("\n--- 2. Testing 3D WebGL Graph with Relational Edges ---")
         page_graph = context.new_page()
-        portal_url = f"{BASE_URL}/portal/#/graph"
+        portal_url = f"{BASE_URL}/portal"
         print(f"Navigating to: {portal_url}")
         page_graph.goto(portal_url)
+        page_graph.wait_for_selector("#portal-query-input", timeout=12000)
+        print("Switching to Knowledge Graph tab via switchCommandTab('graph')...")
+        page_graph.evaluate("switchCommandTab('graph')")
         page_graph.wait_for_selector("#gv-canvas", timeout=15000)
 
         # Verify edge control checkboxes
@@ -79,9 +86,11 @@ def verify_all():
         print("Switching to 3D mode...")
         dim3_btn = page_graph.locator("#gv-dim3")
         dim3_btn.click()
-        page_graph.wait_for_timeout(2000)
-
-        # Verify node status
+        print("Waiting for graph to finish loading nodes...")
+        page_graph.wait_for_function(
+            '() => { const el = document.getElementById("gv-status"); return el && !el.innerText.includes("Loading") && el.innerText.includes("nodes"); }',
+            timeout=30000,
+        )
         status_text = page_graph.locator("#gv-status").inner_text()
         print(f"Graph status: '{status_text}'")
         assert "nodes" in status_text.lower(), f"Unexpected status: {status_text}"
@@ -107,7 +116,7 @@ def verify_all():
         print(f"Inspector snippet:\n{inspector_text[:300]}...")
 
         # Check for relational connection headings
-        has_relational = any(h in inspector_text for h in ["Product Family", "5G Core Network Peer", "Functional Bridge", "Shared", "Connections"])
+        has_relational = any(h.lower() in inspector_text.lower() for h in ["product family", "5g core network peer", "functional bridge", "shared", "connections"])
         print(f"Relational connections listed: {has_relational}")
         assert has_relational, "Expected relational connection info in inspector"
 
@@ -121,8 +130,13 @@ def verify_all():
         mobile_context = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True)
         page_mobile = mobile_context.new_page()
         page_mobile.goto(portal_url)
+        page_mobile.wait_for_selector("#portal-query-input", timeout=12000)
+        page_mobile.evaluate("switchCommandTab('graph')")
         page_mobile.wait_for_selector("#gv-canvas", timeout=15000)
-        page_mobile.wait_for_timeout(2000)
+        page_mobile.wait_for_function(
+            '() => { const el = document.getElementById("gv-status"); return el && !el.innerText.includes("Loading") && el.innerText.includes("nodes"); }',
+            timeout=30000,
+        )
 
         page_mobile.screenshot(path="/home/tlima/.gemini/antigravity-cli/brain/d72e7162-aa12-457d-bca8-2bd11e3049b6/verified_mobile_relational_graph.png")
         print("Saved verified_mobile_relational_graph.png")
