@@ -14,6 +14,7 @@ import os
 import posixpath
 import re
 import tarfile
+import urllib.parse
 import zipfile
 import contextlib
 import dataclasses
@@ -127,24 +128,39 @@ def _extract_openxml_bytes_text(content_bytes: bytes, entry_name: str) -> str:
                                             val = shared_strings[s_idx]
                                     r_vals.append(_WHITESPACE_RE.sub(" ", val).strip())
                                 if any(r_vals):
-                                    out_lines.append("| " + " | ".join(r_vals[:10]) + " |")
+                                    out_lines.append("| " + " | ".join(r_vals[:15]) + " |")
                                     row_cnt += 1
-                                    if row_cnt >= 80:
+                                    if row_cnt >= 500:
                                         break
-                return "\n".join(out_lines)
+                return "\n\n".join(out_lines)
             elif lower.endswith(".docx") and "word/document.xml" in names:
                 root = ET.fromstring(zf.read("word/document.xml"))
-                paras: List[str] = [f"[OpenXML Document: {entry_name}]"]
+                paras: List[str] = [f"# {entry_name.split('/')[-1]}"]
                 for elem in root.iter():
                     if elem.tag.endswith("}p"):
                         txt = "".join(t.text or "" for t in elem.iter() if t.tag.endswith("}t")).strip()
                         if txt:
                             paras.append(_WHITESPACE_RE.sub(" ", txt))
-                            if len(paras) >= 200:
-                                break
-                return "\n".join(paras)
+                return "\n\n".join(paras)
     except Exception:
         pass
+
+    if lower.endswith(".xls"):
+        try:
+            import xlrd
+            wb = xlrd.open_workbook(file_contents=content_bytes)
+            xls_lines: List[str] = [f"# {entry_name.split('/')[-1]}"]
+            for s_name in wb.sheet_names():
+                sheet = wb.sheet_by_name(s_name)
+                xls_lines.append(f"## Sheet: {s_name}")
+                for r in range(min(sheet.nrows, 300)):
+                    row_vals = [str(v).strip() for v in sheet.row_values(r)[:15] if str(v).strip()]
+                    if row_vals:
+                        xls_lines.append("| " + " | ".join(row_vals) + " |")
+            return "\n\n".join(xls_lines)
+        except Exception:
+            pass
+
     return content_bytes.decode("utf-8", errors="replace")
 
 
@@ -243,6 +259,11 @@ class SovereignArchiveStreamer:
             if unquoted == archive_path:
                 break
             archive_path = unquoted
+        while "%" in internal_entry_path:
+            unquoted_internal = urllib.parse.unquote(internal_entry_path)
+            if unquoted_internal == internal_entry_path:
+                break
+            internal_entry_path = unquoted_internal
         if not archive_path or not internal_entry_path:
             raise ValueError(f"Incomplete virtual URI: {virtual_uri!r}")
         return archive_path, internal_entry_path
@@ -736,15 +757,80 @@ class SovereignArchiveStreamer:
 
     def resolve_virtual_uri(self, virtual_uri: str) -> ArchiveEntry:
         """Resolve an `archive://<archive_path>#<internal_entry_path>` URI purely in memory."""
-        archive_path_str, internal_entry_path = self.parse_virtual_uri(virtual_uri)
-        self._validate_entry_path(internal_entry_path)
+        archive_path_str, raw_internal_entry = self.parse_virtual_uri(virtual_uri)
+
+        # 1. Strip chunking, sheet, and anchor fragments (e.g. ::part::0001, ::sheet::SheetName, #sec:...)
+        sub_target = ""
+        clean_internal = raw_internal_entry
+        if "::" in clean_internal:
+            parts = clean_internal.split("::", 1)
+            clean_internal = parts[0]
+            sub_target = parts[1]
+        elif "#" in clean_internal:
+            parts = clean_internal.split("#", 1)
+            clean_internal = parts[0]
+            sub_target = parts[1]
+
+        # 2. Check for nested container paths (e.g. `path/to/inner.zip!subfolder/file.wsdl`)
+        if "!" in clean_internal:
+            outer_entry, inner_entry = clean_internal.split("!", 1)
+            self._validate_entry_path(outer_entry)
+            self._validate_entry_path(inner_entry)
+            outer_matches = self._dispatch_archive(
+                archive_path=archive_path_str,
+                target_entry=outer_entry,
+            )
+            if not outer_matches:
+                raise KeyError(
+                    f"Outer entry {outer_entry!r} not found in archive {archive_path_str!r}"
+                )
+            outer_bytes = outer_matches[0].raw_bytes
+            with zipfile.ZipFile(io.BytesIO(outer_bytes), mode="r") as inner_zf:
+                try:
+                    inner_info = inner_zf.getinfo(inner_entry)
+                    inner_bytes = inner_zf.read(inner_info)
+                except KeyError:
+                    matching_names = [n for n in inner_zf.namelist() if n == inner_entry or n.endswith("/" + inner_entry)]
+                    if not matching_names:
+                        raise KeyError(
+                            f"Inner entry {inner_entry!r} not found in nested container {outer_entry!r}"
+                        )
+                    inner_info = inner_zf.getinfo(matching_names[0])
+                    inner_bytes = inner_zf.read(inner_info)
+
+                sha256_hex = hashlib.sha256(inner_bytes).hexdigest()
+                entry = ArchiveEntry(
+                    virtual_uri=virtual_uri,
+                    archive_path=archive_path_str,
+                    entry_name=inner_info.filename,
+                    compressed_size=inner_info.compress_size,
+                    uncompressed_size=len(inner_bytes),
+                    compression_ratio=float(len(inner_bytes)) / float(max(1, inner_info.compress_size)),
+                    content_text=self._text_for(inner_info.filename, inner_bytes, sha256_hex),
+                    sha256_hash=sha256_hex,
+                    raw_bytes=inner_bytes,
+                )
+                if sub_target:
+                    setattr(entry, "sub_target", sub_target)
+                return entry
+
+        self._validate_entry_path(clean_internal)
 
         matches = self._dispatch_archive(
             archive_path=archive_path_str,
-            target_entry=internal_entry_path,
+            target_entry=clean_internal,
         )
         if not matches:
-            raise KeyError(
-                f"Entry {internal_entry_path!r} not found in archive {archive_path_str!r}"
+            norm_target = posixpath.normpath(clean_internal).lstrip("/")
+            matches = self._dispatch_archive(
+                archive_path=archive_path_str,
+                target_entry=norm_target,
             )
-        return matches[0]
+            if not matches:
+                raise KeyError(
+                    f"Entry {clean_internal!r} not found in archive {archive_path_str!r}"
+                )
+        entry = matches[0]
+        if sub_target:
+            setattr(entry, "sub_target", sub_target)
+        return entry

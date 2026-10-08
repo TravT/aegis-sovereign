@@ -5,15 +5,422 @@ with Dark Obsidian styling, relative diagram link rewriting, HedEx tree sidebar 
 and zero intrusive raw URI clutter.
 """
 
+import base64
 import html
+import io
 import posixpath
 import re
 import urllib.parse
-from typing import Any, Optional, Dict, List
+import xml.etree.ElementTree as ET
+import zipfile
+from typing import Any, Optional, Dict, List, Tuple
 
 
 class DocumentViewer:
     """Renders virtual container archive entries as sanitized, responsive Dark Obsidian HTML with a full HedEx tree sidebar."""
+
+    @staticmethod
+    def _render_docx(entry: Any, virtual_uri: str) -> str:
+        raw_bytes = getattr(entry, "raw_bytes", b"")
+        if not raw_bytes:
+            return "<p><em>Empty Word document.</em></p>"
+        try:
+            import docx
+            z = zipfile.ZipFile(io.BytesIO(raw_bytes))
+            rel_map: Dict[str, str] = {}
+            if "word/_rels/document.xml.rels" in z.namelist():
+                rels_xml = z.read("word/_rels/document.xml.rels").decode("utf-8", errors="replace")
+                rels_root = ET.fromstring(rels_xml)
+                for rel in rels_root:
+                    r_id = rel.get("Id")
+                    target = rel.get("Target")
+                    if r_id and target:
+                        if not target.startswith("word/"):
+                            target = "word/" + target.lstrip("/")
+                        rel_map[r_id] = target
+
+            img_data_uris: Dict[str, str] = {}
+            for r_id, target in rel_map.items():
+                if target in z.namelist():
+                    ext = target.rsplit(".", 1)[-1].lower()
+                    mime = "image/png" if ext == "png" else ("image/jpeg" if ext in ("jpg", "jpeg") else ("image/svg+xml" if ext == "svg" else "image/gif"))
+                    b64_str = base64.b64encode(z.read(target)).decode("ascii")
+                    img_data_uris[r_id] = f"data:{mime};base64,{b64_str}"
+
+            doc = docx.Document(io.BytesIO(raw_bytes))
+            filename = getattr(entry, "entry_name", "Document.docx").split("/")[-1]
+            distinct_media_count = len(set(t for t in rel_map.values() if t in z.namelist()))
+
+            body_parts: List[str] = []
+            hero_html = f"""
+            <div class="doc-format-hero docx-hero">
+              <div class="doc-hero-badge">📘 Microsoft Word Document</div>
+              <h1 class="doc-hero-title">{html.escape(filename)}</h1>
+              <div class="doc-hero-meta">
+                <span>📄 {len(doc.paragraphs)} Paragraphs</span>
+                <span>📊 {len(doc.tables)} Tables</span>
+                <span>🖼️ {distinct_media_count} Embedded Diagrams</span>
+              </div>
+            </div>
+            """
+            body_parts.append(hero_html)
+
+            in_list = False
+            for child in doc.element.body:
+                tag = child.tag
+                if tag.endswith("p"):
+                    p = docx.text.paragraph.Paragraph(child, doc)
+                    p_text = p.text.strip()
+                    style_name = (p.style.name if p.style else "").lower()
+
+                    p_xml = p._p.xml
+                    para_images = []
+                    for r_id, data_uri in img_data_uris.items():
+                        if f'"{r_id}"' in p_xml:
+                            para_images.append((r_id, data_uri))
+
+                    if not p_text and not para_images:
+                        continue
+
+                    is_list_item = any(k in style_name for k in ("list", "bullet", "item")) or p_text.startswith(("- ", "* ", "• "))
+                    if in_list and not is_list_item:
+                        body_parts.append("</ul>")
+                        in_list = False
+
+                    for _, img_uri in para_images:
+                        body_parts.append(f"""
+                        <div class="docx-image-card">
+                          <img src="{img_uri}" alt="Embedded Diagram" class="docx-embedded-img" />
+                        </div>
+                        """)
+
+                    if not p_text:
+                        continue
+
+                    run_spans = []
+                    for r in p.runs:
+                        r_txt = html.escape(r.text)
+                        if not r_txt:
+                            continue
+                        if r.bold:
+                            r_txt = f"<strong>{r_txt}</strong>"
+                        if r.italic:
+                            r_txt = f"<em>{r_txt}</em>"
+                        run_spans.append(r_txt)
+                    formatted_text = "".join(run_spans) if run_spans else html.escape(p_text)
+
+                    upper_text = p_text.upper()
+                    if "caution" in style_name or upper_text.startswith("CAUTION:"):
+                        body_parts.append(f'<div class="doc-callout callout-caution"><div class="callout-label">⚠️ CAUTION</div><p>{formatted_text}</p></div>')
+                    elif "note" in style_name or upper_text.startswith("NOTE:"):
+                        body_parts.append(f'<div class="doc-callout callout-note"><div class="callout-label">💡 NOTE</div><p>{formatted_text}</p></div>')
+                    elif "warning" in style_name or upper_text.startswith("WARNING:"):
+                        body_parts.append(f'<div class="doc-callout callout-warning"><div class="callout-label">🚨 WARNING</div><p>{formatted_text}</p></div>')
+                    elif is_list_item:
+                        if not in_list:
+                            body_parts.append('<ul class="doc-bullet-list">')
+                            in_list = True
+                        clean_item = p_text.lstrip("-*• ").strip()
+                        body_parts.append(f'<li>{html.escape(clean_item)}</li>')
+                    elif "heading 1" in style_name or "heading1" in style_name:
+                        body_parts.append(f'<h1 class="doc-heading doc-h1">{formatted_text}</h1>')
+                    elif "heading 2" in style_name or "heading2" in style_name:
+                        body_parts.append(f'<h2 class="doc-heading doc-h2">{formatted_text}</h2>')
+                    elif "heading 3" in style_name or "heading3" in style_name:
+                        body_parts.append(f'<h3 class="doc-heading doc-h3">{formatted_text}</h3>')
+                    elif "heading 4" in style_name or "heading4" in style_name or "heading" in style_name:
+                        body_parts.append(f'<h4 class="doc-heading doc-h4">{formatted_text}</h4>')
+                    else:
+                        body_parts.append(f'<p class="doc-para">{formatted_text}</p>')
+
+                elif tag.endswith("tbl"):
+                    if in_list:
+                        body_parts.append("</ul>")
+                        in_list = False
+                    tbl = docx.table.Table(child, doc)
+                    if not tbl.rows:
+                        continue
+                    tbl_html = ['<div class="table-wrap"><table class="doc-table">']
+                    for r_idx, row in enumerate(tbl.rows):
+                        tbl_html.append("<tr>")
+                        seen_tc = set()
+                        for cell in row.cells:
+                            if cell._tc in seen_tc:
+                                continue
+                            seen_tc.add(cell._tc)
+                            c_text = cell.text.strip()
+                            tag_name = "th" if r_idx == 0 else "td"
+                            tbl_html.append(f"<{tag_name}>{html.escape(c_text)}</{tag_name}>")
+                        tbl_html.append("</tr>")
+                    tbl_html.append("</table></div>")
+                    body_parts.append("".join(tbl_html))
+
+            if in_list:
+                body_parts.append("</ul>")
+
+            return "\n".join(body_parts)
+
+        except Exception as e:
+            content_text = getattr(entry, "content_text", "")
+            if content_text:
+                return f'<div class="doc-fallback"><div class="callout-warning">Rendered with text fallback: {html.escape(str(e))}</div><pre>{html.escape(content_text)}</pre></div>'
+            return f'<p class="error-msg">Failed to parse Word document: {html.escape(str(e))}</p>'
+
+    @staticmethod
+    def _render_spreadsheet(entry: Any, virtual_uri: str, target_sheet: Optional[str] = None) -> str:
+        raw_bytes = getattr(entry, "raw_bytes", b"")
+        if not raw_bytes:
+            return "<p><em>Empty spreadsheet document.</em></p>"
+
+        filename = getattr(entry, "entry_name", "Spreadsheet.xlsx").split("/")[-1]
+        name_lower = filename.lower()
+
+        if not target_sheet and "::sheet::" in virtual_uri:
+            frag = virtual_uri.split("::sheet::", 1)[1]
+            target_sheet = urllib.parse.unquote(frag.split("::")[0].strip())
+
+        sheets_data: List[Tuple[str, List[List[str]], int]] = []
+
+        if name_lower.endswith((".xlsx", ".xlsm")):
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(io.BytesIO(raw_bytes), read_only=True, data_only=True)
+                for sname in wb.sheetnames:
+                    ws = wb[sname]
+                    rows: List[List[str]] = []
+                    count = 0
+                    for row in ws.iter_rows(values_only=True):
+                        count += 1
+                        if len(rows) < 300:
+                            cleaned = ["" if v is None else str(v).strip() for v in row]
+                            if any(cleaned):
+                                rows.append(cleaned)
+                    sheets_data.append((sname, rows, count))
+                wb.close()
+            except Exception as e:
+                return f'<p class="error-msg">Error loading XLSX spreadsheet: {html.escape(str(e))}</p>'
+
+        elif name_lower.endswith(".xls"):
+            try:
+                import xlrd
+                wb = xlrd.open_workbook(file_contents=raw_bytes)
+                for sname in wb.sheet_names():
+                    ws = wb.sheet_by_name(sname)
+                    rows: List[List[str]] = []
+                    for r_idx in range(min(300, ws.nrows)):
+                        row_vals = ["" if c.value is None else str(c.value).strip() for c in ws.row(r_idx)]
+                        if any(row_vals):
+                            rows.append(row_vals)
+                    sheets_data.append((sname, rows, ws.nrows))
+            except Exception as e:
+                return f'<p class="error-msg">Error loading XLS spreadsheet: {html.escape(str(e))}</p>'
+
+        if not sheets_data:
+            return "<p><em>Spreadsheet contains no sheets.</em></p>"
+
+        active_idx = 0
+        if target_sheet:
+            for idx, (sname, _, _) in enumerate(sheets_data):
+                if sname.lower() == target_sheet.lower():
+                    active_idx = idx
+                    break
+
+        total_rows_all = sum(cnt for _, _, cnt in sheets_data)
+
+        html_out: List[str] = []
+        hero_html = f"""
+        <div class="doc-format-hero xlsx-hero">
+          <div class="doc-hero-badge">📊 Excel Spreadsheet</div>
+          <h1 class="doc-hero-title">{html.escape(filename)}</h1>
+          <div class="doc-hero-meta">
+            <span>📑 {len(sheets_data)} Sheets</span>
+            <span>🔢 {total_rows_all:,} Total Rows</span>
+            <span>👁️ Interactive Grid Viewer</span>
+          </div>
+        </div>
+        """
+        html_out.append(hero_html)
+
+        tab_buttons = []
+        for idx, (sname, r_list, cnt) in enumerate(sheets_data):
+            is_active = (idx == active_idx)
+            act_cls = "active" if is_active else ""
+            tab_buttons.append(
+                f'<button type="button" class="sheet-tab-btn {act_cls}" onclick="switchSheetTab(\'sheet-pane-{idx}\', this)">'
+                f'<span class="sheet-tab-icon">📄</span> '
+                f'<span class="sheet-tab-name">{html.escape(sname)}</span> '
+                f'<span class="sheet-tab-badge">{cnt}</span>'
+                f'</button>'
+            )
+
+        html_out.append(f"""
+        <div class="sheet-viewer-controls">
+          <div class="sheet-tabs-container">
+            {"".join(tab_buttons)}
+          </div>
+          <div class="sheet-filter-bar">
+            <input type="text" class="sheet-filter-input" placeholder="🔍 Search/filter rows in active sheet..." oninput="filterActiveSheet(this.value)" />
+          </div>
+        </div>
+        """)
+
+        for idx, (sname, rows, total_cnt) in enumerate(sheets_data):
+            is_active = (idx == active_idx)
+            disp_style = "display: block;" if is_active else "display: none;"
+            pane_html = [f'<div id="sheet-pane-{idx}" class="sheet-pane" style="{disp_style}">']
+
+            if not rows:
+                pane_html.append('<div class="empty-sheet-msg">This worksheet contains no rows.</div>')
+            else:
+                max_cols = max(len(r) for r in rows)
+                col_headers = []
+                for c in range(max_cols):
+                    col_letter = ""
+                    temp = c
+                    while temp >= 0:
+                        col_letter = chr(temp % 26 + 65) + col_letter
+                        temp = temp // 26 - 1
+                    col_headers.append(col_letter)
+
+                pane_html.append('<div class="table-wrap sheet-table-wrap">')
+                pane_html.append('<table class="sheet-table">')
+                pane_html.append('<thead><tr><th class="row-num-col">#</th>')
+                for ch in col_headers:
+                    pane_html.append(f'<th>{ch}</th>')
+                pane_html.append('</tr></thead><tbody>')
+
+                for r_idx, r in enumerate(rows):
+                    row_text = " ".join(r).lower()
+                    row_num = r_idx + 1
+                    is_first_row = (r_idx == 0)
+                    row_cls = "sheet-row" + (" sheet-header-row" if is_first_row else "")
+                    pane_html.append(f'<tr class="{row_cls}" data-row-text="{html.escape(row_text)}">')
+                    pane_html.append(f'<td class="row-num-cell">{row_num}</td>')
+                    for c_idx in range(max_cols):
+                        val = r[c_idx] if c_idx < len(r) else ""
+                        pane_html.append(f'<td>{html.escape(val)}</td>')
+                    pane_html.append('</tr>')
+
+                pane_html.append('</tbody></table></div>')
+
+                if total_cnt > len(rows):
+                    pane_html.append(f'<div class="sheet-truncation-note">Showing first {len(rows)} of {total_cnt:,} rows in worksheet <strong>{html.escape(sname)}</strong>.</div>')
+
+            pane_html.append('</div>')
+            html_out.append("".join(pane_html))
+
+        return "\n".join(html_out)
+
+    @staticmethod
+    def _render_archive(entry: Any, virtual_uri: str) -> str:
+        raw_bytes = getattr(entry, "raw_bytes", b"")
+        if not raw_bytes:
+            return "<p><em>Empty archive container.</em></p>"
+
+        filename = getattr(entry, "entry_name", "archive.zip").split("/")[-1]
+        try:
+            z = zipfile.ZipFile(io.BytesIO(raw_bytes))
+            members = [info for info in z.infolist() if not info.is_dir() and not info.filename.endswith("/")]
+            total_uncompressed = sum(m.file_size for m in members)
+
+            body_parts = []
+            hero_html = f"""
+            <div class="doc-format-hero zip-hero">
+              <div class="doc-hero-badge">📦 Nested Container Archive</div>
+              <h1 class="doc-hero-title">{html.escape(filename)}</h1>
+              <div class="doc-hero-meta">
+                <span>📁 {len(members)} Files</span>
+                <span>💾 {total_uncompressed / 1024 / 1024:.2f} MB Uncompressed</span>
+                <span>🔒 Zero-Disk Streaming</span>
+              </div>
+            </div>
+            """
+            body_parts.append(hero_html)
+
+            body_parts.append('<div class="table-wrap"><table class="doc-table zip-listing-table">')
+            body_parts.append('<thead><tr><th>Entry Name</th><th>Size</th><th>Compressed</th><th>Format</th><th>Action</th></tr></thead><tbody>')
+
+            for m in members:
+                m_name = m.filename
+                m_ext = m_name.rsplit(".", 1)[-1].lower() if "." in m_name else "file"
+                nested_uri = f"{virtual_uri}!{m_name}"
+                target_url = f"/archive/view?uri={urllib.parse.quote(nested_uri)}"
+
+                size_str = f"{m.file_size:,} B" if m.file_size < 1024 else f"{m.file_size / 1024:.1f} KB"
+                comp_str = f"{m.compress_size:,} B" if m.compress_size < 1024 else f"{m.compress_size / 1024:.1f} KB"
+                icon = "📜" if m_ext in ("wsdl", "xsd", "xml") else ("📘" if m_ext == "docx" else ("📊" if m_ext in ("xlsx", "xls") else "📄"))
+
+                body_parts.append(f"""
+                <tr>
+                  <td class="zip-entry-name"><span class="zip-entry-icon">{icon}</span> {html.escape(m_name)}</td>
+                  <td><code>{size_str}</code></td>
+                  <td><code>{comp_str}</code></td>
+                  <td><span class="zip-format-badge">{html.escape(m_ext.upper())}</span></td>
+                  <td><a href="{target_url}" class="zip-open-btn">Open in Viewer ➡</a></td>
+                </tr>
+                """)
+
+            body_parts.append('</tbody></table></div>')
+            return "\n".join(body_parts)
+
+        except Exception as e:
+            return f'<p class="error-msg">Error reading nested archive: {html.escape(str(e))}</p>'
+
+    @staticmethod
+    def _render_code(entry: Any, virtual_uri: str) -> str:
+        filename = getattr(entry, "entry_name", "document.txt").split("/")[-1]
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "txt"
+
+        raw_bytes = getattr(entry, "raw_bytes", b"")
+        if raw_bytes:
+            text = raw_bytes.decode("utf-8", errors="replace")
+        else:
+            text = getattr(entry, "content_text", "")
+
+        lines = text.splitlines()
+        total_lines = len(lines)
+        total_chars = len(text)
+
+        badge_name = {
+            "wsdl": "📜 WSDL Interface Specification",
+            "xsd": "📐 XML Schema Definition (XSD)",
+            "xml": "🗂️ XML Document",
+            "json": "🔧 JSON Data",
+            "sql": "💾 SQL Script",
+            "sh": "⚙️ Shell Script",
+            "py": "🐍 Python Source",
+            "txt": "📄 Plain Text",
+        }.get(ext, f"📄 {ext.upper()} File")
+
+        hero_html = f"""
+        <div class="doc-format-hero code-hero">
+          <div class="doc-hero-badge">{badge_name}</div>
+          <h1 class="doc-hero-title">{html.escape(filename)}</h1>
+          <div class="doc-hero-meta">
+            <span>📏 {total_lines:,} Lines</span>
+            <span>💾 {total_chars:,} Characters</span>
+            <button type="button" class="btn-copy-code" onclick="copyDocumentContent()">📋 Copy Full Content</button>
+          </div>
+        </div>
+        """
+
+        code_lines_html = []
+        for idx, line in enumerate(lines):
+            line_no = idx + 1
+            escaped = html.escape(line)
+            code_lines_html.append(f'<div class="code-line"><span class="line-num">{line_no}</span><span class="line-text">{escaped}</span></div>')
+
+        code_container = f"""
+        <div class="code-block-container">
+          <div class="code-block-header">
+            <span class="code-header-name">{html.escape(filename)}</span>
+            <span class="code-header-meta">{ext.upper()} • UTF-8</span>
+          </div>
+          <pre class="code-pre" id="code-content-pre"><code>{"".join(code_lines_html)}</code></pre>
+          <textarea id="raw-code-payload" style="display:none;">{html.escape(text)}</textarea>
+        </div>
+        """
+        return f"{hero_html}\n{code_container}"
 
     @staticmethod
     def format_entry_to_styled_html(
@@ -26,7 +433,21 @@ class DocumentViewer:
         title = getattr(entry, "entry_name", "Document").split("/")[-1]
 
         raw_body_html = ""
-        if hasattr(entry, "raw_bytes") and entry.raw_bytes and name_lower.endswith((".html", ".htm", ".xhtml")):
+        is_custom_rendered = False
+
+        if hasattr(entry, "raw_bytes") and entry.raw_bytes and name_lower.endswith(".docx"):
+            raw_body_html = DocumentViewer._render_docx(entry, virtual_uri)
+            is_custom_rendered = True
+        elif hasattr(entry, "raw_bytes") and entry.raw_bytes and name_lower.endswith((".xlsx", ".xlsm", ".xls")):
+            raw_body_html = DocumentViewer._render_spreadsheet(entry, virtual_uri)
+            is_custom_rendered = True
+        elif hasattr(entry, "raw_bytes") and entry.raw_bytes and name_lower.endswith(".zip"):
+            raw_body_html = DocumentViewer._render_archive(entry, virtual_uri)
+            is_custom_rendered = True
+        elif name_lower.endswith((".wsdl", ".xsd", ".xml", ".json", ".txt", ".sh", ".py", ".sql", ".yaml", ".yml")):
+            raw_body_html = DocumentViewer._render_code(entry, virtual_uri)
+            is_custom_rendered = True
+        elif hasattr(entry, "raw_bytes") and entry.raw_bytes and name_lower.endswith((".html", ".htm", ".xhtml")):
             raw_body_html = entry.raw_bytes.decode("utf-8", errors="replace")
         elif getattr(entry, "content_text", None):
             paras = entry.content_text.split("\n\n")
@@ -56,61 +477,62 @@ class DocumentViewer:
         else:
             raw_body_html = "<p><em>No readable content in this entry.</em></p>"
 
-        # Strip scripts that could break iframe / viewer
-        raw_body_html = re.sub(r"<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>", "", raw_body_html, flags=re.IGNORECASE)
-        # Strip external/broken link stylesheets (commonltr.css, imagePopup.css, etc.)
-        raw_body_html = re.sub(r'<link\b[^>]*rel=["\']stylesheet["\'][^>]*>', "", raw_body_html, flags=re.IGNORECASE)
-        raw_body_html = re.sub(r'<link\b[^>]*href=["\'][^"\']*\.css["\'][^>]*>', "", raw_body_html, flags=re.IGNORECASE)
+        if not is_custom_rendered:
+            # Strip scripts that could break iframe / viewer
+            raw_body_html = re.sub(r"<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>", "", raw_body_html, flags=re.IGNORECASE)
+            # Strip external/broken link stylesheets (commonltr.css, imagePopup.css, etc.)
+            raw_body_html = re.sub(r'<link\b[^>]*rel=["\']stylesheet["\'][^>]*>', "", raw_body_html, flags=re.IGNORECASE)
+            raw_body_html = re.sub(r'<link\b[^>]*href=["\'][^"\']*\.css["\'][^>]*>', "", raw_body_html, flags=re.IGNORECASE)
 
-        # Rewrite relative image references (figure/..., ../images/..., etc.) to diagrams endpoint with exact archive URI
-        if "#" in virtual_uri:
-            archive_base, current_entry = virtual_uri.split("#", 1)
-            entry_dir = posixpath.dirname(current_entry)
+            # Rewrite relative image references (figure/..., ../images/..., etc.) to diagrams endpoint with exact archive URI
+            if "#" in virtual_uri:
+                archive_base, current_entry = virtual_uri.split("#", 1)
+                entry_dir = posixpath.dirname(current_entry)
 
-            def _rewrite_img(m: re.Match) -> str:
-                prefix = m.group(1)
-                src = m.group(2)
-                if src.startswith(("http://", "https://", "data:", "/diagrams")):
-                    return m.group(0)
-                target_entry = posixpath.normpath(posixpath.join(entry_dir, src)).lstrip("/")
-                img_uri = f"{archive_base}#{target_entry}"
-                filename = posixpath.basename(target_entry)
-                return f'<img {prefix}src="/diagrams/{urllib.parse.quote(filename)}?uri={urllib.parse.quote(img_uri)}"'
+                def _rewrite_img(m: re.Match) -> str:
+                    prefix = m.group(1)
+                    src = m.group(2)
+                    if src.startswith(("http://", "https://", "data:", "/diagrams")):
+                        return m.group(0)
+                    target_entry = posixpath.normpath(posixpath.join(entry_dir, src)).lstrip("/")
+                    img_uri = f"{archive_base}#{target_entry}"
+                    filename = posixpath.basename(target_entry)
+                    return f'<img {prefix}src="/diagrams/{urllib.parse.quote(filename)}?uri={urllib.parse.quote(img_uri)}"'
 
-            raw_body_html = re.sub(
-                r'<img\s+([^>]*?)src=["\']([^"\']+\.(?:png|jpg|jpeg|gif|svg|webp))["\']',
-                _rewrite_img,
-                raw_body_html,
-                flags=re.IGNORECASE,
-            )
-        else:
-            raw_body_html = re.sub(
-                r'<img\s+([^>]*?)src=["\'](?:(?:\.\./)+|/)?(?:[^"\'\s]*/)?([^"\'/\s]+\.(?:png|jpg|jpeg|gif|svg|webp))["\']',
-                r'<img \1src="/diagrams/\2"',
-                raw_body_html,
-                flags=re.IGNORECASE,
-            )
+                raw_body_html = re.sub(
+                    r'<img\s+([^>]*?)src=["\']([^"\']+\.(?:png|jpg|jpeg|gif|svg|webp))["\']',
+                    _rewrite_img,
+                    raw_body_html,
+                    flags=re.IGNORECASE,
+                )
+            else:
+                raw_body_html = re.sub(
+                    r'<img\s+([^>]*?)src=["\'](?:(?:\.\./)+|/)?(?:[^"\'\s]*/)?([^"\'/\s]+\.(?:png|jpg|jpeg|gif|svg|webp))["\']',
+                    r'<img \1src="/diagrams/\2"',
+                    raw_body_html,
+                    flags=re.IGNORECASE,
+                )
 
-        # Rewrite relative .html topic links inside the container to stay in viewer
-        if "#" in virtual_uri:
-            archive_base, current_entry = virtual_uri.split("#", 1)
-            entry_dir = posixpath.dirname(current_entry)
+            # Rewrite relative .html topic links inside the container to stay in viewer
+            if "#" in virtual_uri:
+                archive_base, current_entry = virtual_uri.split("#", 1)
+                entry_dir = posixpath.dirname(current_entry)
 
-            def _rewrite_href(m: re.Match) -> str:
-                prefix = m.group(1)
-                href = m.group(2)
-                if href.startswith(("#", "http://", "https://", "mailto:", "javascript:", "/")):
-                    return m.group(0)
-                target_entry = posixpath.normpath(posixpath.join(entry_dir, href)).lstrip("/")
-                new_uri = f"{archive_base}#{target_entry}"
-                return f'<a {prefix}href="/archive/view?uri={urllib.parse.quote(new_uri)}"'
+                def _rewrite_href(m: re.Match) -> str:
+                    prefix = m.group(1)
+                    href = m.group(2)
+                    if href.startswith(("#", "http://", "https://", "mailto:", "javascript:", "/")):
+                        return m.group(0)
+                    target_entry = posixpath.normpath(posixpath.join(entry_dir, href)).lstrip("/")
+                    new_uri = f"{archive_base}#{target_entry}"
+                    return f'<a {prefix}href="/archive/view?uri={urllib.parse.quote(new_uri)}"'
 
-            raw_body_html = re.sub(
-                r'<a\s+([^>]*?)href=["\']([^"\']+\.html?(?:#[^"\']*)?)["\']',
-                _rewrite_href,
-                raw_body_html,
-                flags=re.IGNORECASE,
-            )
+                raw_body_html = re.sub(
+                    r'<a\s+([^>]*?)href=["\']([^"\']+\.html?(?:#[^"\']*)?)["\']',
+                    _rewrite_href,
+                    raw_body_html,
+                    flags=re.IGNORECASE,
+                )
 
         breadcrumb_html = ""
         buttons_strip = ""
@@ -906,6 +1328,363 @@ class DocumentViewer:
       justify-content: center;
     }}
 
+    /* Rich Document Visualizer Styles */
+    .doc-format-hero {{
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    }}
+    .doc-hero-badge {{
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.2rem 0.6rem;
+      border-radius: 20px;
+      margin-bottom: 0.5rem;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--cyan);
+    }}
+    .xlsx-hero .doc-hero-badge {{
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: var(--emerald);
+    }}
+    .zip-hero .doc-hero-badge {{
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.3);
+      color: #F59E0B;
+    }}
+    .code-hero .doc-hero-badge {{
+      background: rgba(212, 175, 55, 0.12);
+      border-color: rgba(212, 175, 55, 0.3);
+      color: var(--gold-bright);
+    }}
+    .doc-hero-title {{
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #FFF;
+      margin: 0.35rem 0 0.65rem 0;
+      border-bottom: none;
+      padding-bottom: 0;
+      word-break: break-word;
+    }}
+    .doc-hero-meta {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 1.1rem;
+      font-size: 0.78rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }}
+    .doc-callout {{
+      border-radius: 6px;
+      padding: 0.85rem 1.1rem;
+      margin: 1.25rem 0;
+      font-size: 0.88rem;
+      line-height: 1.55;
+    }}
+    .callout-note {{
+      background: rgba(56, 189, 248, 0.08);
+      border-left: 4px solid var(--cyan);
+      color: #BAE6FD;
+    }}
+    .callout-caution {{
+      background: rgba(245, 158, 11, 0.08);
+      border-left: 4px solid #F59E0B;
+      color: #FDE68A;
+    }}
+    .callout-warning {{
+      background: rgba(239, 68, 68, 0.08);
+      border-left: 4px solid #EF4444;
+      color: #FECACA;
+    }}
+    .callout-label {{
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.35rem;
+    }}
+    .doc-callout p {{
+      margin-bottom: 0;
+      color: inherit;
+    }}
+    .docx-image-card {{
+      margin: 1.5rem 0;
+      text-align: center;
+    }}
+    .docx-embedded-img {{
+      max-width: 95%;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: #FFFFFF;
+      padding: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+      display: inline-block;
+    }}
+    .docx-embedded-img:hover {{
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65);
+    }}
+    .doc-bullet-list {{
+      margin: 0.5rem 0 1rem 1.5rem;
+      color: #CBD5E1;
+    }}
+    .doc-bullet-list li {{
+      margin-bottom: 0.35rem;
+    }}
+
+    /* Spreadsheet Visualizer */
+    .sheet-viewer-controls {{
+      margin-bottom: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }}
+    .sheet-tabs-container {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.65rem;
+    }}
+    .sheet-tab-btn {{
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 6px;
+      padding: 0.38rem 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s;
+    }}
+    .sheet-tab-btn:hover {{
+      color: #FFF;
+      background: rgba(255, 255, 255, 0.08);
+      border-color: var(--border-bright);
+    }}
+    .sheet-tab-btn.active {{
+      background: rgba(16, 185, 129, 0.14);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: var(--emerald);
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+    }}
+    .sheet-tab-badge {{
+      font-size: 0.68rem;
+      font-family: var(--font-mono);
+      background: rgba(255, 255, 255, 0.06);
+      padding: 0.05rem 0.35rem;
+      border-radius: 4px;
+      color: inherit;
+    }}
+    .sheet-filter-bar {{
+      position: relative;
+    }}
+    .sheet-filter-input {{
+      width: 100%;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.45rem 0.85rem;
+      font-size: 0.82rem;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }}
+    .sheet-filter-input:focus {{
+      border-color: var(--cyan);
+      background: rgba(255, 255, 255, 0.06);
+    }}
+    .sheet-table-wrap {{
+      max-height: 70vh;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }}
+    .sheet-table {{
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 0.82rem;
+      font-family: var(--font-sans);
+    }}
+    .sheet-table thead th {{
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: #111620;
+      border-bottom: 2px solid var(--border-bright);
+      color: var(--gold-bright);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      text-align: center;
+      white-space: nowrap;
+    }}
+    .sheet-table td {{
+      padding: 0.45rem 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-right: 1px solid rgba(255, 255, 255, 0.03);
+      color: #CBD5E1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 320px;
+    }}
+    .sheet-row:nth-child(even) td {{
+      background: rgba(255, 255, 255, 0.015);
+    }}
+    .sheet-row:hover td {{
+      background: rgba(56, 189, 248, 0.08);
+      color: #FFF;
+    }}
+    .row-num-col, .row-num-cell {{
+      width: 44px;
+      min-width: 44px;
+      text-align: center !important;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #64748B !important;
+      background: #0B0E14 !important;
+      user-select: none;
+      border-right: 1px solid var(--border) !important;
+    }}
+    .sheet-header-row td {{
+      font-weight: 700;
+      color: #FFF;
+      background: rgba(255, 255, 255, 0.04) !important;
+    }}
+    .sheet-truncation-note {{
+      margin-top: 0.65rem;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: #94A3B8;
+      text-align: center;
+    }}
+
+    /* Nested Archive Table */
+    .zip-listing-table td {{
+      font-size: 0.82rem;
+      padding: 0.55rem 0.85rem;
+    }}
+    .zip-entry-name {{
+      color: #E2E8F0;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }}
+    .zip-format-badge {{
+      font-size: 0.68rem;
+      font-family: var(--font-mono);
+      background: rgba(255, 255, 255, 0.06);
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      color: var(--cyan);
+    }}
+    .zip-open-btn {{
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      color: var(--cyan);
+      padding: 0.25rem 0.65rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      text-decoration: none;
+      transition: all 0.15s;
+    }}
+    .zip-open-btn:hover {{
+      background: rgba(56, 189, 248, 0.2);
+      border-color: var(--cyan);
+      color: #FFF;
+      text-decoration: none;
+    }}
+
+    /* Code Block Visualizer */
+    .btn-copy-code {{
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      color: var(--cyan);
+      border-radius: 6px;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.15s;
+      margin-left: auto;
+    }}
+    .btn-copy-code:hover {{
+      background: rgba(56, 189, 248, 0.15);
+      border-color: var(--cyan);
+      color: #FFF;
+    }}
+    .code-block-container {{
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-top: 1.5rem;
+      background: #06080B;
+    }}
+    .code-block-header {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.45rem 1rem;
+      background: #0E131C;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.76rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }}
+    .code-pre {{
+      padding: 1rem 0;
+      margin: 0;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      max-height: 75vh;
+      overflow: auto;
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }}
+    .code-line {{
+      display: flex;
+      padding: 0.1rem 1rem;
+    }}
+    .code-line:hover {{
+      background: rgba(255, 255, 255, 0.03);
+    }}
+    .line-num {{
+      width: 45px;
+      min-width: 45px;
+      text-align: right;
+      padding-right: 1.25rem;
+      color: #475569;
+      user-select: none;
+    }}
+    .line-text {{
+      color: #E2E8F0;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }}
+
     /* Responsive Mobile Layout */
     @media (max-width: 860px) {{
       .sidebar {{
@@ -1203,6 +1982,44 @@ class DocumentViewer:
     function closeSearchPanel() {{
       const panel = document.getElementById("tree-search-panel");
       if (panel) panel.style.display = "none";
+    }}
+
+    // Spreadsheet Visualizer Helpers
+    function switchSheetTab(paneId, btnEl) {{
+      document.querySelectorAll(".sheet-pane").forEach(p => p.style.display = "none");
+      document.querySelectorAll(".sheet-tab-btn").forEach(b => b.classList.remove("active"));
+      const target = document.getElementById(paneId);
+      if (target) target.style.display = "block";
+      if (btnEl) btnEl.classList.add("active");
+      const input = document.querySelector(".sheet-filter-input");
+      if (input) input.value = "";
+    }}
+
+    function filterActiveSheet(query) {{
+      const q = (query || "").toLowerCase().trim();
+      const activePane = Array.from(document.querySelectorAll(".sheet-pane")).find(p => p.style.display !== "none");
+      if (!activePane) return;
+      const rows = activePane.querySelectorAll("tbody tr.sheet-row:not(.sheet-header-row)");
+      rows.forEach(r => {{
+        const text = r.getAttribute("data-row-text") || r.innerText.toLowerCase();
+        if (!q || text.includes(q)) {{
+          r.style.display = "";
+        }} else {{
+          r.style.display = "none";
+        }}
+      }});
+    }}
+
+    // Code Visualizer Helpers
+    function copyDocumentContent() {{
+      const area = document.getElementById("raw-code-payload");
+      if (!area) return;
+      navigator.clipboard.writeText(area.value).then(() => {{
+        showToast("Copied content to clipboard!");
+      }}).catch(err => {{
+        console.error("Clipboard copy failed:", err);
+        showToast("Failed to copy to clipboard");
+      }});
     }}
 
     // Auto-scroll active topic into center view on load

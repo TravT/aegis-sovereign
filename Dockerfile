@@ -24,7 +24,10 @@ RUN pip install --no-cache-dir \
     "requests>=2.31.0" \
     "pyyaml>=6.0" \
     "watchdog>=4.0.0" \
-    "fastembed>=0.3.0"
+    "fastembed>=0.3.0" \
+    "python-docx>=1.1.0" \
+    "openpyxl>=3.1.0" \
+    "xlrd>=2.0.0"
 
 LABEL org.opencontainers.image.source="https://github.com/TravT/aegis-sovereign"
 LABEL org.opencontainers.image.description="Aegis Sovereign Knowledge Appliance (AS)"
