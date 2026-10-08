@@ -332,7 +332,7 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                     break
                 virtual_uri = unquoted
             try:
-                entry = self.manager.streamer.resolve_virtual_uri(virtual_uri)
+                entry = self.manager.archive_streamer.resolve_virtual_uri(virtual_uri)
                 raw_bytes = getattr(entry, "raw_bytes", b"")
                 filename = posixpath.basename(getattr(entry, "entry_name", "download.bin"))
                 ext = filename.split(".")[-1].lower() if "." in filename else ""
