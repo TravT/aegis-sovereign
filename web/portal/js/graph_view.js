@@ -27,7 +27,7 @@
     { id: "entity", label: "Alarms · MML · KPIs", modes: [["theme", "Entity type"]] },
     { id: "wiki", label: "Homelab wiki", modes: [["kind", "Note type"], ["theme", "Domain"]] },
   ];
-  const NODE_COLUMNS = ["label", "kind", "group", "depth", "theme", "n_desc", "degree", "see_also", "x", "y", "x3", "y3", "z3"];
+  const NODE_COLUMNS = ["label", "kind", "group", "depth", "theme", "n_desc", "degree", "see_also", "uri", "x", "y", "x3", "y3", "z3"];
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => (typeof escapeHtml === "function" ? escapeHtml(String(s)) : String(s).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";"));
@@ -49,7 +49,7 @@
         let i = this.idx.get(n.id[k]);
         if (i === undefined) {
           i = this.ids.length; this.ids.push(n.id[k]); this.idx.set(n.id[k], i); this.childCount.push(0);
-          NODE_COLUMNS.forEach((c) => this.col[c].push(n[c] ? n[c][k] : (c === "see_also" ? [] : 0)));
+          NODE_COLUMNS.forEach((c) => this.col[c].push(n[c] ? n[c][k] : (c === "see_also" ? [] : (c === "uri" ? "" : 0))));
         }
         remap[k] = i;
       }
