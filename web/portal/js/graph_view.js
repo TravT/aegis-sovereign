@@ -255,7 +255,7 @@
         for (let i = 0; i < n; i++) { const b = this.scale.bucketOf(i); if (b !== "" && !this.only.has(b)) flags[i] = 1; }
       }
       this.hits.forEach((i) => { if (flags[i] !== 1) flags[i] = 2; });
-      if (this.selected >= 0) {
+      if (this.selected >= 0 && this.adj && this.adj[this.selected]) {
         this.adj[this.selected].forEach((k) => { const e = this.store.edges[k]; const o = e[0] === this.selected ? e[1] : e[0]; if (flags[o] !== 1) flags[o] = 2; });
         flags[this.selected] = 3;
       }
@@ -302,7 +302,8 @@
 
     select(i) {
       this.selected = i;
-      this.gl.setHotEdges(new Uint32Array(i >= 0 ? this.adj[i].flatMap((k) => [this.store.edges[k][0], this.store.edges[k][1]]) : []));
+      const hot = (i >= 0 && this.adj && this.adj[i]) ? this.adj[i].flatMap((k) => [this.store.edges[k][0], this.store.edges[k][1]]) : [];
+      this.gl.setHotEdges(new Uint32Array(hot));
       this.applyFlags(); this.renderInspector(i);
     }
 
@@ -386,7 +387,9 @@
         ? [["Package", c.group[i]], ["Depth", c.depth[i]], ["Descendants", fmt(c.n_desc[i])], ["Console", c.theme[i] || "—"]]
         : [["Type", c.theme[i] || c.kind[i]], ["Connections", fmt(c.degree[i])]];
       const byKind = new Map();
-      this.adj[i].forEach((k) => { const e = this.store.edges[k], out = e[0] === i, peer = out ? e[1] : e[0]; const g = byKind.get(e[2]) || []; g.push({ peer, out }); byKind.set(e[2], g); });
+      if (this.adj && this.adj[i]) {
+        this.adj[i].forEach((k) => { const e = this.store.edges[k], out = e[0] === i, peer = out ? e[1] : e[0]; const g = byKind.get(e[2]) || []; g.push({ peer, out }); byKind.set(e[2], g); });
+      }
       const connections = [...byKind.entries()].map(([kind, list]) => `
         <div class="gv-conn-kind">${esc(kind)} <span class="gv-count">${list.length}</span></div>
         ${list.slice(0, 25).map((p) => `<a href="javascript:void(0)" class="gv-conn" data-peer="${p.peer}">${p.out ? "→" : "←"} ${esc(c.label[p.peer])}</a>`).join("")}
