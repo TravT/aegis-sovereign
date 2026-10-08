@@ -96,3 +96,61 @@ def test_document_viewer_renders_topic_navigation():
     assert "Previous Topic" in html_out
     assert "Next Topic" in html_out
     assert "Chapter Contents" in html_out
+
+
+UPCF_URI = (
+    "archive:///home/tlima/Enterprise_Hub/docs/Hua_Docs/"
+    "UPCF 26.1.0 Product Documentation (Virtual Machine Container) 02 (Online Information Center).zip!"
+    "UPCF 26.1.0 Product Documentation (Virtual Machine Container) 02 (Online Information Center).hwics#"
+    "resources/upcc/description/product_desc/cn_22_03_000002.html"
+)
+
+
+@pytest.mark.skipif(not REAL_VAULT_EXISTS, reason="Real sovereign_router.db required")
+def test_get_topic_hierarchy_upcf_root_positioning():
+    app = SovereignApplianceManager(router_db_path=str(ROUTER_DB_PATH))
+    tree = app.get_topic_hierarchy(virtual_uri=UPCF_URI)
+
+    assert tree is not None
+    assert tree["current"]["name"] == "Product Positioning"
+    assert tree["current"]["package"] == "UPCF"
+    assert "UPCF &gt;" in tree["current"]["path_text"] or "UPCF >" in tree["current"]["path_text"]
+    assert tree["parent"] is not None
+    assert "UPCF" in tree["parent"]["name"]
+
+    # Root Siblings check from same bookmap
+    assert tree["siblings_count"] == 11
+    sib_names = [s["name"] for s in tree["siblings"]]
+    assert "Background" in sib_names
+    assert "Product Positioning" in sib_names
+    assert "Product Architecture" in sib_names
+
+    # Prev and Next pointers
+    assert tree["prev_topic"] is not None
+    assert tree["prev_topic"]["name"] == "Background"
+    assert tree["next_topic"] is not None
+    assert tree["next_topic"]["name"] == "Product Architecture"
+
+
+def test_document_viewer_strips_external_stylesheets_and_rewrites_links():
+    class MockEntry:
+        entry_name = "resources/upcc/description/product_desc/cn_22_03_000002.html"
+        raw_bytes = (
+            b'<link rel="stylesheet" type="text/css" href="../../../public_sys-resources/commonltr.css">\n'
+            b'<p>See <a href="cn_90_03_000013.html">Architecture</a> and figure: '
+            b'<img class="vsd" src="figure/en-us_image_0169024719.png"></p>'
+        )
+
+    html_out = DocumentViewer.format_entry_to_styled_html(
+        MockEntry(),
+        virtual_uri="archive:///path/to/archive.zip!inner.hwics#resources/upcc/description/product_desc/cn_22_03_000002.html"
+    )
+
+    # Stylesheet stripped
+    assert "commonltr.css" not in html_out
+    # Diagram rewritten to /diagrams/
+    assert 'src="/diagrams/en-us_image_0169024719.png"' in html_out
+    # Internal document link rewritten to /archive/view?uri=
+    assert '/archive/view?uri=' in html_out
+    assert 'cn_90_03_000013.html' in html_out
+

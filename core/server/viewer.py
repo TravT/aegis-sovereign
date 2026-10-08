@@ -5,6 +5,7 @@ with Dark Obsidian styling, relative diagram link rewriting, and script strippin
 """
 
 import html
+import posixpath
 import re
 import urllib.parse
 from typing import Any, Optional, Dict, List
@@ -55,6 +56,10 @@ class DocumentViewer:
 
         # Strip scripts that could break iframe / viewer
         raw_body_html = re.sub(r"<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>", "", raw_body_html, flags=re.IGNORECASE)
+        # Strip external/broken link stylesheets (commonltr.css, imagePopup.css, etc.)
+        raw_body_html = re.sub(r'<link\b[^>]*rel=["\']stylesheet["\'][^>]*>', "", raw_body_html, flags=re.IGNORECASE)
+        raw_body_html = re.sub(r'<link\b[^>]*href=["\'][^"\']*\.css["\'][^>]*>', "", raw_body_html, flags=re.IGNORECASE)
+
         # Rewrite relative image references (figure/..., ../images/..., etc.) to diagrams endpoint
         raw_body_html = re.sub(
             r'<img\s+([^>]*?)src=["\'](?:(?:\.\./)+|/)?(?:[^"\'\s]*/)?([^"\'/\s]+\.(?:png|jpg|jpeg|gif|svg|webp))["\']',
@@ -62,6 +67,27 @@ class DocumentViewer:
             raw_body_html,
             flags=re.IGNORECASE,
         )
+
+        # Rewrite relative .html topic links inside the container to stay in viewer
+        if "#" in virtual_uri:
+            archive_base, current_entry = virtual_uri.split("#", 1)
+            entry_dir = posixpath.dirname(current_entry)
+
+            def _rewrite_href(m: re.Match) -> str:
+                prefix = m.group(1)
+                href = m.group(2)
+                if href.startswith(("#", "http://", "https://", "mailto:", "javascript:", "/")):
+                    return m.group(0)
+                target_entry = posixpath.normpath(posixpath.join(entry_dir, href)).lstrip("/")
+                new_uri = f"{archive_base}#{target_entry}"
+                return f'<a {prefix}href="/archive/view?uri={urllib.parse.quote(new_uri)}"'
+
+            raw_body_html = re.sub(
+                r'<a\s+([^>]*?)href=["\']([^"\']+\.html?(?:#[^"\']*)?)["\']',
+                _rewrite_href,
+                raw_body_html,
+                flags=re.IGNORECASE,
+            )
 
         nav_html = ""
         bottom_nav_html = ""
@@ -71,6 +97,7 @@ class DocumentViewer:
             prev_t = topic_hierarchy.get("prev_topic")
             next_t = topic_hierarchy.get("next_topic")
             sibs = topic_hierarchy.get("siblings") or []
+            children = topic_hierarchy.get("children") or []
 
             path_text = cur.get("path_text") or cur.get("name") or ""
             breadcrumb_html = (
@@ -85,6 +112,8 @@ class DocumentViewer:
             if parent and parent.get("uri"):
                 par_url = f"/archive/view?uri={urllib.parse.quote(parent['uri'])}"
                 buttons.append(f'<a href="{par_url}" class="nav-step-btn parent-btn" title="Up to Chapter: {html.escape(parent["name"])}">⬆ Chapter: {html.escape(parent["name"])}</a>')
+            elif parent and parent.get("name"):
+                buttons.append(f'<span class="nav-step-btn parent-btn" style="opacity: 0.7; cursor: default;">📖 {html.escape(parent["name"])}</span>')
             if next_t and next_t.get("uri"):
                 n_url = f"/archive/view?uri={urllib.parse.quote(next_t['uri'])}"
                 buttons.append(f'<a href="{n_url}" class="nav-step-btn next-btn" title="Next: {html.escape(next_t["name"])}">Next: {html.escape(next_t["name"])} ➡</a>')
@@ -112,12 +141,34 @@ class DocumentViewer:
                 </details>
                 """
 
+            children_html = ""
+            if children:
+                child_items: List[str] = []
+                for c in children:
+                    c_name = html.escape(c.get("name") or "Subtopic")
+                    c_uri = c.get("uri")
+                    if c_uri:
+                        c_url = f"/archive/view?uri={urllib.parse.quote(c_uri)}"
+                        child_items.append(f'<li><a href="{c_url}">📄 {c_name}</a></li>')
+                    else:
+                        child_items.append(f'<li class="muted-sib">📄 {c_name}</li>')
+
+                children_html = f"""
+                <details class="chapter-siblings-accordion" open style="margin-top: 0.65rem;">
+                  <summary>📂 Subtopics &amp; Sections in this Chapter ({len(children)} Sections)</summary>
+                  <ul class="siblings-list">
+                    {"".join(child_items)}
+                  </ul>
+                </details>
+                """
+
             buttons_strip = f'<div class="nav-buttons-strip">{" ".join(buttons)}</div>' if buttons else ""
             nav_html = f"""
             <nav class="topic-nav-container">
               {breadcrumb_html}
               {buttons_strip}
               {siblings_html}
+              {children_html}
             </nav>
             """
             bottom_nav_html = f"""

@@ -680,7 +680,7 @@ class SovereignApplianceManager:
 
                 # 2. Get Topic Node
                 node = cur.execute(
-                    "SELECT topic_id, package, name, depth, path_text FROM topic_nodes WHERE topic_id = ?",
+                    "SELECT topic_id, package, name, depth, source, path_text FROM topic_nodes WHERE topic_id = ?",
                     (topic_id,)
                 ).fetchone()
 
@@ -695,16 +695,31 @@ class SovereignApplianceManager:
                 """, (topic_id,)).fetchone()
 
                 # 4. Get Siblings
-                sib_rows = cur.execute("""
-                    SELECT es.child AS topic_id, s.name,
-                           (SELECT doc_identifier FROM document_records WHERE topic_id = es.child LIMIT 1) AS uri,
-                           (SELECT title FROM document_records WHERE topic_id = es.child LIMIT 1) AS title
-                    FROM topic_edges e
-                    JOIN topic_edges es ON es.parent = e.parent AND es.is_primary = 1
-                    JOIN topic_nodes s ON s.topic_id = es.child
-                    WHERE e.child = ? AND e.is_primary = 1
-                    ORDER BY es.rowid ASC
-                """, (topic_id,)).fetchall()
+                if parent_row and parent_row["topic_id"]:
+                    sib_rows = cur.execute("""
+                        SELECT es.child AS topic_id, s.name,
+                               (SELECT doc_identifier FROM document_records WHERE topic_id = es.child LIMIT 1) AS uri,
+                               (SELECT title FROM document_records WHERE topic_id = es.child LIMIT 1) AS title
+                        FROM topic_edges es
+                        JOIN topic_nodes s ON s.topic_id = es.child
+                        WHERE es.parent = ? AND es.is_primary = 1
+                        ORDER BY es.rowid ASC
+                    """, (parent_row["topic_id"],)).fetchall()
+                elif node:
+                    # Root topics sharing the same source bookmap/package
+                    sib_rows = cur.execute("""
+                        SELECT s.topic_id, s.name,
+                               (SELECT doc_identifier FROM document_records WHERE topic_id = s.topic_id LIMIT 1) AS uri,
+                               (SELECT title FROM document_records WHERE topic_id = s.topic_id LIMIT 1) AS title
+                        FROM topic_nodes s
+                        JOIN topic_edges es ON es.child = s.topic_id AND es.is_primary = 1
+                        WHERE es.parent IS NULL
+                          AND s.source = ?
+                          AND s.package = ?
+                        ORDER BY es.rowid ASC
+                    """, (node["source"], node["package"])).fetchall()
+                else:
+                    sib_rows = []
 
                 # 5. Get Children
                 child_rows = cur.execute("""
@@ -734,17 +749,30 @@ class SovereignApplianceManager:
                 prev_topic = sib_list[cur_idx - 1] if cur_idx > 0 else None
                 next_topic = sib_list[cur_idx + 1] if (cur_idx >= 0 and cur_idx < len(sib_list) - 1) else None
 
+                parent_data = dict(parent_row) if parent_row else None
+                if not parent_data and node:
+                    parent_data = {
+                        "topic_id": node["source"],
+                        "name": f"{node['package']} Product Documentation" if node["package"] else "Documentation Root",
+                        "title": f"{node['package']} Manual" if node["package"] else "Manual",
+                        "uri": None,
+                    }
+
+                path_display = node["path_text"] if node else None
+                if path_display and node and node["package"] and not path_display.startswith(node["package"]):
+                    path_display = f"{node['package']} > {path_display}"
+
                 return {
                     "current": {
                         "topic_id": topic_id,
                         "name": node["name"] if node else (title or topic_id),
                         "title": title or (node["name"] if node else topic_id),
                         "uri": virtual_uri,
-                        "path_text": node["path_text"] if node else None,
+                        "path_text": path_display,
                         "package": node["package"] if node else None,
                         "depth": node["depth"] if node else None
                     },
-                    "parent": dict(parent_row) if parent_row else None,
+                    "parent": parent_data,
                     "prev_topic": prev_topic,
                     "next_topic": next_topic,
                     "siblings_count": len(sib_list),

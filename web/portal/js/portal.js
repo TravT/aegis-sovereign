@@ -492,7 +492,7 @@ function showPortalToast(msg) {
           return;
         }
         const data = await resp.json();
-        if (!data || !data.current || (!data.prev_topic && !data.next_topic && (!data.siblings || data.siblings.length <= 1))) {
+        if (!data || !data.current) {
           treeContainer.style.display = "none";
           return;
         }
@@ -503,6 +503,8 @@ function showPortalToast(msg) {
         }
         if (data.parent && data.parent.uri) {
           navBtns += `<button type="button" class="inspector-nav-btn parent" onclick="openSourceInInspector('${escapeHtml(data.parent.uri)}')" title="Chapter: ${escapeHtml(data.parent.name)}">⬆ ${escapeHtml(data.parent.name)}</button>`;
+        } else if (data.parent && data.parent.name) {
+          navBtns += `<span class="inspector-nav-badge" title="Manual Root">📖 ${escapeHtml(data.parent.name)}</span>`;
         }
         if (data.next_topic && data.next_topic.uri) {
           navBtns += `<button type="button" class="inspector-nav-btn next" onclick="openSourceInInspector('${escapeHtml(data.next_topic.uri)}')" title="Next: ${escapeHtml(data.next_topic.name)}">Next: ${escapeHtml(data.next_topic.name)} ➡</button>`;
@@ -524,6 +526,21 @@ function showPortalToast(msg) {
           `;
         }
 
+        let childList = "";
+        if (data.children && data.children.length > 0) {
+          childList = `
+            <details class="inspector-tree-accordion" open style="margin-top: 0.45rem;">
+              <summary>📂 Subtopics &amp; Sections (${data.children.length})</summary>
+              <ul class="inspector-sib-list">
+                ${data.children.map(c => {
+                  if (c.uri) return `<li><a href="javascript:void(0)" onclick="openSourceInInspector('${escapeHtml(c.uri)}')">📄 ${escapeHtml(c.name)}</a></li>`;
+                  return `<li>📄 ${escapeHtml(c.name)}</li>`;
+                }).join("")}
+              </ul>
+            </details>
+          `;
+        }
+
         treeContainer.style.display = "block";
         treeContainer.innerHTML = `
           <div class="topic-strip-header">
@@ -531,6 +548,7 @@ function showPortalToast(msg) {
           </div>
           <div class="topic-nav-buttons">${navBtns}</div>
           ${sibList}
+          ${childList}
         `;
       } catch (e) {
         treeContainer.style.display = "none";
