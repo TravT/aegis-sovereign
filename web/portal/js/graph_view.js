@@ -66,7 +66,7 @@
   class GraphView {
     constructor() {
       this.store = new Store(); this.layer = "tree"; this.dims = "2d"; this.colorBy = "package";
-      this.clearance = "restricted"; this.showAll = false; this.meta = null;
+      this.clearance = "restricted"; this.showAll = true; this.meta = null;
       this.selected = -1; this.hover = -1; this.only = null; this.hits = new Set();
       this.ready = false; this.busy = 0; this.force = null;
     }
@@ -402,9 +402,9 @@
         <table class="gv-facts">${rows.map((r) => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join("")}</table>
         <div class="gv-actions">
           ${viewerUrl ? `<a href="${viewerUrl}" target="_blank" class="action-btn primary-gold" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:0.4rem; font-weight:700;" id="gv-view-doc">📖 Open Article in Viewer ↗</a>` : ""}
-          ${this.isExpandable(i) ? `<button type="button" class="action-btn" id="gv-expand">+ Expand ${fmt(c.n_desc[i])} descendants</button>` : ""}
-          <button type="button" class="action-btn" id="gv-center">⛶ Center</button>
-          <button type="button" class="action-btn primary-emerald" id="gv-search-node">🔍 Run Prong 1/2 search on node</button>
+          ${this.isExpandable(i) ? `<button type="button" class="action-btn" id="gv-expand">➕ Expand ${fmt(c.n_desc[i])} descendants</button>` : ""}
+          <button type="button" class="action-btn" id="gv-center">⛶ Center Node</button>
+          <button type="button" class="action-btn primary-emerald" id="gv-search-node">🔍 Run Search on Node</button>
         </div>
         ${seeAlso.length ? `<div class="sec-block-title">📖 Described in the manuals (${seeAlso.length})</div><div class="gv-topics" id="gv-topics"></div>` : ""}
         <div class="sec-block-title">🔗 Connections (${this.adj[i].length})</div>

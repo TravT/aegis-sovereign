@@ -462,20 +462,28 @@ class SovereignArchiveStreamer:
         entries: List[ArchiveEntry] = []
         cumulative_bytes = 0
 
-        # v2 Fast-Path: O(1) dictionary lookup when resolving a specific virtual_uri target_entry
-        if target_entry is not None and target_entry in zf.NameToInfo:
-            self._validate_entry_path(target_entry)
-            info = zf.NameToInfo[target_entry]
-            if not info.is_dir() and not info.filename.endswith("/"):
-                ratio = self._validate_sizes_and_ratio(
-                    compressed_size=info.compress_size,
-                    uncompressed_size=info.file_size,
-                    cumulative_uncompressed=0,
-                )
-                content_bytes = self._read_member_bytes_bounded(
-                    zf=zf, info=info, max_bytes=self.max_entry_bytes, cumulative_bytes=0
-                )
-                return [self._entry_from_member(info, content_bytes, archive_path_str, ratio)]
+        # v2 Fast-Path: O(1) dictionary lookup or case-insensitive fallback when resolving a specific virtual_uri target_entry
+        if target_entry is not None:
+            actual_entry = target_entry if target_entry in zf.NameToInfo else None
+            if actual_entry is None:
+                target_lower = posixpath.normpath(target_entry).lstrip("/").lower()
+                for name in zf.NameToInfo:
+                    if name.lower() == target_lower or name.lower().endswith("/" + target_lower):
+                        actual_entry = name
+                        break
+            if actual_entry is not None and actual_entry in zf.NameToInfo:
+                self._validate_entry_path(actual_entry)
+                info = zf.NameToInfo[actual_entry]
+                if not info.is_dir() and not info.filename.endswith("/"):
+                    ratio = self._validate_sizes_and_ratio(
+                        compressed_size=info.compress_size,
+                        uncompressed_size=info.file_size,
+                        cumulative_uncompressed=0,
+                    )
+                    content_bytes = self._read_member_bytes_bounded(
+                        zf=zf, info=info, max_bytes=self.max_entry_bytes, cumulative_bytes=0
+                    )
+                    return [self._entry_from_member(info, content_bytes, archive_path_str, ratio)]
 
         for info in zf.infolist():
             # Validate path traversal on EVERY member (including directories)
@@ -790,7 +798,12 @@ class SovereignArchiveStreamer:
                     inner_info = inner_zf.getinfo(inner_entry)
                     inner_bytes = inner_zf.read(inner_info)
                 except KeyError:
-                    matching_names = [n for n in inner_zf.namelist() if n == inner_entry or n.endswith("/" + inner_entry)]
+                    target_lower = inner_entry.lower()
+                    matching_names = [
+                        n for n in inner_zf.namelist()
+                        if n == inner_entry or n.endswith("/" + inner_entry)
+                        or n.lower() == target_lower or n.lower().endswith("/" + target_lower)
+                    ]
                     if not matching_names:
                         raise KeyError(
                             f"Inner entry {inner_entry!r} not found in nested container {outer_entry!r}"
@@ -827,9 +840,16 @@ class SovereignArchiveStreamer:
                 target_entry=norm_target,
             )
             if not matches:
-                raise KeyError(
-                    f"Entry {clean_internal!r} not found in archive {archive_path_str!r}"
-                )
+                target_lower = norm_target.lower()
+                all_entries = self._dispatch_archive(archive_path=archive_path_str, target_entry=None)
+                matches = [
+                    e for e in all_entries
+                    if e.entry_name.lower() == target_lower or e.entry_name.lower().endswith("/" + target_lower)
+                ]
+                if not matches:
+                    raise KeyError(
+                        f"Entry {clean_internal!r} not found in archive {archive_path_str!r}"
+                    )
         entry = matches[0]
         if sub_target:
             setattr(entry, "sub_target", sub_target)

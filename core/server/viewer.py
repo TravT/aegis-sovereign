@@ -513,13 +513,54 @@ class DocumentViewer:
                     flags=re.IGNORECASE,
                 )
 
-            # Rewrite relative .html topic links inside the container to stay in viewer
+            # Rewrite relative topic links and embedded document attachments inside the container
             if "#" in virtual_uri:
                 archive_base, current_entry = virtual_uri.split("#", 1)
                 entry_dir = posixpath.dirname(current_entry)
 
-                def _rewrite_href(m: re.Match) -> str:
-                    prefix = m.group(1)
+                def _rewrite_attachment_or_link(m: re.Match) -> str:
+                    prefix = m.group(1) or ""
+                    href = m.group(2)
+                    suffix = m.group(3) or ""
+                    inner_content = m.group(4) if len(m.groups()) >= 4 else ""
+                    if href.startswith(("#", "http://", "https://", "mailto:", "javascript:", "/")):
+                        return m.group(0)
+                    target_entry = posixpath.normpath(posixpath.join(entry_dir, href)).lstrip("/")
+                    new_uri = f"{archive_base}#{target_entry}"
+                    clean_target = target_entry.split("?")[0].split("#")[0]
+                    ext = posixpath.splitext(clean_target)[1].lower()
+
+                    if ext in (".xlsx", ".xls", ".xlsm", ".docx", ".doc", ".pdf", ".txt", ".csv", ".zip"):
+                        view_url = f"/archive/view?uri={urllib.parse.quote(new_uri)}"
+                        raw_url = f"/archive/raw?uri={urllib.parse.quote(new_uri)}&download=1"
+                        icon = "📊" if ext in (".xlsx", ".xls", ".xlsm") else ("📘" if ext in (".docx", ".doc") else ("📕" if ext == ".pdf" else ("📜" if ext == ".txt" else "📦")))
+                        disp_name = inner_content.strip() or posixpath.basename(target_entry)
+                        ext_clean = ext.upper().lstrip(".")
+                        return (
+                            f'<div class="embedded-attachment-plate">'
+                            f'  <div class="attachment-plate-icon">{icon}</div>'
+                            f'  <div class="attachment-plate-details">'
+                            f'    <div class="attachment-plate-title">{html.escape(disp_name)}</div>'
+                            f'    <div class="attachment-plate-meta">Embedded Manual Artifact ({ext_clean}) • Zero-Copy Stream</div>'
+                            f'  </div>'
+                            f'  <div class="attachment-plate-actions">'
+                            f'    <a href="{view_url}" class="plate-btn preview-btn" title="View interactive document online">👁️ View Online</a>'
+                            f'    <a href="{raw_url}" class="plate-btn download-btn" download title="Download raw attachment">⬇️ Download</a>'
+                            f'  </div>'
+                            f'</div>'
+                        )
+
+                    return f'<a {prefix}href="/archive/view?uri={urllib.parse.quote(new_uri)}"{suffix}>{inner_content}</a>'
+
+                raw_body_html = re.sub(
+                    r'<a\s+([^>]*?)href=["\']([^"\']+\.(?:html?|xlsx?|xlsm|docx?|pdf|txt|csv|zip)(?:#[^"\']*)?)["\']([^>]*)>(.*?)<\/a>',
+                    _rewrite_attachment_or_link,
+                    raw_body_html,
+                    flags=re.IGNORECASE | re.DOTALL,
+                )
+
+                def _rewrite_href_simple(m: re.Match) -> str:
+                    prefix = m.group(1) or ""
                     href = m.group(2)
                     if href.startswith(("#", "http://", "https://", "mailto:", "javascript:", "/")):
                         return m.group(0)
@@ -529,7 +570,7 @@ class DocumentViewer:
 
                 raw_body_html = re.sub(
                     r'<a\s+([^>]*?)href=["\']([^"\']+\.html?(?:#[^"\']*)?)["\']',
-                    _rewrite_href,
+                    _rewrite_href_simple,
                     raw_body_html,
                     flags=re.IGNORECASE,
                 )
@@ -627,21 +668,21 @@ class DocumentViewer:
                         sub_html = _render_topic_sublist(tid, depth + 1)
                         disp = "display: block;" if is_expanded else "display: none;"
                         items.append(
-                            f'<li class="{" ".join(cls_list)}" id="node-{tid}" data-title="{n_name.lower()}">'
+                            f'<li class="{" ".join(cls_list)}" data-topic-id="{html.escape(str(tid), quote=True)}" data-title="{n_name.lower()}">'
                             f'<div class="node-row" style="padding-left: {pad_left}px;">'
-                            f'<span class="node-toggle" onclick="toggleTopicChildren(event, \'{tid}\')">{chevron}</span>'
+                            f'<span class="node-toggle" onclick="toggleTopicChildren(event)">{chevron}</span>'
                             f'<span class="node-icon">📁</span>'
                             f'{link_html}'
                             f'<span class="node-badge">{child_count}</span>'
                             f'</div>'
-                            f'<ul class="node-children-list" id="children-{tid}" style="{disp}">{sub_html}</ul>'
+                            f'<ul class="node-children-list" style="{disp}">{sub_html}</ul>'
                             f'</li>'
                         )
                     else:
                         cls_list.append("leaf-node")
                         marker = "●" if is_act else "📄"
                         items.append(
-                            f'<li class="{" ".join(cls_list)}" id="node-{tid}" data-title="{n_name.lower()}">'
+                            f'<li class="{" ".join(cls_list)}" data-topic-id="{html.escape(str(tid), quote=True)}" data-title="{n_name.lower()}">'
                             f'<div class="node-row" style="padding-left: {pad_left}px;">'
                             f'<span class="node-spacer"></span>'
                             f'<span class="node-icon">{marker}</span>'
@@ -1406,6 +1447,84 @@ class DocumentViewer:
       font-family: var(--font-mono);
       color: var(--text-muted);
     }}
+    .embedded-attachment-plate {
+      display: flex;
+      align-items: center;
+      gap: 1.15rem;
+      background: linear-gradient(135deg, rgba(16, 24, 42, 0.95) 0%, rgba(30, 41, 59, 0.88) 100%);
+      border: 1px solid rgba(56, 189, 248, 0.28);
+      border-radius: 12px;
+      padding: 1.1rem 1.35rem;
+      margin: 1.35rem 0;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+      transition: all 0.2s ease;
+    }
+    .embedded-attachment-plate:hover {
+      border-color: rgba(56, 189, 248, 0.6);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px rgba(6, 182, 212, 0.15);
+    }
+    .attachment-plate-icon {
+      font-size: 2.2rem;
+      flex: none;
+      line-height: 1;
+    }
+    .attachment-plate-details {
+      flex: 1;
+      min-width: 0;
+    }
+    .attachment-plate-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #FFF;
+      margin-bottom: 0.25rem;
+      word-break: break-word;
+    }
+    .attachment-plate-meta {
+      font-size: 0.76rem;
+      font-family: var(--font-mono);
+      color: var(--cyan);
+      opacity: 0.85;
+    }
+    .attachment-plate-actions {
+      display: flex;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .plate-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.45rem 0.95rem;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .plate-btn.preview-btn {
+      background: rgba(6, 182, 212, 0.18);
+      color: #38BDF8;
+      border: 1px solid rgba(56, 189, 248, 0.45);
+    }
+    .plate-btn.preview-btn:hover {
+      background: rgba(6, 182, 212, 0.35);
+      border-color: #38BDF8;
+      color: #FFF;
+    }
+    .plate-btn.download-btn {
+      background: rgba(245, 158, 11, 0.15);
+      color: #FBBF24;
+      border: 1px solid rgba(245, 158, 11, 0.38);
+    }
+    .plate-btn.download-btn:hover {
+      background: rgba(245, 158, 11, 0.3);
+      border-color: #FBBF24;
+      color: #FFF;
+    }
     .doc-callout {{
       border-radius: 6px;
       padding: 0.85rem 1.1rem;
@@ -1819,10 +1938,19 @@ class DocumentViewer:
         event.stopPropagation();
         event.preventDefault();
       }}
-      const li = document.getElementById("node-" + topicId);
-      const ul = document.getElementById("children-" + topicId);
-      if (!li || !ul) return;
-      const toggleBtn = li.querySelector(".node-toggle");
+      let li = null;
+      if (event && event.currentTarget) {{
+        li = event.currentTarget.closest(".tree-node");
+      }}
+      if (!li && topicId) {{
+        const safeId = String(topicId).replace(/"/g, '\\"');
+        li = document.querySelector(`.tree-node[data-topic-id="${{safeId}}"]`) || document.getElementById("node-" + topicId);
+      }}
+      if (!li) return;
+      const ul = li.querySelector(":scope > .node-children-list");
+      if (!ul) return;
+      const toggleBtn = li.querySelector(":scope > .node-row > .node-toggle") || li.querySelector(".node-toggle");
+      const tid = topicId || li.dataset.topicId || (li.id ? li.id.replace("node-", "") : "");
 
       if (ul.style.display !== "none") {{
         ul.style.display = "none";
@@ -1832,8 +1960,9 @@ class DocumentViewer:
           ul.style.display = "block";
           if (toggleBtn) toggleBtn.textContent = "▼";
         }} else {{
+          if (!tid) return;
           if (toggleBtn) toggleBtn.textContent = "⏳";
-          fetch("/topic/tree?mode=children&parent_id=" + encodeURIComponent(topicId))
+          fetch("/topic/tree?mode=children&parent_id=" + encodeURIComponent(tid))
             .then(res => res.json())
             .then(data => {{
               const children = data.children || [];
@@ -1850,19 +1979,19 @@ class DocumentViewer:
                   const pad = ((c.depth || 2) - 1) * 12 + 6;
                   if (hasSub) {{
                     htmlStr += `
-                      <li class="tree-node folder-node depth-${{c.depth || 2}}" id="node-${{c.topic_id}}" data-title="${{escapeHtml(c.name.toLowerCase())}}">
+                      <li class="tree-node folder-node depth-${{c.depth || 2}}" data-topic-id="${{escapeHtml(c.topic_id)}}" id="node-${{c.topic_id}}" data-title="${{escapeHtml(c.name.toLowerCase())}}">
                         <div class="node-row" style="padding-left: ${{pad}}px;">
-                          <span class="node-toggle" onclick="toggleTopicChildren(event, '${{c.topic_id}}')">▶</span>
+                          <span class="node-toggle" onclick="toggleTopicChildren(event)">▶</span>
                           <span class="node-icon">📁</span>
                           ${{linkOrSpan}}
                           <span class="node-badge">${{c.child_count}}</span>
                         </div>
-                        <ul class="node-children-list" id="children-${{c.topic_id}}" style="display: none;"></ul>
+                        <ul class="node-children-list" style="display: none;"></ul>
                       </li>
                     `;
                   }} else {{
                     htmlStr += `
-                      <li class="tree-node leaf-node depth-${{c.depth || 2}}" id="node-${{c.topic_id}}" data-title="${{escapeHtml(c.name.toLowerCase())}}">
+                      <li class="tree-node leaf-node depth-${{c.depth || 2}}" data-topic-id="${{escapeHtml(c.topic_id)}}" id="node-${{c.topic_id}}" data-title="${{escapeHtml(c.name.toLowerCase())}}">
                         <div class="node-row" style="padding-left: ${{pad}}px;">
                           <span class="node-spacer"></span>
                           <span class="node-icon">📄</span>
@@ -1911,19 +2040,19 @@ class DocumentViewer:
             const pad = ((n.depth || 1) - 1) * 12 + 6;
             if (hasSub) {{
               htmlStr += `
-                <li class="tree-node folder-node depth-${{n.depth || 1}}" id="node-${{n.topic_id}}" data-title="${{escapeHtml(n.name.toLowerCase())}}">
+                <li class="tree-node folder-node depth-${{n.depth || 1}}" data-topic-id="${{escapeHtml(n.topic_id)}}" id="node-${{n.topic_id}}" data-title="${{escapeHtml(n.name.toLowerCase())}}">
                   <div class="node-row" style="padding-left: ${{pad}}px;">
-                    <span class="node-toggle" onclick="toggleTopicChildren(event, '${{n.topic_id}}')">▶</span>
+                    <span class="node-toggle" onclick="toggleTopicChildren(event)">▶</span>
                     <span class="node-icon">📁</span>
                     ${{linkOrSpan}}
                     <span class="node-badge">${{n.child_count}}</span>
                   </div>
-                  <ul class="node-children-list" id="children-${{n.topic_id}}" style="display: none;"></ul>
+                  <ul class="node-children-list" style="display: none;"></ul>
                 </li>
               `;
             }} else {{
               htmlStr += `
-                <li class="tree-node leaf-node depth-${{n.depth || 1}}" id="node-${{n.topic_id}}" data-title="${{escapeHtml(n.name.toLowerCase())}}">
+                <li class="tree-node leaf-node depth-${{n.depth || 1}}" data-topic-id="${{escapeHtml(n.topic_id)}}" id="node-${{n.topic_id}}" data-title="${{escapeHtml(n.name.toLowerCase())}}">
                   <div class="node-row" style="padding-left: ${{pad}}px;">
                     <span class="node-spacer"></span>
                     <span class="node-icon">📄</span>
@@ -1940,6 +2069,7 @@ class DocumentViewer:
           listEl.innerHTML = '<li class="tree-error" style="padding: 0.5rem 1rem; font-size: 0.75rem; color: #EF4444;">Failed to load topics</li>';
         }});
     }}
+
 
     function filterTreeTopics(query) {{
       const q = (query || "").trim().toLowerCase();

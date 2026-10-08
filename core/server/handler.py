@@ -9,6 +9,7 @@ import gzip
 import json
 import logging
 import os
+import posixpath
 import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler
@@ -318,6 +319,57 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                 self._send_json(404, {"error": str(ke)})
             except Exception as e:
                 self._send_json(500, {"error": f"Failed to render document: {e}"})
+        elif parsed.path in ("/archive/raw", "/archive/download"):
+            query_params = urllib.parse.parse_qs(parsed.query)
+            virtual_uri = query_params.get("uri", [""])[0]
+            force_download = query_params.get("download", ["0"])[0] in ("1", "true")
+            if not virtual_uri:
+                self._send_json(400, {"error": "Missing 'uri' query parameter"})
+                return
+            while "%" in virtual_uri:
+                unquoted = urllib.parse.unquote(virtual_uri)
+                if unquoted == virtual_uri:
+                    break
+                virtual_uri = unquoted
+            try:
+                entry = self.manager.streamer.resolve_virtual_uri(virtual_uri)
+                raw_bytes = getattr(entry, "raw_bytes", b"")
+                filename = posixpath.basename(getattr(entry, "entry_name", "download.bin"))
+                ext = filename.split(".")[-1].lower() if "." in filename else ""
+                
+                mime_map = {
+                    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12",
+                    "xls": "application/vnd.ms-excel",
+                    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "doc": "application/msword",
+                    "pdf": "application/pdf",
+                    "txt": "text/plain; charset=utf-8",
+                    "csv": "text/csv; charset=utf-8",
+                    "zip": "application/zip",
+                    "png": "image/png",
+                    "jpg": "image/jpeg",
+                    "jpeg": "image/jpeg",
+                    "gif": "image/gif",
+                    "svg": "image/svg+xml",
+                    "wsdl": "application/xml; charset=utf-8",
+                    "xml": "application/xml; charset=utf-8",
+                    "xsd": "application/xml; charset=utf-8",
+                }
+                content_type = mime_map.get(ext, "application/octet-stream")
+                disp_type = "attachment" if (force_download or content_type == "application/octet-stream") else "inline"
+                
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(raw_bytes)))
+                self.send_header("Content-Disposition", f'{disp_type}; filename="{filename}"')
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(raw_bytes)
+            except KeyError as ke:
+                self._send_json(404, {"error": str(ke)})
+            except Exception as e:
+                self._send_json(500, {"error": f"Failed to stream raw file: {e}"})
         elif parsed.path.startswith("/graph/v2/"):
             self._handle_graph_v2(parsed)
         elif parsed.path == "/graph/topology":

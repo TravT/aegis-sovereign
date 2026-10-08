@@ -15,7 +15,7 @@ from .wiki import WikiLayer
 
 Clearance = Union[str, int, ClearanceLevel]
 
-DEFAULT_LEVELS = 2
+DEFAULT_LEVELS = 8
 MODES = ('clustered', 'all')
 MAX_FIND = 200  # hard cap on find results, whatever limit the caller asks for
 

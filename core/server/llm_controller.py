@@ -16,19 +16,17 @@ logger = logging.getLogger("sovereign_server.llm")
 
 
 class LLMController:
-    """Manages ephemeral on-demand lifecycle of local LLMs (Ollama / llama-cpp) via Nomad API."""
+    """Manages ephemeral on-demand lifecycle of local LLM (llama-cpp) via Nomad API."""
 
     def __init__(
         self,
         nomad_url: Optional[str] = None,
-        ollama_url: Optional[str] = None,
         llama_cpp_url: Optional[str] = None,
         idle_timeout_seconds: float = 600.0,
     ):
         self.nomad_url = (nomad_url or os.getenv("NOMAD_ADDR", "http://127.0.0.1:4646")).rstrip("/")
         # ACL token for scaling the LLM jobs (Nomad policy "llm-scaler"); unset when ACLs are off.
         self.nomad_token = os.getenv("NOMAD_TOKEN", "")
-        self.ollama_url = (ollama_url or os.getenv("SOVEREIGN_OLLAMA_URL", "http://127.0.0.1:11434")).rstrip("/")
         self.llama_cpp_url = (llama_cpp_url or os.getenv("SOVEREIGN_LLAMA_CPP_URL", "http://127.0.0.1:8085")).rstrip("/")
         env_timeout = os.getenv("SOVEREIGN_LLM_IDLE_TIMEOUT")
         self.idle_timeout_seconds = float(env_timeout) if env_timeout is not None else idle_timeout_seconds
@@ -59,10 +57,10 @@ class LLMController:
                         if idle_sec > self.idle_timeout_seconds:
                             logger.info(
                                 "Auto-scaling LLM (%s) to standby after %.0fs idle",
-                                status.get("engine", "ollama"),
+                                status.get("engine", "llama-cpp"),
                                 idle_sec,
                             )
-                            self.scale_engine("stop", engine=status.get("engine", "ollama"))
+                            self.scale_engine("stop", engine=status.get("engine", "llama-cpp"))
                 except Exception as e:
                     logger.debug("LLM idle watcher exception: %s", e)
 
@@ -70,11 +68,8 @@ class LLMController:
         t.start()
 
     def get_status(self, engine: Optional[str] = None) -> Dict[str, Any]:
-        """Probes local Ollama or llama-cpp and Nomad job scale status."""
-        target_engine = (engine or self._active_engine).lower()
-        if "llama-cpp" in target_engine or target_engine.startswith("llama"):
-            return self._get_llama_cpp_status()
-        return self._get_ollama_status()
+        """Probes local llama-cpp and Nomad job scale status."""
+        return self._get_llama_cpp_status()
 
     def _get_ollama_status(self) -> Dict[str, Any]:
         is_responding = False
@@ -192,7 +187,7 @@ class LLMController:
             raise ValueError(f"Invalid action {action!r}, must be 'start', 'stop', or 'status'")
 
         target_count = 1 if action == "start" else 0
-        job_id = "llama-cpp" if ("llama-cpp" in engine.lower() or engine.lower().startswith("llama")) else "ollama"
+        job_id = "llama-cpp"
         group_name = "ai-stack"
 
         payload = {
@@ -220,16 +215,12 @@ class LLMController:
                 except Exception:
                     pass
 
-        self._active_engine = "llama-cpp" if ("llama-cpp" in engine.lower() or engine.lower().startswith("llama")) else "ollama"
+        self._active_engine = "llama-cpp"
         self.record_activity()
 
         if action == "start":
             start_t = time.time()
-            check_url = (
-                f"{self.llama_cpp_url}/health"
-                if ("llama-cpp" in engine.lower() or engine.lower().startswith("llama"))
-                else f"{self.ollama_url}/api/tags"
-            )
+            check_url = f"{self.llama_cpp_url}/health"
             while time.time() - start_t < timeout_seconds:
                 try:
                     req = urllib.request.Request(check_url)
