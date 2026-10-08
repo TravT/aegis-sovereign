@@ -340,7 +340,9 @@
             </span>
             <select id="gv-colorby" aria-label="Colour by"></select>
             <label id="gv-showall-wrap" title="Load every node of the manual trees (about 45,000)"><input type="checkbox" id="gv-showall" checked> Full Article Web (45k)</label>
-            <label><input type="checkbox" id="gv-edges" checked> edges</label>
+            <label title="Toggle hierarchy edges"><input type="checkbox" id="gv-edges" checked> Hierarchy</label>
+            <label title="Toggle companion packages and product family backbone arcs" style="color:#f59e0b; font-weight:600;"><input type="checkbox" id="gv-edges-ecosystem" checked> Family Backbone</label>
+            <label title="Toggle cross-document bridges and shared telecom entity links" style="color:#06b6d4; font-weight:600;"><input type="checkbox" id="gv-edges-relational" checked> Relational Bridges</label>
             <select id="gv-clearance" aria-label="Clearance level" title="Nodes above this clearance are never sent to the browser">
               <option value="public">clearance: public</option>
               <option value="internal">clearance: internal</option>

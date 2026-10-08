@@ -1308,7 +1308,7 @@ class SovereignApplianceManager:
                     ).fetchone()
                     cur_ancestor = p_row["parent"] if (p_row and p_row["parent"]) else None
 
-                parent_prefix = active_path.rsplit(" > ", 1)[0] if (" > " in active_path) else ""
+                ancestor_set = set(active_chain)
                 filter_large = len(nodes_rows) > 3000
 
                 nodes = []
@@ -1316,12 +1316,12 @@ class SovereignApplianceManager:
                     p = r["path_text"] or ""
                     tid = r["topic_id"]
                     is_active = (tid == active_topic_id)
-                    is_ancestor = (tid in active_chain and not is_active)
-                    is_sibling = bool(parent_prefix and " > " in p and p.rsplit(" > ", 1)[0] == parent_prefix)
+                    is_ancestor = (tid in ancestor_set)
+                    is_child_of_ancestor = (r["parent_id"] in ancestor_set)
                     is_child = bool(active_path and p.startswith(active_path + " > "))
                     is_top_level = (r["depth"] <= (2 if active_package.startswith("REL_") else 1))
 
-                    if filter_large and not (is_top_level or is_ancestor or is_active or is_sibling or is_child):
+                    if filter_large and not (is_top_level or is_ancestor or is_child_of_ancestor or is_child):
                         continue
 
                     nodes.append({
@@ -1333,7 +1333,7 @@ class SovereignApplianceManager:
                         "uri": r["uri"] or "",
                         "child_count": r["child_count"],
                         "is_active": is_active,
-                        "is_ancestor": is_ancestor,
+                        "is_ancestor": is_ancestor and not is_active,
                     })
 
                 return {

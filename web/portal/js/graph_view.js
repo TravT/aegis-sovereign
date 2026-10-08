@@ -90,7 +90,9 @@
       $("gv-dim2").onclick = () => this.setDims("2d"); $("gv-dim3").onclick = () => this.setDims("3d");
       $("gv-colorby").onchange = (e) => { this.colorBy = e.target.value; this.recolor(); };
       $("gv-showall").onchange = (e) => { this.showAll = e.target.checked; this.load(); };
-      $("gv-edges").onchange = (e) => { this.edgesOn = e.target.checked; this.gl.edgeAlpha = this.edgesOn ? this.autoEdgeAlpha() : 0; this.gl.requestRender(); };
+      $("gv-edges").onchange = (e) => { this.edgesOn = e.target.checked; this.gl.edgesOn = this.edgesOn; this.gl.edgeAlpha = this.edgesOn ? this.autoEdgeAlpha() : 0; this.gl.requestRender(); };
+      const ecoBox = $("gv-edges-ecosystem"); if (ecoBox) ecoBox.onchange = (e) => { this.gl.ecosystemOn = e.target.checked; this.gl.requestRender(); };
+      const relBox = $("gv-edges-relational"); if (relBox) relBox.onchange = (e) => { this.gl.relationalOn = e.target.checked; this.gl.requestRender(); };
       $("gv-clearance").onchange = async (e) => { this.clearance = e.target.value; await this.loadMeta(); await this.load(); };
       $("gv-zoom-in").onclick = () => this.gl.zoomBy(1.4); $("gv-zoom-out").onclick = () => this.gl.zoomBy(1 / 1.4);
       $("gv-fit").onclick = () => this.gl.fit();
@@ -203,13 +205,29 @@
         const isPkg = this.layer === "tree" && c.kind[i] === "package";
         size[i] = isPkg ? 11 : this.layer === "tree" ? 2.4 + Math.log2(1 + c.n_desc[i]) * 0.6 : 3.4 + Math.min(11, Math.sqrt(c.degree[i]) * 1.1);
       }
-      const edges = new Uint32Array(s.edges.length * 2);
+      const hierEdges = [];
+      const ecoEdges = [];
+      const relEdges = [];
       this.adj = Array.from({ length: n }, () => []);
-      s.edges.forEach((e, k) => { edges[k * 2] = e[0]; edges[k * 2 + 1] = e[1]; this.adj[e[0]].push(k); this.adj[e[1]].push(k); });
+      s.edges.forEach((e, k) => {
+        const sIdx = e[0], tIdx = e[1], kind = e[2];
+        this.adj[sIdx].push(k);
+        this.adj[tIdx].push(k);
+        if (kind === "COMPANION_PACKAGE" || kind === "CORE_NETWORK_PEER") {
+          ecoEdges.push(sIdx, tIdx);
+        } else if (kind === "SHARED_ALARM" || kind === "SHARED_MML" || kind === "FUNCTIONAL_BRIDGE" || kind === "SHARES_ENTITY") {
+          relEdges.push(sIdx, tIdx);
+        } else {
+          hierEdges.push(sIdx, tIdx);
+        }
+      });
+      const edges = new Uint32Array(hierEdges);
+      const ecosystemEdges = new Uint32Array(ecoEdges);
+      const relationalEdges = new Uint32Array(relEdges);
       this.order = Array.from({ length: n }, (_, i) => i).sort((a, b) => size[b] - size[a]).slice(0, 4000);
       this.gl.mode = this.dims; this.gl.pos = pos;
       this.gl.edgeAlpha = this.edgesOn ? this.autoEdgeAlpha() : 0;
-      this.gl.setData({ pos, color, size, edges });
+      this.gl.setData({ pos, color, size, edges, ecosystemEdges, relationalEdges });
       this.applyFlags();
       this.renderLegend();
       if (this.layer !== "tree") this.startForce();
@@ -390,8 +408,19 @@
       if (this.adj && this.adj[i]) {
         this.adj[i].forEach((k) => { const e = this.store.edges[k], out = e[0] === i, peer = out ? e[1] : e[0]; const g = byKind.get(e[2]) || []; g.push({ peer, out }); byKind.set(e[2], g); });
       }
+      const KIND_LABELS = {
+        "COMPANION_PACKAGE": "📦 Product Family (Companion Release)",
+        "CORE_NETWORK_PEER": "🌐 5G Core Network Peer",
+        "FUNCTIONAL_BRIDGE": "🌉 Functional Bridge (Release ↔ HedEx)",
+        "SHARED_ALARM": "🚨 Shared Alarm Handling",
+        "SHARED_MML": "⌨️ Shared MML Command",
+        "SHARES_ENTITY": "🧬 Shared Telecom Entity",
+        "CHILD_OF": "📁 Sub-chapter / Section",
+        "NEXT_TOPIC": "📄 Next Sequential Topic",
+        "SECOND_PARENT": "🔀 Cross-Reference Parent",
+      };
       const connections = [...byKind.entries()].map(([kind, list]) => `
-        <div class="gv-conn-kind">${esc(kind)} <span class="gv-count">${list.length}</span></div>
+        <div class="gv-conn-kind">${esc(KIND_LABELS[kind] || kind)} <span class="gv-count">${list.length}</span></div>
         ${list.slice(0, 25).map((p) => `<a href="javascript:void(0)" class="gv-conn" data-peer="${p.peer}">${p.out ? "→" : "←"} ${esc(c.label[p.peer])}</a>`).join("")}
         ${list.length > 25 ? `<div class="gv-more">+ ${list.length - 25} more</div>` : ""}`).join("");
       const seeAlso = (c.see_also && c.see_also[i]) || [];

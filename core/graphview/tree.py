@@ -1,5 +1,6 @@
 """The topic-tree layer: the part of the manual trees one clearance level may see."""
 
+import re
 import sqlite3
 import threading
 from collections import Counter, defaultdict
@@ -134,6 +135,62 @@ class TreeLayer:
             if len(kids) > 1:
                 for i in range(len(kids) - 1):
                     out_edges.append((kids[i], kids[i + 1], "NEXT_TOPIC"))
+
+        # 1. Product Ecosystem Backbone (companion release packages & 5G core network peers)
+        if PACKAGE_PREFIX + "REL_UPCF" in nodes and PACKAGE_PREFIX + "UPCF" in nodes:
+            out_edges.append((PACKAGE_PREFIX + "REL_UPCF", PACKAGE_PREFIX + "UPCF", "COMPANION_PACKAGE"))
+        if PACKAGE_PREFIX + "REL_USC" in nodes and PACKAGE_PREFIX + "USC" in nodes:
+            out_edges.append((PACKAGE_PREFIX + "REL_USC", PACKAGE_PREFIX + "USC", "COMPANION_PACKAGE"))
+        if PACKAGE_PREFIX + "UPCF" in nodes and PACKAGE_PREFIX + "USC" in nodes:
+            out_edges.append((PACKAGE_PREFIX + "UPCF", PACKAGE_PREFIX + "USC", "CORE_NETWORK_PEER"))
+
+        # 2. Release-to-HedEx Functional Domain Bridges
+        rel_docs = [t for t in topics if t[1].startswith("REL_") and t[3] in (2, 3) and (TOPIC_PREFIX + t[0]) in nodes]
+        hedex_docs = [t for t in topics if not t[1].startswith("REL_") and t[3] in (1, 2) and (TOPIC_PREFIX + t[0]) in nodes]
+        keywords = [
+            ("Health Check", ["Health Check", "OM Reference", "Inspection"]),
+            ("Capacity", ["Capacity", "Deployment", "Scaling"]),
+            ("Upgrade", ["Upgrade", "Routine Maintenance", "Installation"]),
+            ("Communication Matrix", ["Communication Matrix"]),
+            ("Trace Extension", ["Basic O&M", "Message Tracing", "Operations and Maintenance"]),
+            ("Mediation", ["Deployment", "Installation"]),
+        ]
+        for r_tid, r_pkg, r_name, _ in rel_docs:
+            companion_pkg = "UPCF" if "UPCF" in r_pkg else "USC"
+            for kw, target_kws in keywords:
+                if kw.lower() in r_name.lower():
+                    for h_tid, h_pkg, h_name, _ in hedex_docs:
+                        if h_pkg == companion_pkg:
+                            if any(tk.lower() in h_name.lower() for tk in target_kws):
+                                out_edges.append((TOPIC_PREFIX + r_tid, TOPIC_PREFIX + h_tid, "FUNCTIONAL_BRIDGE"))
+                                break
+
+        # 3. In-Memory Entity Co-occurrence Bridges (Alarms & MML Commands)
+        alarm_re = re.compile(r"^(ALM-\d+)")
+        mml_re = re.compile(r"^([A-Z]{2,6}\s+[A-Z0-9_]{2,15})")
+        by_alarm: Dict[str, List[str]] = defaultdict(list)
+        by_mml: Dict[str, List[str]] = defaultdict(list)
+        for tid, pkg, name, depth in topics:
+            nid = TOPIC_PREFIX + tid
+            if nid not in nodes:
+                continue
+            m_alm = alarm_re.match(name)
+            if m_alm:
+                by_alarm[m_alm.group(1)].append(nid)
+            elif not name.startswith("ALM-"):
+                m_mml = mml_re.match(name)
+                if m_mml:
+                    by_mml[m_mml.group(1)].append(nid)
+
+        for alm, nids in by_alarm.items():
+            if len(nids) > 1:
+                for i in range(min(3, len(nids) - 1)):
+                    out_edges.append((nids[i], nids[i + 1], "SHARED_ALARM"))
+
+        for cmd, nids in by_mml.items():
+            if len(nids) > 1:
+                for i in range(min(3, len(nids) - 1)):
+                    out_edges.append((nids[i], nids[i + 1], "SHARED_MML"))
 
         n_desc: Dict[str, int] = {}
         for nid in sorted(nodes, key=lambda n: -nodes[n].depth):  # deepest first

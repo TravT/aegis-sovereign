@@ -116,9 +116,13 @@ void main() { outColor = vColor; }`;
       this.pPoints = program(gl, VS_POINTS, FS_POINTS);
       this.pLines = program(gl, VS_LINES, FS_LINES);
       this.buf = { pos: gl.createBuffer(), color: gl.createBuffer(), size: gl.createBuffer(),
-                   flag: gl.createBuffer(), edges: gl.createBuffer(), hot: gl.createBuffer() };
-      this.vaoPoints = gl.createVertexArray(); this.vaoLines = gl.createVertexArray(); this.vaoHot = gl.createVertexArray();
-      this.n = 0; this.edgeCount = 0; this.hotCount = 0;
+                   flag: gl.createBuffer(), edges: gl.createBuffer(),
+                   ecosystem: gl.createBuffer(), relational: gl.createBuffer(), hot: gl.createBuffer() };
+      this.vaoPoints = gl.createVertexArray(); this.vaoLines = gl.createVertexArray();
+      this.vaoEcosystem = gl.createVertexArray(); this.vaoRelational = gl.createVertexArray();
+      this.vaoHot = gl.createVertexArray();
+      this.n = 0; this.edgeCount = 0; this.ecosystemCount = 0; this.relationalCount = 0; this.hotCount = 0;
+      this.edgesOn = true; this.ecosystemOn = true; this.relationalOn = true;
       this.pos = new Float32Array(0); this.flags = new Uint8Array(0);
       this.mode = "2d";
       this.cam2 = { cx: 0, cy: 0, scale: 1, fit: 1 };
@@ -148,21 +152,43 @@ void main() { outColor = vColor; }`;
     }
 
     /** Upload the graph. pos: Float32Array(3n), color: Float32Array(3n), size: Float32Array(n), edges: Uint32Array(2m). */
-    setData({ pos, color, size, edges }) {
+    setData({ pos, color, size, edges, ecosystemEdges, relationalEdges }) {
       const gl = this.gl;
       this.n = size.length; this.edgeCount = edges.length / 2;
+      this.ecosystemCount = ecosystemEdges ? (ecosystemEdges.length / 2) : 0;
+      this.relationalCount = relationalEdges ? (relationalEdges.length / 2) : 0;
       this.pos = pos; this.flags = new Uint8Array(this.n);
       gl.bindVertexArray(this.vaoPoints);
       this._attr("aPos", this.buf.pos, pos, 3);
       this._attr("aColor", this.buf.color, color, 3);
       this._attr("aSize", this.buf.size, size, 1);
       this._attr("aFlag", this.buf.flag, this.flags, 1, gl.UNSIGNED_BYTE);
+
+      // 1. Hierarchy Lines
       gl.bindVertexArray(this.vaoLines);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buf.pos); this._pointer(this.pLines, "aPos", 3);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buf.color); this._pointer(this.pLines, "aColor", 3);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buf.flag); this._pointer(this.pLines, "aFlag", 1, gl.UNSIGNED_BYTE);
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.buf.edges);
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, edges, gl.STATIC_DRAW);
+
+      // 2. Product Ecosystem Backbone Lines (golden amber)
+      gl.bindVertexArray(this.vaoEcosystem);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.buf.pos); this._pointer(this.pLines, "aPos", 3);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.buf.color); this._pointer(this.pLines, "aColor", 3);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.buf.flag); this._pointer(this.pLines, "aFlag", 1, gl.UNSIGNED_BYTE);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.buf.ecosystem);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ecosystemEdges || new Uint32Array(0), gl.STATIC_DRAW);
+
+      // 3. Relational Cross-Document Bridges (cyan)
+      gl.bindVertexArray(this.vaoRelational);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.buf.pos); this._pointer(this.pLines, "aPos", 3);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.buf.color); this._pointer(this.pLines, "aColor", 3);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.buf.flag); this._pointer(this.pLines, "aFlag", 1, gl.UNSIGNED_BYTE);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.buf.relational);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, relationalEdges || new Uint32Array(0), gl.STATIC_DRAW);
+
+      // 4. Hot / Selected Lines
       gl.bindVertexArray(this.vaoHot);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buf.pos); this._pointer(this.pLines, "aPos", 3);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buf.color); this._pointer(this.pLines, "aColor", 3);
@@ -267,13 +293,32 @@ void main() { outColor = vColor; }`;
       const persp = this.mode === "3d" ? 1 : 0;
       const scale = persp ? this.cam3.fit : Math.pow(Math.max(this.cam2.scale / this.cam2.fit, 0.05), 0.55);
       const liteEdges = this.interacting && this.slow && this.edgeCount > 8000;
-      if (this.edgeCount && !liteEdges) {
+      // 1. Hierarchy Lines
+      if (this.edgeCount && !liteEdges && this.edgesOn !== false) {
         gl.useProgram(this.pLines);
         gl.uniformMatrix4fv(gl.getUniformLocation(this.pLines, "uMVP"), false, this.mvp);
         gl.uniform1f(gl.getUniformLocation(this.pLines, "uAlpha"), this.edgeAlpha);
         gl.uniform4f(gl.getUniformLocation(this.pLines, "uTint"), 0, 0, 0, 0);
         gl.bindVertexArray(this.vaoLines);
         gl.drawElements(gl.LINES, this.edgeCount * 2, gl.UNSIGNED_INT, 0);
+      }
+      // 2. Relational Cross-Document Bridges (vibrant cyan glow)
+      if (this.relationalCount && this.relationalOn !== false) {
+        gl.useProgram(this.pLines);
+        gl.uniformMatrix4fv(gl.getUniformLocation(this.pLines, "uMVP"), false, this.mvp);
+        gl.uniform1f(gl.getUniformLocation(this.pLines, "uAlpha"), 0.75);
+        gl.uniform4f(gl.getUniformLocation(this.pLines, "uTint"), 0.22, 0.74, 0.98, 0.75);
+        gl.bindVertexArray(this.vaoRelational);
+        gl.drawElements(gl.LINES, this.relationalCount * 2, gl.UNSIGNED_INT, 0);
+      }
+      // 3. Product Ecosystem Backbone (golden solar amber arcs)
+      if (this.ecosystemCount && this.ecosystemOn !== false) {
+        gl.useProgram(this.pLines);
+        gl.uniformMatrix4fv(gl.getUniformLocation(this.pLines, "uMVP"), false, this.mvp);
+        gl.uniform1f(gl.getUniformLocation(this.pLines, "uAlpha"), 0.88);
+        gl.uniform4f(gl.getUniformLocation(this.pLines, "uTint"), 0.98, 0.65, 0.12, 0.88);
+        gl.bindVertexArray(this.vaoEcosystem);
+        gl.drawElements(gl.LINES, this.ecosystemCount * 2, gl.UNSIGNED_INT, 0);
       }
       gl.useProgram(this.pPoints);
       gl.uniformMatrix4fv(gl.getUniformLocation(this.pPoints, "uMVP"), false, this.mvp);
