@@ -543,6 +543,28 @@ function showPortalToast(msg) {
           `;
         }
 
+        let fullManualTree = "";
+        if (data.bookmap_tree && data.bookmap_tree.nodes && data.bookmap_tree.nodes.length > 0) {
+          const bm = data.bookmap_tree;
+          fullManualTree = `
+            <details class="inspector-tree-accordion" style="margin-top: 0.45rem;">
+              <summary>📘 Full Manual Outline: ${escapeHtml(bm.manual_title)} (${bm.nodes.length} Sections)</summary>
+              <ul class="inspector-sib-list" style="max-height: 280px; overflow-y: auto;">
+                ${bm.nodes.map(n => {
+                  const pad = Math.max(0, (n.depth - 1) * 12);
+                  if (n.is_active) {
+                    return `<li class="current-topic" style="padding-left: ${pad}px;">● <strong>${escapeHtml(n.name)}</strong> (Viewing)</li>`;
+                  }
+                  if (n.uri) {
+                    return `<li style="padding-left: ${pad}px;"><a href="javascript:void(0)" onclick="openSourceInInspector('${escapeHtml(n.uri)}')">📄 ${escapeHtml(n.name)}</a></li>`;
+                  }
+                  return `<li style="padding-left: ${pad}px; opacity: 0.7;">📁 ${escapeHtml(n.name)}</li>`;
+                }).join("")}
+              </ul>
+            </details>
+          `;
+        }
+
         treeContainer.style.display = "block";
         treeContainer.innerHTML = `
           <div class="topic-strip-header">
@@ -551,6 +573,7 @@ function showPortalToast(msg) {
           <div class="topic-nav-buttons">${navBtns}</div>
           ${sibList}
           ${childList}
+          ${fullManualTree}
         `;
       } catch (e) {
         treeContainer.style.display = "none";

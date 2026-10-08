@@ -68,6 +68,8 @@ def ensure_schema(conn: sqlite3.Connection, rebuild: bool = True) -> None:
             PRIMARY KEY (child, parent)
         );
         CREATE INDEX IF NOT EXISTS idx_topic_edges_parent ON topic_edges(parent);
+        CREATE INDEX IF NOT EXISTS idx_topic_nodes_pkg_src ON topic_nodes(package, source);
+        CREATE INDEX IF NOT EXISTS idx_topic_nodes_source ON topic_nodes(source);
         CREATE TABLE IF NOT EXISTS structure_meta (key TEXT PRIMARY KEY, value TEXT);
         DROP VIEW IF EXISTS topic_paths;
         """

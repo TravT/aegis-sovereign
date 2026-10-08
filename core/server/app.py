@@ -559,9 +559,12 @@ class SovereignApplianceManager:
         """Extracts and renders an authentic HTML/OpenXML archive document with Dark Obsidian styling and topic navigation."""
         entry = self.archive_streamer.resolve_virtual_uri(virtual_uri)
         topic_hierarchy = self.get_topic_hierarchy(virtual_uri=virtual_uri)
-        return DocumentViewer.format_entry_to_styled_html(entry, virtual_uri, topic_hierarchy=topic_hierarchy)
+        bookmap_tree = self.get_package_bookmap_tree(virtual_uri=virtual_uri)
+        return DocumentViewer.format_entry_to_styled_html(
+            entry, virtual_uri, topic_hierarchy=topic_hierarchy, bookmap_tree=bookmap_tree
+        )
 
-    def stream_diagram(self, filename: str) -> Optional[Tuple[str, bytes]]:
+    def stream_diagram(self, filename: str, uri: Optional[str] = None) -> Optional[Tuple[str, bytes]]:
         """Resolves and streams an embedded diagram/image purely from archive in-memory, caching to disk."""
         ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else "png"
         ctypes = {
@@ -574,13 +577,29 @@ class SovereignApplianceManager:
         }
         ctype = ctypes.get(ext, "image/png")
 
-        # 1. Check disk caches first
+        # 1. Direct virtual URI resolution (fastest, exact path)
+        if uri:
+            try:
+                entry = self.archive_streamer.resolve_virtual_uri(uri)
+                if hasattr(entry, "raw_bytes") and entry.raw_bytes:
+                    try:
+                        out_dir = _PROD_VAULT_DIR / "extracted_diagrams"
+                        out_dir.mkdir(parents=True, exist_ok=True)
+                        safe_name = posixpath.basename(filename or uri.split("#")[-1])
+                        (out_dir / safe_name).write_bytes(entry.raw_bytes)
+                    except Exception:
+                        pass
+                    return ctype, entry.raw_bytes
+            except Exception as exc:
+                logger.warning(f"Failed to stream diagram via direct URI {uri}: {exc}")
+
+        # 2. Check disk caches
         for base in (_PROD_VAULT_DIR / "extracted_diagrams", _LEGACY_DATA_DIR / "extracted_diagrams"):
             p = base / filename
             if p.exists() and p.is_file():
                 return ctype, p.read_bytes()
 
-        # 2. Look up virtual URI from sovereign_router.db
+        # 3. Look up virtual URI from sovereign_router.db
         v_uri = None
         db_path = getattr(self.router, "db_path", None)
         if db_path and db_path != ":memory:" and Path(db_path).exists():
@@ -601,7 +620,7 @@ class SovereignApplianceManager:
             except Exception as e:
                 logger.warning(f"Error looking up diagram {filename} in router DB: {e}")
 
-        # 3. If found in router DB, resolve directly with archive_streamer
+        # 4. If found in router DB, resolve directly with archive_streamer
         if v_uri:
             try:
                 entry = self.archive_streamer.resolve_virtual_uri(v_uri)
@@ -616,25 +635,59 @@ class SovereignApplianceManager:
             except Exception as exc:
                 logger.warning(f"Failed to stream diagram via URI {v_uri}: {exc}")
 
-        # 4. Fallback: Search known archive packages in Hua_Docs / monitored sources
+        # 5. Fallback: Search known archive packages across common vendor image sub-directories
         default_hua_dir = Path("/home/tlima/Enterprise_Hub/docs/Hua_Docs")
+        candidate_subpaths = [
+            f"resources/images/{filename}",
+            f"resources/public_sys-resources/{filename}",
+            f"resources/common/{filename}",
+            f"resources/mml/document/figure/{filename}",
+            f"resources/be/alarms/figure/{filename}",
+            f"resources/alarms/figure/{filename}",
+            f"resources/figure/{filename}",
+            f"resources/fenix/figure/{filename}",
+            f"resources/common/fenix/images/{filename}",
+            f"resources/counter/figure/{filename}",
+            f"resources/reference/counters/figure/{filename}",
+        ]
         if default_hua_dir.exists():
             for z_path in default_hua_dir.glob("*.zip"):
                 try:
                     with zipfile.ZipFile(z_path, "r") as ozf:
                         hwics_entries = [n for n in ozf.namelist() if n.lower().endswith(".hwics")]
                         for hw in hwics_entries:
-                            v_cand = f"archive://{z_path}!{hw}#resources/images/{filename}"
+                            # Try candidate subpaths first
+                            for sub in candidate_subpaths:
+                                v_cand = f"archive://{z_path}!{hw}#{sub}"
+                                try:
+                                    entry = self.archive_streamer.resolve_virtual_uri(v_cand)
+                                    if hasattr(entry, "raw_bytes") and entry.raw_bytes:
+                                        try:
+                                            out_dir = _PROD_VAULT_DIR / "extracted_diagrams"
+                                            out_dir.mkdir(parents=True, exist_ok=True)
+                                            (out_dir / filename).write_bytes(entry.raw_bytes)
+                                        except Exception:
+                                            pass
+                                        return ctype, entry.raw_bytes
+                                except Exception:
+                                    pass
+
+                            # If still not found, check inner hwics namelist for matching filename
                             try:
-                                entry = self.archive_streamer.resolve_virtual_uri(v_cand)
-                                if hasattr(entry, "raw_bytes") and entry.raw_bytes:
-                                    try:
-                                        out_dir = _PROD_VAULT_DIR / "extracted_diagrams"
-                                        out_dir.mkdir(parents=True, exist_ok=True)
-                                        (out_dir / filename).write_bytes(entry.raw_bytes)
-                                    except Exception:
-                                        pass
-                                    return ctype, entry.raw_bytes
+                                inner_bytes = ozf.read(hw)
+                                with zipfile.ZipFile(io.BytesIO(inner_bytes), "r") as izf:
+                                    for iname in izf.namelist():
+                                        if iname.endswith("/" + filename) or iname == filename:
+                                            v_cand = f"archive://{z_path}!{hw}#{iname}"
+                                            entry = self.archive_streamer.resolve_virtual_uri(v_cand)
+                                            if hasattr(entry, "raw_bytes") and entry.raw_bytes:
+                                                try:
+                                                    out_dir = _PROD_VAULT_DIR / "extracted_diagrams"
+                                                    out_dir.mkdir(parents=True, exist_ok=True)
+                                                    (out_dir / filename).write_bytes(entry.raw_bytes)
+                                                except Exception:
+                                                    pass
+                                                return ctype, entry.raw_bytes
                             except Exception:
                                 pass
                 except Exception:
@@ -784,6 +837,154 @@ class SovereignApplianceManager:
                 conn.close()
         except Exception as e:
             logger.warning(f"Failed to fetch topic hierarchy for {virtual_uri or topic_id}: {e}")
+            return None
+
+    def get_package_bookmap_tree(
+        self,
+        virtual_uri: str = "",
+        topic_id: str = "",
+        package: str = "",
+        source: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        """Returns the full hierarchical manual tree (bookmap/TOC) for the active manual in a package."""
+        db_path = getattr(self.router, "db_path", None)
+        if not db_path or db_path == ":memory:" or not Path(db_path).exists():
+            return None
+
+        try:
+            conn = sqlite3.connect(db_path, timeout=5.0)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            try:
+                # 1. Resolve topic_id if virtual_uri is provided
+                if not topic_id and virtual_uri:
+                    default_hua_dir = "/home/tlima/Enterprise_Hub/docs/Hua_Docs"
+                    norm_uri = virtual_uri.replace("/tmp/docs_rag_gemini", default_hua_dir)
+                    row = cur.execute(
+                        "SELECT topic_id, title FROM document_records WHERE doc_identifier = ? OR doc_identifier = ? LIMIT 1",
+                        (virtual_uri, norm_uri)
+                    ).fetchone()
+                    if row and row["topic_id"]:
+                        topic_id = row["topic_id"]
+                    else:
+                        entry_suffix = virtual_uri.split("#")[-1]
+                        row = cur.execute(
+                            "SELECT topic_id, title FROM document_records WHERE doc_identifier LIKE ? LIMIT 1",
+                            (f"%{entry_suffix}",)
+                        ).fetchone()
+                        if row and row["topic_id"]:
+                            topic_id = row["topic_id"]
+
+                # 2. Get active node info (if topic_id known)
+                node = None
+                if topic_id:
+                    node = cur.execute(
+                        "SELECT topic_id, package, name, depth, source, path_text FROM topic_nodes WHERE topic_id = ?",
+                        (topic_id,)
+                    ).fetchone()
+
+                if node:
+                    active_package = node["package"]
+                    active_source = node["source"]
+                    active_topic_id = node["topic_id"]
+                    active_path = node["path_text"] or ""
+                else:
+                    active_package = package or "USC"
+                    active_source = source
+                    active_topic_id = topic_id
+                    active_path = ""
+
+                # If no active_source, pick the largest manual in the package
+                if not active_source:
+                    first_src = cur.execute(
+                        "SELECT source FROM topic_nodes WHERE package = ? GROUP BY source ORDER BY count(*) DESC LIMIT 1",
+                        (active_package,)
+                    ).fetchone()
+                    if first_src:
+                        active_source = first_src["source"]
+
+                if not active_source:
+                    return None
+
+                # 3. Query all manuals in the package
+                manuals_rows = cur.execute("""
+                    SELECT tn.source,
+                           COALESCE((SELECT name FROM topic_nodes WHERE source = tn.source AND depth = 1 LIMIT 1), tn.source) as manual_name,
+                           COUNT(*) as topic_count
+                    FROM topic_nodes tn
+                    WHERE package = ?
+                    GROUP BY tn.source
+                    ORDER BY topic_count DESC
+                """, (active_package,)).fetchall()
+
+                manuals = [
+                    {
+                        "source": m["source"],
+                        "name": m["manual_name"],
+                        "count": m["topic_count"],
+                        "is_active": (m["source"] == active_source),
+                    }
+                    for m in manuals_rows
+                ]
+
+                # Manual title
+                active_manual_title = active_source
+                for m in manuals:
+                    if m["is_active"]:
+                        active_manual_title = m["name"]
+                        break
+
+                # 4. Query all topics in the active bookmap (deduplicating multiple document records)
+                nodes_rows = cur.execute("""
+                    SELECT n.topic_id, n.name, n.depth, n.path_text, d.doc_identifier AS uri
+                    FROM topic_nodes n
+                    LEFT JOIN (
+                        SELECT topic_id, min(doc_identifier) AS doc_identifier
+                        FROM document_records
+                        GROUP BY topic_id
+                    ) d ON d.topic_id = n.topic_id
+                    WHERE n.source = ? AND n.package = ?
+                    ORDER BY n.rowid ASC
+                """, (active_source, active_package)).fetchall()
+
+                # If manual is huge (>300 topics like Commands with 10k), filter to active branch & siblings
+                parent_prefix = active_path.rsplit(" > ", 1)[0] if (" > " in active_path) else ""
+                filter_large = len(nodes_rows) > 300
+
+                nodes = []
+                for r in nodes_rows:
+                    p = r["path_text"] or ""
+                    is_active = (r["topic_id"] == active_topic_id)
+                    is_ancestor = bool(active_path and active_path.startswith(p + " > "))
+                    is_sibling = bool(parent_prefix and " > " in p and p.rsplit(" > ", 1)[0] == parent_prefix)
+                    is_child = bool(active_path and p.startswith(active_path + " > "))
+                    is_top_level = (r["depth"] <= 1)
+
+                    if filter_large and not (is_top_level or is_ancestor or is_active or is_sibling or is_child):
+                        continue
+
+                    nodes.append({
+                        "topic_id": r["topic_id"],
+                        "name": r["name"],
+                        "depth": r["depth"],
+                        "path_text": r["path_text"],
+                        "uri": r["uri"] or "",
+                        "is_active": is_active,
+                        "is_ancestor": is_ancestor,
+                    })
+
+                return {
+                    "package": active_package,
+                    "active_source": active_source,
+                    "manual_title": active_manual_title,
+                    "active_topic_id": active_topic_id,
+                    "manuals": manuals,
+                    "nodes": nodes,
+                }
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Error generating package bookmap tree: {e}")
             return None
 
     def scan_onboarding_radar(

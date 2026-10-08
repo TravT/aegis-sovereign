@@ -164,37 +164,58 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                 return
             self._send_json(404, {"error": f"Portal asset '{rel_subpath}' not found"})
             return
-        elif parsed.path.startswith("/diagrams/"):
-            rel_name = urllib.parse.unquote(parsed.path[len("/diagrams/"):]).strip()
-            if not rel_name or ".." in rel_name or "/" in rel_name or "\\" in rel_name:
-                self._send_json(403, {"error": "Invalid diagram filename (path traversal blocked)"})
-                return
-            candidate_paths = [
-                _PROD_VAULT_DIR / "extracted_diagrams" / rel_name,
-                _LEGACY_DATA_DIR / "extracted_diagrams" / rel_name,
-            ]
-            for cp in candidate_paths:
-                if cp.exists() and cp.is_file():
-                    ctype = "image/png"
-                    if rel_name.lower().endswith((".jpg", ".jpeg")):
-                        ctype = "image/jpeg"
-                    elif rel_name.lower().endswith(".gif"):
-                        ctype = "image/gif"
-                    elif rel_name.lower().endswith(".svg"):
-                        ctype = "image/svg+xml"
-                    elif rel_name.lower().endswith(".webp"):
-                        ctype = "image/webp"
-                    self._send_bytes(200, ctype, cp.read_bytes())
+        elif parsed.path == "/diagrams" or parsed.path.startswith("/diagrams/"):
+            query_params = urllib.parse.parse_qs(parsed.query)
+            direct_uri = query_params.get("uri", [""])[0]
+
+            rel_name = ""
+            if parsed.path.startswith("/diagrams/"):
+                rel_name = urllib.parse.unquote(parsed.path[len("/diagrams/"):]).strip()
+
+            if not rel_name and direct_uri:
+                rel_name = posixpath.basename(direct_uri.split("#")[-1])
+
+            # 1. Direct virtual URI streaming (fastest, exact path)
+            if direct_uri:
+                diag = self.manager.stream_diagram(filename=rel_name, uri=direct_uri)
+                if diag:
+                    ctype, img_bytes = diag
+                    self._send_bytes(200, ctype, img_bytes)
                     return
 
-            # On-demand streaming from archive if not found on disk
-            diag = self.manager.stream_diagram(rel_name)
-            if diag:
-                ctype, img_bytes = diag
-                self._send_bytes(200, ctype, img_bytes)
-                return
+            # 2. Filename-based lookup
+            if rel_name:
+                if ".." in rel_name or "/" in rel_name or "\\" in rel_name:
+                    self._send_json(403, {"error": "Invalid diagram filename (path traversal blocked)"})
+                    return
 
-            self._send_json(404, {"error": f"Diagram '{rel_name}' not found"})
+                candidate_paths = [
+                    _PROD_VAULT_DIR / "extracted_diagrams" / rel_name,
+                    _LEGACY_DATA_DIR / "extracted_diagrams" / rel_name,
+                ]
+                for cp in candidate_paths:
+                    if cp.exists() and cp.is_file():
+                        ctype = "image/png"
+                        if rel_name.lower().endswith((".jpg", ".jpeg")):
+                            ctype = "image/jpeg"
+                        elif rel_name.lower().endswith(".gif"):
+                            ctype = "image/gif"
+                        elif rel_name.lower().endswith(".svg"):
+                            ctype = "image/svg+xml"
+                        elif rel_name.lower().endswith(".webp"):
+                            ctype = "image/webp"
+                        self._send_bytes(200, ctype, cp.read_bytes())
+                        return
+
+                # On-demand streaming from archive if not found on disk
+                diag = self.manager.stream_diagram(rel_name)
+                if diag:
+                    ctype, img_bytes = diag
+                    self._send_bytes(200, ctype, img_bytes)
+                    return
+
+            self._send_json(404, {"error": f"Diagram '{rel_name or direct_uri}' not found"})
+            return
         elif parsed.path in ("/health", "/status"):
             self._send_json(200, self.manager.get_status())
         elif parsed.path == "/llm/status":
@@ -203,12 +224,43 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
             query_params = urllib.parse.parse_qs(parsed.query)
             virtual_uri = query_params.get("uri", [""])[0]
             topic_id = query_params.get("topic_id", [""])[0]
+            package = query_params.get("package", [""])[0]
+            source = query_params.get("source", [""])[0]
+            mode = query_params.get("mode", ["hierarchy"])[0]
+
+            if mode in ("bookmap", "full", "package"):
+                try:
+                    tree_data = self.manager.get_package_bookmap_tree(
+                        virtual_uri=virtual_uri, topic_id=topic_id, package=package, source=source
+                    )
+                    if tree_data:
+                        self._send_json(200, tree_data)
+                        return
+                    self._send_json(404, {"error": "Bookmap tree not found"})
+                    return
+                except Exception as e:
+                    self._send_json(500, {"error": f"Failed to fetch bookmap tree: {e}"})
+                    return
+
             if not virtual_uri and not topic_id:
+                if package or source:
+                    try:
+                        tree_data = self.manager.get_package_bookmap_tree(package=package, source=source)
+                        if tree_data:
+                            self._send_json(200, tree_data)
+                            return
+                    except Exception as e:
+                        self._send_json(500, {"error": f"Failed to fetch package tree: {e}"})
+                        return
                 self._send_json(400, {"error": "Missing 'uri' or 'topic_id' query parameter"})
                 return
             try:
                 tree_data = self.manager.get_topic_hierarchy(virtual_uri=virtual_uri, topic_id=topic_id)
                 if tree_data:
+                    # Enrich with package bookmap tree metadata if available
+                    bm = self.manager.get_package_bookmap_tree(virtual_uri=virtual_uri, topic_id=topic_id)
+                    if bm:
+                        tree_data["bookmap_tree"] = bm
                     self._send_json(200, tree_data)
                 else:
                     self._send_json(404, {"error": "Topic hierarchy not found for identifier"})

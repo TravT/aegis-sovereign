@@ -1,7 +1,8 @@
 """
 In-Browser Document Viewer and Sanitized HTML Renderer.
 Extracts and renders authentic HTML, OpenXML, and Markdown documents from archive streams
-with Dark Obsidian styling, relative diagram link rewriting, and script stripping.
+with Dark Obsidian styling, relative diagram link rewriting, HedEx tree sidebar navigation,
+and zero intrusive raw URI clutter.
 """
 
 import html
@@ -12,13 +13,14 @@ from typing import Any, Optional, Dict, List
 
 
 class DocumentViewer:
-    """Renders virtual container archive entries as sanitized, responsive Dark Obsidian HTML."""
+    """Renders virtual container archive entries as sanitized, responsive Dark Obsidian HTML with a full HedEx tree sidebar."""
 
     @staticmethod
     def format_entry_to_styled_html(
         entry: Any,
         virtual_uri: str,
         topic_hierarchy: Optional[Dict[str, Any]] = None,
+        bookmap_tree: Optional[Dict[str, Any]] = None,
     ) -> str:
         name_lower = getattr(entry, "entry_name", "").lower()
         title = getattr(entry, "entry_name", "Document").split("/")[-1]
@@ -60,13 +62,34 @@ class DocumentViewer:
         raw_body_html = re.sub(r'<link\b[^>]*rel=["\']stylesheet["\'][^>]*>', "", raw_body_html, flags=re.IGNORECASE)
         raw_body_html = re.sub(r'<link\b[^>]*href=["\'][^"\']*\.css["\'][^>]*>', "", raw_body_html, flags=re.IGNORECASE)
 
-        # Rewrite relative image references (figure/..., ../images/..., etc.) to diagrams endpoint
-        raw_body_html = re.sub(
-            r'<img\s+([^>]*?)src=["\'](?:(?:\.\./)+|/)?(?:[^"\'\s]*/)?([^"\'/\s]+\.(?:png|jpg|jpeg|gif|svg|webp))["\']',
-            r'<img \1src="/diagrams/\2"',
-            raw_body_html,
-            flags=re.IGNORECASE,
-        )
+        # Rewrite relative image references (figure/..., ../images/..., etc.) to diagrams endpoint with exact archive URI
+        if "#" in virtual_uri:
+            archive_base, current_entry = virtual_uri.split("#", 1)
+            entry_dir = posixpath.dirname(current_entry)
+
+            def _rewrite_img(m: re.Match) -> str:
+                prefix = m.group(1)
+                src = m.group(2)
+                if src.startswith(("http://", "https://", "data:", "/diagrams")):
+                    return m.group(0)
+                target_entry = posixpath.normpath(posixpath.join(entry_dir, src)).lstrip("/")
+                img_uri = f"{archive_base}#{target_entry}"
+                filename = posixpath.basename(target_entry)
+                return f'<img {prefix}src="/diagrams/{urllib.parse.quote(filename)}?uri={urllib.parse.quote(img_uri)}"'
+
+            raw_body_html = re.sub(
+                r'<img\s+([^>]*?)src=["\']([^"\']+\.(?:png|jpg|jpeg|gif|svg|webp))["\']',
+                _rewrite_img,
+                raw_body_html,
+                flags=re.IGNORECASE,
+            )
+        else:
+            raw_body_html = re.sub(
+                r'<img\s+([^>]*?)src=["\'](?:(?:\.\./)+|/)?(?:[^"\'\s]*/)?([^"\'/\s]+\.(?:png|jpg|jpeg|gif|svg|webp))["\']',
+                r'<img \1src="/diagrams/\2"',
+                raw_body_html,
+                flags=re.IGNORECASE,
+            )
 
         # Rewrite relative .html topic links inside the container to stay in viewer
         if "#" in virtual_uri:
@@ -89,21 +112,25 @@ class DocumentViewer:
                 flags=re.IGNORECASE,
             )
 
-        nav_html = ""
+        breadcrumb_html = ""
+        buttons_strip = ""
         bottom_nav_html = ""
+        doc_display_title = title
+
         if topic_hierarchy and topic_hierarchy.get("current"):
             cur = topic_hierarchy["current"]
+            doc_display_title = cur.get("title") or cur.get("name") or title
             parent = topic_hierarchy.get("parent")
             prev_t = topic_hierarchy.get("prev_topic")
             next_t = topic_hierarchy.get("next_topic")
-            sibs = topic_hierarchy.get("siblings") or []
-            children = topic_hierarchy.get("children") or []
 
             path_text = cur.get("path_text") or cur.get("name") or ""
-            breadcrumb_html = (
-                f'<div class="topic-breadcrumbs">📁 <span>{html.escape(path_text)}</span></div>'
-                if path_text else ""
-            )
+            if path_text:
+                parts = [p.strip() for p in path_text.split(">")]
+                crumb_spans = " <span class='crumb-sep'>/</span> ".join(
+                    f"<span class='crumb-item'>{html.escape(p)}</span>" for p in parts
+                )
+                breadcrumb_html = f'<div class="topic-breadcrumbs">{crumb_spans}</div>'
 
             buttons: List[str] = []
             if prev_t and prev_t.get("uri"):
@@ -118,176 +145,459 @@ class DocumentViewer:
                 n_url = f"/archive/view?uri={urllib.parse.quote(next_t['uri'])}"
                 buttons.append(f'<a href="{n_url}" class="nav-step-btn next-btn" title="Next: {html.escape(next_t["name"])}">Next: {html.escape(next_t["name"])} ➡</a>')
 
-            siblings_html = ""
-            if len(sibs) > 1:
-                sib_items: List[str] = []
-                for s in sibs:
-                    s_name = html.escape(s.get("name") or "Topic")
-                    s_uri = s.get("uri")
-                    if s.get("is_current"):
-                        sib_items.append(f'<li class="current-sib"><strong>👉 {s_name} (Current)</strong></li>')
-                    elif s_uri:
-                        s_url = f"/archive/view?uri={urllib.parse.quote(s_uri)}"
-                        sib_items.append(f'<li><a href="{s_url}">{s_name}</a></li>')
-                    else:
-                        sib_items.append(f'<li class="muted-sib">{s_name}</li>')
-
-                siblings_html = f"""
-                <details class="chapter-siblings-accordion">
-                  <summary>📑 Chapter Contents ({len(sibs)} Topics) — Click to browse adjacent sections</summary>
-                  <ul class="siblings-list">
-                    {"".join(sib_items)}
-                  </ul>
-                </details>
+            if buttons:
+                buttons_strip = f'<div class="nav-buttons-strip">{" ".join(buttons)}</div>'
+                bottom_nav_html = f"""
+                <nav class="topic-bottom-nav">
+                  <div class="nav-buttons-strip">{" ".join(buttons)}</div>
+                </nav>
                 """
 
-            children_html = ""
-            if children:
-                child_items: List[str] = []
-                for c in children:
-                    c_name = html.escape(c.get("name") or "Subtopic")
-                    c_uri = c.get("uri")
-                    if c_uri:
-                        c_url = f"/archive/view?uri={urllib.parse.quote(c_uri)}"
-                        child_items.append(f'<li><a href="{c_url}">📄 {c_name}</a></li>')
-                    else:
-                        child_items.append(f'<li class="muted-sib">📄 {c_name}</li>')
+        # Build Sidebar Tree HTML
+        sidebar_tree_html = ""
+        manual_title = "Document Outline"
+        manual_count = 0
+        if bookmap_tree and bookmap_tree.get("nodes"):
+            manual_title = bookmap_tree.get("manual_title") or "Manual Contents"
+            nodes = bookmap_tree["nodes"]
+            manual_count = len(nodes)
+            tree_items = []
+            for n in nodes:
+                depth = max(1, min(6, n.get("depth", 1)))
+                n_name = html.escape(n.get("name") or "Topic")
+                n_uri = n.get("uri")
+                is_act = n.get("is_active", False)
+                is_anc = n.get("is_ancestor", False)
 
-                children_html = f"""
-                <details class="chapter-siblings-accordion" open style="margin-top: 0.65rem;">
-                  <summary>📂 Subtopics &amp; Sections in this Chapter ({len(children)} Sections)</summary>
-                  <ul class="siblings-list">
-                    {"".join(child_items)}
-                  </ul>
-                </details>
-                """
+                cls_list = ["tree-node", f"depth-{depth}"]
+                if is_act:
+                    cls_list.append("active")
+                elif is_anc:
+                    cls_list.append("ancestor")
 
-            buttons_strip = f'<div class="nav-buttons-strip">{" ".join(buttons)}</div>' if buttons else ""
-            nav_html = f"""
-            <nav class="topic-nav-container">
-              {breadcrumb_html}
-              {buttons_strip}
-              {siblings_html}
-              {children_html}
-            </nav>
-            """
-            bottom_nav_html = f"""
-            <nav class="topic-bottom-nav">
-              <div class="nav-buttons-strip">{" ".join(buttons)}</div>
-            </nav>
-            """
+                pad_left = (depth - 1) * 14 + 10
+                if n_uri:
+                    target_url = f"/archive/view?uri={urllib.parse.quote(n_uri)}"
+                    marker = "●" if is_act else "📄"
+                    tree_items.append(
+                        f'<li class="{" ".join(cls_list)}" style="padding-left: {pad_left}px;" data-title="{n_name.lower()}">'
+                        f'<a href="{target_url}" title="{n_name}"><span class="tree-bullet">{marker}</span> {n_name}</a>'
+                        f'</li>'
+                    )
+                else:
+                    marker = "●" if is_act else "📁"
+                    tree_items.append(
+                        f'<li class="{" ".join(cls_list)} muted" style="padding-left: {pad_left}px;" data-title="{n_name.lower()}">'
+                        f'<span><span class="tree-bullet">{marker}</span> {n_name}</span>'
+                        f'</li>'
+                    )
+            sidebar_tree_html = "".join(tree_items)
+
+        # Fallback to local siblings if bookmap_tree not present
+        if not sidebar_tree_html and topic_hierarchy and topic_hierarchy.get("siblings"):
+            sibs = topic_hierarchy["siblings"]
+            cur = topic_hierarchy["current"]
+            manual_title = "Chapter Sections"
+            manual_count = len(sibs)
+            tree_items = []
+            for s in sibs:
+                s_name = html.escape(s.get("name") or "Topic")
+                s_uri = s.get("uri")
+                is_act = (s.get("is_current") or s.get("topic_id") == cur.get("topic_id"))
+                cls_list = ["tree-node", "depth-1"]
+                if is_act:
+                    cls_list.append("active")
+                if s_uri:
+                    target_url = f"/archive/view?uri={urllib.parse.quote(s_uri)}"
+                    tree_items.append(
+                        f'<li class="{" ".join(cls_list)}" style="padding-left: 10px;" data-title="{s_name.lower()}">'
+                        f'<a href="{target_url}"><span class="tree-bullet">{"●" if is_act else "📄"}</span> {s_name}</a>'
+                        f'</li>'
+                    )
+                else:
+                    tree_items.append(
+                        f'<li class="{" ".join(cls_list)} muted" style="padding-left: 10px;" data-title="{s_name.lower()}">'
+                        f'<span><span class="tree-bullet">{"●" if is_act else "📄"}</span> {s_name}</span>'
+                        f'</li>'
+                    )
+            sidebar_tree_html = "".join(tree_items)
 
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{title} — Sovereign Vault Document Viewer</title>
+  <title>{html.escape(doc_display_title)} — Sovereign Knowledge Appliance</title>
   <style>
     :root {{
       --bg: #07090D;
-      --card-bg: #0F1318;
+      --surface: #0C1017;
+      --sidebar-bg: #0B0E14;
+      --card-bg: #111620;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-bright: rgba(255, 255, 255, 0.16);
       --text: #E2E8F0;
-      --text-muted: #94A3B8;
+      --text-muted: #8492A6;
       --gold: #D4AF37;
+      --gold-bright: #F5D77F;
       --cyan: #38BDF8;
       --emerald: #10B981;
-      --border: rgba(255, 255, 255, 0.08);
       --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       --font-mono: "JetBrains Mono", Consolas, monospace;
     }}
-    * {{ box-sizing: border-box; }}
-    body {{
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    html, body {{
       background: var(--bg);
       color: var(--text);
       font-family: var(--font-sans);
+      height: 100%;
+      overflow: hidden;
       line-height: 1.65;
-      padding: 1.5rem;
-      max-width: 1150px;
-      margin: 0 auto;
     }}
-    .viewer-bar {{
-      position: sticky;
-      top: 0;
-      background: rgba(7, 9, 13, 0.94);
-      backdrop-filter: blur(10px);
+
+    /* Top Sticky App Header */
+    .app-header {{
+      height: 52px;
+      background: rgba(11, 14, 20, 0.95);
+      backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
-      padding: 0.8rem 1rem;
-      margin-bottom: 2rem;
       display: flex;
+      align-items: center;
       justify-content: space-between;
-      align-items: center;
+      padding: 0 1.25rem;
       z-index: 100;
-      border-radius: 8px;
     }}
-    .viewer-title {{
-      font-weight: 600;
-      color: var(--gold);
-      font-size: 0.95rem;
+    .header-left {{
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-    }}
-    .viewer-badges {{
-      display: flex;
-      gap: 0.5rem;
-      align-items: center;
-    }}
-    .badge {{
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      font-size: 0.72rem;
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-    }}
-    .badge-gold {{ color: var(--gold); border-color: rgba(212, 175, 55, 0.3); background: rgba(212, 175, 55, 0.08); }}
-    .badge-cyan {{ color: var(--cyan); border-color: rgba(56, 189, 248, 0.3); background: rgba(56, 189, 248, 0.08); }}
-    .btn-action {{
-      background: rgba(212, 175, 55, 0.15);
-      color: var(--gold);
-      border: 1px solid rgba(212, 175, 55, 0.3);
-      padding: 0.35rem 0.75rem;
-      border-radius: 6px;
-      text-decoration: none;
-      font-size: 0.8rem;
-      cursor: pointer;
-    }}
-    .btn-action:hover {{ background: rgba(212, 175, 55, 0.25); }}
-    h1, h2, h3, h4 {{ color: var(--gold); margin-top: 1.8rem; margin-bottom: 0.8rem; }}
-    h1 {{ border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }}
-    p {{ margin: 0.8rem 0; }}
-    table {{
-      width: 100%;
-      border-collapse: collapse;
-      margin: 1.5rem 0;
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
+      gap: 0.85rem;
       overflow: hidden;
     }}
-    th, td {{
+    .toggle-sidebar-btn {{
+      background: rgba(255, 255, 255, 0.05);
       border: 1px solid var(--border);
-      padding: 0.65rem 0.85rem;
-      text-align: left;
+      color: var(--text-muted);
+      border-radius: 6px;
+      padding: 0.35rem 0.6rem;
+      font-size: 0.82rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.15s;
     }}
-    th {{
-      background: rgba(212, 175, 55, 0.1);
+    .toggle-sidebar-btn:hover {{
+      color: #FFF;
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--cyan);
+    }}
+    .header-doc-title {{
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 50vw;
+    }}
+    .topic-breadcrumbs {{
+      font-size: 0.76rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+    .crumb-sep {{ opacity: 0.4; }}
+    .header-actions {{
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex-shrink: 0;
+    }}
+    .btn-header {{
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 6px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.78rem;
+      font-family: var(--font-mono);
+      text-decoration: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s;
+    }}
+    .btn-header:hover {{
+      color: #FFF;
+      background: rgba(255, 255, 255, 0.08);
+      border-color: var(--border-bright);
+    }}
+    .btn-header-primary {{
+      background: rgba(212, 175, 55, 0.12);
+      border-color: rgba(212, 175, 55, 0.3);
+      color: var(--gold-bright);
+    }}
+    .btn-header-primary:hover {{
+      background: rgba(212, 175, 55, 0.22);
+      border-color: var(--gold);
+      color: #FFF;
+    }}
+
+    /* Toast Notification */
+    #doc-toast {{
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      background: #111620;
+      border: 1px solid var(--emerald);
+      color: var(--emerald);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      display: none;
+      z-index: 1000;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    }}
+
+    /* Main Split Layout */
+    .app-body {{
+      display: flex;
+      height: calc(100% - 52px);
+      position: relative;
+    }}
+
+    /* Left Sidebar: Native HedEx Hierarchy Tree */
+    .sidebar {{
+      width: 320px;
+      min-width: 320px;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      transition: margin-left 0.22s ease-in-out;
+    }}
+    .sidebar-collapsed .sidebar {{
+      margin-left: -320px;
+    }}
+    .sidebar-header {{
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }}
+    .manual-tag {{
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--gold-bright);
+      margin-bottom: 0.65rem;
+    }}
+    .manual-count {{
+      font-size: 0.7rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.05);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+    }}
+    .sidebar-search {{
+      position: relative;
+    }}
+    .sidebar-search input {{
+      width: 100%;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.38rem 0.65rem;
+      font-size: 0.8rem;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }}
+    .sidebar-search input:focus {{
+      border-color: var(--cyan);
+      background: rgba(255, 255, 255, 0.07);
+    }}
+    .sidebar-tree-container {{
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.65rem 0.5rem 2rem 0.5rem;
+    }}
+    .tree-list {{
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }}
+    .tree-node {{
+      border-radius: 5px;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      transition: background 0.12s;
+    }}
+    .tree-node a, .tree-node span {{
+      display: flex;
+      align-items: baseline;
+      gap: 0.45rem;
+      padding: 0.35rem 0.5rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      word-break: break-word;
+    }}
+    .tree-node a:hover {{
+      color: #FFF;
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 5px;
+    }}
+    .tree-node.active {{
+      background: rgba(212, 175, 55, 0.12);
+      border: 1px solid rgba(212, 175, 55, 0.35);
+    }}
+    .tree-node.active a {{
+      color: var(--gold-bright);
+      font-weight: 600;
+    }}
+    .tree-node.ancestor a {{
+      color: var(--text);
+      font-weight: 500;
+    }}
+    .tree-node.muted span {{
+      color: var(--text-muted);
+      opacity: 0.75;
+    }}
+    .tree-bullet {{
+      font-size: 0.72rem;
+      opacity: 0.7;
+      flex-shrink: 0;
+    }}
+
+    /* Right Main Content Pane */
+    .content-pane {{
+      flex: 1;
+      height: 100%;
+      overflow-y: auto;
+      padding: 2.2rem 3rem 4rem 3rem;
+      background: var(--surface);
+    }}
+    .content-wrapper {{
+      max-width: 960px;
+      margin: 0 auto;
+    }}
+
+    /* Top Breadcrumb & Step Navigation */
+    .content-nav-bar {{
+      margin-bottom: 2rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border);
+    }}
+    .nav-buttons-strip {{
+      display: flex;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 0.85rem;
+    }}
+    .nav-step-btn {{
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      padding: 0.38rem 0.85rem;
+      border-radius: 6px;
+      text-decoration: none;
+      transition: all 0.15s;
+    }}
+    .nav-step-btn:hover {{
+      background: rgba(56, 189, 248, 0.12);
+      border-color: var(--cyan);
+      color: #FFF;
+    }}
+
+    /* Document Typographical Styles */
+    h1, h2, h3, h4, h5, h6 {{
       color: #FFF;
       font-weight: 600;
+      margin-top: 2rem;
+      margin-bottom: 0.85rem;
+      letter-spacing: -0.01em;
+    }}
+    h1 {{ font-size: 1.85rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }}
+    h2 {{ font-size: 1.45rem; }}
+    h3 {{ font-size: 1.2rem; }}
+    h4 {{ font-size: 1.05rem; }}
+    p {{
+      margin-bottom: 1.15rem;
+      color: #CBD5E1;
+    }}
+    a {{
+      color: var(--cyan);
+      text-decoration: none;
+    }}
+    a:hover {{
+      text-decoration: underline;
     }}
     pre, code {{
       font-family: var(--font-mono);
-      background: #131822;
-      color: var(--cyan);
+      background: #06080B;
+      color: #38BDF8;
       border-radius: 4px;
     }}
-    code {{ padding: 0.15rem 0.35rem; font-size: 0.88em; }}
+    p code, li code {{
+      padding: 0.15rem 0.4rem;
+      font-size: 0.88em;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }}
     pre {{
-      padding: 1rem;
-      overflow-x: auto;
+      padding: 1.25rem;
+      margin: 1.25rem 0;
       border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow-x: auto;
+      line-height: 1.5;
+    }}
+    ul, ol {{
+      margin: 0.75rem 0 1.25rem 1.75rem;
+      color: #CBD5E1;
+    }}
+    li {{ margin-bottom: 0.4rem; }}
+    .table-wrap {{
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }}
+    th, td {{
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }}
+    th {{
+      background: #111620;
+      color: var(--gold-bright);
+      font-weight: 600;
+    }}
+    tr:last-child td {{
+      border-bottom: none;
+    }}
+    tr:hover td {{
+      background: rgba(255, 255, 255, 0.02);
     }}
     img {{
       max-width: 100%;
@@ -295,119 +605,166 @@ class DocumentViewer:
       border-radius: 6px;
       border: 1px solid var(--border);
       margin: 1rem 0;
-      background: #1E293B;
-      padding: 0.5rem;
-    }}
-    .uri-info {{
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      word-break: break-all;
-      background: var(--card-bg);
-      padding: 0.6rem 0.8rem;
-      border-radius: 6px;
-      margin-bottom: 1.5rem;
-      border: 1px solid var(--border);
-    }}
-    .topic-nav-container {{
-      background: rgba(15, 23, 42, 0.7);
-      border: 1px solid rgba(56, 189, 248, 0.25);
-      border-radius: 8px;
-      padding: 0.85rem 1.15rem;
-      margin-bottom: 1.5rem;
-    }}
-    .topic-breadcrumbs {{
-      font-size: 0.82rem;
-      font-family: var(--font-mono);
-      color: var(--cyan);
-      margin-bottom: 0.65rem;
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-      word-break: break-word;
-    }}
-    .nav-buttons-strip {{
-      display: flex;
-      gap: 0.65rem;
-      flex-wrap: wrap;
-      align-items: center;
-    }}
-    .nav-step-btn {{
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-size: 0.82rem;
-      padding: 0.4rem 0.8rem;
-      border-radius: 6px;
-      text-decoration: none;
-      transition: all 0.2s;
-    }}
-    .nav-step-btn:hover {{
-      background: rgba(56, 189, 248, 0.15);
-      border-color: var(--cyan);
-      color: #FFF;
-    }}
-    .chapter-siblings-accordion {{
-      margin-top: 0.75rem;
-      font-size: 0.85rem;
-      cursor: pointer;
-    }}
-    .chapter-siblings-accordion summary {{
-      color: var(--gold);
-      font-weight: 500;
-      user-select: none;
-    }}
-    .siblings-list {{
-      margin: 0.65rem 0 0 1.25rem;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 0.35rem;
-    }}
-    .siblings-list a {{
-      color: var(--text);
-      text-decoration: none;
-    }}
-    .siblings-list a:hover {{
-      color: var(--cyan);
-      text-decoration: underline;
-    }}
-    .current-sib {{
-      color: var(--gold);
+      background: #000;
+      display: inline-block;
     }}
     .topic-bottom-nav {{
-      margin-top: 3rem;
+      margin-top: 3.5rem;
       padding-top: 1.5rem;
       border-top: 1px solid var(--border);
       display: flex;
       justify-content: center;
     }}
+
+    /* Responsive Mobile Layout */
+    @media (max-width: 860px) {{
+      .sidebar {{
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 50;
+        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.8);
+      }}
+      .content-pane {{
+        padding: 1.5rem 1rem;
+      }}
+    }}
   </style>
 </head>
 <body>
-  <div class="viewer-bar">
-    <div class="viewer-title">
-      <span>📖 {title}</span>
+  <!-- Header Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <button type="button" class="toggle-sidebar-btn" onclick="toggleSidebar()" title="Toggle Outline Sidebar (Cmd+B)">
+        <span>◨</span> <span>Outline</span>
+      </button>
+      <div class="header-doc-title" title="{html.escape(doc_display_title)}">
+        📖 {html.escape(doc_display_title)}
+      </div>
     </div>
-    <div class="viewer-badges">
-      <span class="badge badge-gold">O_RDONLY Stream</span>
-      <span class="badge badge-cyan">Zero-Disk Verified</span>
-      <a href="/portal" class="btn-action">⬅ Back to Search Portal</a>
+    <div class="header-actions">
+      <button type="button" class="btn-header" onclick="copyVirtualUri()" title="Copy Virtual Archive URI">
+        <span>📋</span> <span>Copy URI</span>
+      </button>
+      <a href="/portal" class="btn-header btn-header-primary">
+        <span>⬅</span> <span>Back to Search</span>
+      </a>
     </div>
+  </header>
+
+  <!-- Toast Notification -->
+  <div id="doc-toast">Copied URI to clipboard!</div>
+
+  <!-- Body Container -->
+  <div class="app-body" id="app-body">
+    <!-- Left Sidebar: HedEx Tree -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="manual-tag">
+          <span>📘</span>
+          <span title="{html.escape(manual_title)}">{html.escape(manual_title)}</span>
+          <span class="manual-count">{manual_count}</span>
+        </div>
+        <div class="sidebar-search">
+          <input type="text" id="tree-search" placeholder="🔍 Filter manual topics..." oninput="filterTreeTopics(this.value)" />
+        </div>
+      </div>
+      <div class="sidebar-tree-container">
+        <ul class="tree-list" id="tree-list">
+          {sidebar_tree_html}
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Right Main Content -->
+    <main class="content-pane" id="content-pane">
+      <div class="content-wrapper">
+        <div class="content-nav-bar">
+          {breadcrumb_html}
+          {buttons_strip}
+        </div>
+        <article class="document-article">
+          {raw_body_html}
+        </article>
+        {bottom_nav_html}
+      </div>
+    </main>
   </div>
 
-  <div class="uri-info">
-    <strong>Virtual URI:</strong> {virtual_uri}
-  </div>
+  <script>
+    const VIRTUAL_URI = "{html.escape(virtual_uri)}";
 
-  {nav_html}
+    function copyVirtualUri() {{
+      const uri = VIRTUAL_URI;
+      if (navigator.clipboard && navigator.clipboard.writeText) {{
+        navigator.clipboard.writeText(uri).then(() => {{
+          showToast("Virtual URI copied to clipboard!");
+        }}).catch(() => {{
+          fallbackCopyText(uri);
+        }});
+      }} else {{
+        fallbackCopyText(uri);
+      }}
+    }}
 
-  <main class="document-content">
-    {raw_body_html}
-    {bottom_nav_html}
-  </main>
+    function fallbackCopyText(text) {{
+      try {{
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        showToast("Virtual URI copied to clipboard!");
+      }} catch (err) {{
+        showToast("Failed to copy URI.");
+      }}
+    }}
+
+    function showToast(msg) {{
+      const toast = document.getElementById("doc-toast");
+      toast.innerText = msg;
+      toast.style.display = "block";
+      setTimeout(() => {{
+        toast.style.display = "none";
+      }}, 2500);
+    }}
+
+    function toggleSidebar() {{
+      document.getElementById("app-body").classList.toggle("sidebar-collapsed");
+    }}
+
+    function filterTreeTopics(query) {{
+      const q = (query || "").trim().toLowerCase();
+      const items = document.querySelectorAll("#tree-list .tree-node");
+      items.forEach(el => {{
+        const title = el.getAttribute("data-title") || "";
+        if (!q || title.includes(q)) {{
+          el.style.display = "";
+        }} else {{
+          el.style.display = "none";
+        }}
+      }});
+    }}
+
+    // Auto-scroll active topic into center view on load
+    window.addEventListener("DOMContentLoaded", () => {{
+      const activeEl = document.querySelector("#tree-list .tree-node.active");
+      if (activeEl) {{
+        activeEl.scrollIntoView({{ block: "center", behavior: "auto" }});
+      }}
+    }});
+
+    // Keyboard shortcut Cmd+B / Ctrl+B to toggle sidebar
+    document.addEventListener("keydown", (e) => {{
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {{
+        e.preventDefault();
+        toggleSidebar();
+      }}
+    }});
+  </script>
 </body>
 </html>"""
