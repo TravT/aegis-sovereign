@@ -624,6 +624,7 @@
       this.gl.pos.set(saved.pos);
       this.gl.updatePositions();
       this.gl.fit(true);
+      this.status(`${fmt(this.store.size)} nodes · ${fmt(this.store.edges.length)} edges`);
 
       const targetIdx = this.store.idx.get(saved.selectedId);
       if (targetIdx !== undefined) {
