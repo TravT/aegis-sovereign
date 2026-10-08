@@ -654,6 +654,15 @@ class DocumentViewer:
             active_topics_html = _render_topic_sublist(None, 1)
 
             if categories:
+                # If no book is currently marked active, activate the first book in active_category (or first book overall)
+                has_active = any(b.get("is_active") for cat in categories for b in cat.get("books", []))
+                if not has_active and categories:
+                    act_cat_name = bookmap_tree.get("active_category", "")
+                    matched_cat = next((c for c in categories if c.get("name") == act_cat_name), categories[0])
+                    matched_cat["is_active"] = True
+                    if matched_cat.get("books"):
+                        matched_cat["books"][0]["is_active"] = True
+
                 cat_items = []
                 for cat in categories:
                     cat_name = html.escape(cat["name"])
@@ -1011,6 +1020,18 @@ class DocumentViewer:
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }}
+    .tree-search-pkg-badge {{
+      display: inline-block;
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      background: rgba(56, 189, 248, 0.15);
+      color: #38BDF8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      flex-shrink: 0;
     }}
     .sidebar-tree-container {{
       flex: 1;
@@ -1949,7 +1970,7 @@ class DocumentViewer:
         return;
       }}
       searchDebounceTimer = setTimeout(() => {{
-        fetch("/topic/tree?mode=search&q=" + encodeURIComponent(q) + "&package=" + encodeURIComponent(CURRENT_PACKAGE))
+        fetch("/topic/tree?mode=search&q=" + encodeURIComponent(q))
           .then(res => res.json())
           .then(data => {{
             const results = data.results || [];
@@ -1962,12 +1983,14 @@ class DocumentViewer:
               let itemsHtml = "";
               results.forEach(r => {{
                 const url = r.uri ? ("/archive/view?uri=" + encodeURIComponent(r.uri)) : "#";
+                const pkgBadge = r.package ? `<span class="tree-search-pkg-badge">${{escapeHtml(r.package)}}</span>` : "";
                 itemsHtml += `
                   <li class="tree-search-item">
                     <a href="${{url}}" class="tree-search-link" title="${{escapeHtml(r.name)}}">
-                      <span>📄</span> <span>${{escapeHtml(r.name)}}</span>
+                      ${{pkgBadge}}
+                      <span>${{escapeHtml(r.name)}}</span>
                     </a>
-                    <span class="tree-search-meta">${{escapeHtml(r.package || "")}} • depth ${{r.depth}}</span>
+                    <span class="tree-search-meta">${{escapeHtml(r.source || "")}} • depth ${{r.depth}}</span>
                   </li>
                 `;
               }});

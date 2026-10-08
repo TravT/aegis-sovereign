@@ -120,23 +120,63 @@ def radial_layout(
                 SPACING * math.sqrt(total) / math.sqrt(4 * math.pi),
             )
 
+    # Map every node to its ancestor root for per-package 3D galaxy clustering
+    node_to_root: Dict[str, str] = {}
+    for r in roots:
+        stack = [r]
+        while stack:
+            curr = stack.pop()
+            node_to_root[curr] = r
+            stack.extend(children.get(curr, ()))
+
+    root_centers: Dict[str, Tuple[float, float, float]] = {}
+    K = len(roots)
+    R_sep = 750.0 if K > 1 else 0.0
+    for k, r in enumerate(roots):
+        if K <= 1:
+            root_centers[r] = (0.0, 0.0, 0.0)
+        else:
+            gz = 1.0 - 2.0 * (k + 0.5) / K
+            gr = math.sqrt(max(0.0, 1.0 - gz * gz))
+            gtheta = k * GOLDEN_ANGLE
+            root_centers[r] = (
+                round(R_sep * gr * math.cos(gtheta), 1),
+                round(R_sep * gr * math.sin(gtheta), 1),
+                round(R_sep * gz, 1),
+            )
+
     out: Dict[str, Position] = {}
     for d, nodes in by_depth.items():
         mids = [(span[n][0] + span[n][1]) / 2.0 for n in nodes]
         # a leaf slice can be far narrower than the spacing the ring can afford: spread the ring out
         u2 = _ring_positions(mids, SPACING * total / (2 * math.pi * r2[d]), total)
-        u3 = _ring_positions(mids, SPACING * math.sqrt(total) / (r3[d] * math.sqrt(4 * math.pi)), total)
-        for node, a, b in zip(nodes, u2, u3):
-            b %= total
+        for node, a in zip(nodes, u2):
             angle = 2 * math.pi * a / total
-            z = max(-1.0, min(1.0, 1.0 - 2.0 * b / total))
-            ring = math.sqrt(1.0 - z * z)
-            theta = b * GOLDEN_ANGLE
-            out[node] = (
-                round(r2[d] * math.cos(angle), 1),
-                round(r2[d] * math.sin(angle), 1),
-                round(r3[d] * ring * math.cos(theta), 1),
-                round(r3[d] * ring * math.sin(theta), 1),
-                round(r3[d] * z, 1),
-            )
+            x2 = round(r2[d] * math.cos(angle), 1)
+            y2 = round(r2[d] * math.sin(angle), 1)
+
+            # Volumetric 3D constellation layout per package
+            r_pkg = node_to_root.get(node, roots[0] if roots else "")
+            gx, gy, gz = root_centers.get(r_pkg, (0.0, 0.0, 0.0))
+            if d == 0 or node in roots:
+                x3, y3, z3 = gx, gy, gz
+            else:
+                r_first = span[r_pkg][0] if r_pkg in span else 0
+                r_tot = max(1, (span[r_pkg][1] - span[r_pkg][0]) if r_pkg in span else total)
+                m_loc = (span[node][0] + span[node][1]) / 2.0 - r_first
+                loc_idx = m_loc % r_tot
+                z_norm = max(-0.96, min(0.96, 1.0 - 2.0 * (loc_idx + 0.5) / r_tot))
+                ring_3d = math.sqrt(max(0.0, 1.0 - z_norm * z_norm))
+                theta_3d = loc_idx * GOLDEN_ANGLE
+
+                base_rad = 50.0 + d * 60.0
+                h = int(m_loc * 37 + d * 19) % 100
+                jitter = 0.88 + 0.24 * (h / 100.0)
+                r_eff = base_rad * jitter
+
+                x3 = round(gx + r_eff * ring_3d * math.cos(theta_3d), 1)
+                y3 = round(gy + r_eff * ring_3d * math.sin(theta_3d), 1)
+                z3 = round(gz + r_eff * z_norm, 1)
+
+            out[node] = (x2, y2, x3, y3, z3)
     return out

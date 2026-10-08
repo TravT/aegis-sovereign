@@ -391,13 +391,16 @@
         <div class="gv-conn-kind">${esc(kind)} <span class="gv-count">${list.length}</span></div>
         ${list.slice(0, 25).map((p) => `<a href="javascript:void(0)" class="gv-conn" data-peer="${p.peer}">${p.out ? "→" : "←"} ${esc(c.label[p.peer])}</a>`).join("")}
         ${list.length > 25 ? `<div class="gv-more">+ ${list.length - 25} more</div>` : ""}`).join("");
-      const seeAlso = (c.see_also[i] || []);
+      const seeAlso = (c.see_also && c.see_also[i]) || [];
+      const uri = (c.uri && c.uri[i]) ? c.uri[i] : "";
+      const viewerUrl = uri ? ("/archive/view?uri=" + encodeURIComponent(uri)) : "";
       box.innerHTML = `
         <div class="gv-node-title" style="color:${color}">${esc(c.label[i])}</div>
         <table class="gv-facts">${rows.map((r) => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join("")}</table>
         <div class="gv-actions">
-          ${this.isExpandable(i) ? `<button type="button" class="action-btn" id="gv-expand">➕ Expand ${fmt(c.n_desc[i])} descendants</button>` : ""}
-          <button type="button" class="action-btn" id="gv-center">🎯 Center</button>
+          ${viewerUrl ? `<a href="${viewerUrl}" target="_blank" class="action-btn primary-gold" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:0.4rem; font-weight:700;" id="gv-view-doc">📖 Open Article in Viewer ↗</a>` : ""}
+          ${this.isExpandable(i) ? `<button type="button" class="action-btn" id="gv-expand">+ Expand ${fmt(c.n_desc[i])} descendants</button>` : ""}
+          <button type="button" class="action-btn" id="gv-center">⛶ Center</button>
           <button type="button" class="action-btn primary-emerald" id="gv-search-node">🔍 Run Prong 1/2 search on node</button>
         </div>
         ${seeAlso.length ? `<div class="sec-block-title">📖 Described in the manuals (${seeAlso.length})</div><div class="gv-topics" id="gv-topics"></div>` : ""}

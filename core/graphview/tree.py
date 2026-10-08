@@ -24,12 +24,13 @@ class TreeView:
     computed on first use (``meta`` and ``find`` never need it).
     """
 
-    def __init__(self, nodes, children, edges, n_desc):
+    def __init__(self, nodes, children, edges, n_desc, uris: Optional[Dict[str, str]] = None):
         self.nodes: Dict[str, Node] = nodes
         self.children: Dict[str, List[str]] = children
         self.parents: Dict[str, str] = {c: p for p, kids in children.items() for c in kids}
         self.edges: List[Edge] = edges
         self.n_desc: Dict[str, int] = n_desc
+        self.uris: Dict[str, str] = uris or {}
         self._positions: Optional[Dict[str, Position]] = None
         self._layout_lock = threading.Lock()
 
@@ -75,8 +76,24 @@ class TreeLayer:
                 "WHERE topic_id IS NOT NULL AND console IS NOT NULL AND console != '' "
                 "GROUP BY topic_id, console"
             ).fetchall()
+            uri_rows = con.execute("""
+                SELECT topic_id,
+                       COALESCE(
+                           NULLIF(json_extract(metadata, '$.virtual_uri'), ''),
+                           NULLIF(json_extract(metadata, '$.file_path'), ''),
+                           CASE WHEN doc_identifier LIKE 'archive://%' THEN doc_identifier ELSE '' END,
+                           ''
+                       ) AS uri
+                FROM document_records
+                WHERE topic_id IS NOT NULL
+            """).fetchall()
         finally:
             con.close()
+
+        topic_uris = {}
+        for tid, u in uri_rows:
+            if u and tid and (TOPIC_PREFIX + str(tid)) not in topic_uris:
+                topic_uris[TOPIC_PREFIX + str(tid)] = u
 
         clearance = self._derive_clearance(topics, edges, own)
         primary_parent = {c: p for c, p, is_primary in edges if is_primary}
@@ -112,10 +129,16 @@ class TreeLayer:
             nodes[pid] = Node(package, "package", package, 0, "")
             children[pid] = [TOPIC_PREFIX + r for r in roots_by_package[package]]
 
+        # Horizontal sequential reading chain edges between sibling articles under the same parent
+        for pid, kids in children.items():
+            if len(kids) > 1:
+                for i in range(len(kids) - 1):
+                    out_edges.append((kids[i], kids[i + 1], "NEXT_TOPIC"))
+
         n_desc: Dict[str, int] = {}
         for nid in sorted(nodes, key=lambda n: -nodes[n].depth):  # deepest first
             n_desc[nid] = sum(1 + n_desc[c] for c in children.get(nid, ()))
-        return TreeView(nodes, dict(children), out_edges, n_desc)
+        return TreeView(nodes, dict(children), out_edges, n_desc, uris=topic_uris)
 
     @staticmethod
     def _derive_clearance(topics, edges, own) -> Dict[str, int]:

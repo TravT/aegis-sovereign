@@ -328,7 +328,7 @@
     <div id="tab-panel-graph" class="tab-panel">
       <section class="search-console">
         <div class="search-header">
-          <h1>🕸️ Knowledge Graph Explorer</h1>
+          <h1><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px; color:var(--cyan-bright);"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>Knowledge Graph Explorer</h1>
           <div class="gv-toolbar">
             <div class="gv-searchbox">
               <input type="text" id="gv-search" placeholder="Find a node (ALM-20104, DSP OPTMODULE, Traefik)…" autocomplete="off" aria-label="Find a node">
@@ -339,7 +339,7 @@
               <button type="button" id="gv-dim3">3D</button>
             </span>
             <select id="gv-colorby" aria-label="Colour by"></select>
-            <label id="gv-showall-wrap" title="Load every node of the manual trees (about 45,000)"><input type="checkbox" id="gv-showall"> show all nodes</label>
+            <label id="gv-showall-wrap" title="Load every node of the manual trees (about 45,000)"><input type="checkbox" id="gv-showall"> Full Article Web (45k)</label>
             <label><input type="checkbox" id="gv-edges" checked> edges</label>
             <select id="gv-clearance" aria-label="Clearance level" title="Nodes above this clearance are never sent to the browser">
               <option value="public">clearance: public</option>
@@ -361,16 +361,19 @@
               <div class="gv-tooltip" id="gv-tooltip"></div>
               <div class="gv-status" id="gv-status"></div>
               <div class="graph-zoom-toolbar">
-                <button type="button" class="action-btn" id="gv-zoom-in" title="Zoom in">➕</button>
-                <button type="button" class="action-btn" id="gv-zoom-out" title="Zoom out">➖</button>
-                <button type="button" class="action-btn" id="gv-fit" title="Fit the whole graph">🎯 Fit</button>
+                <button type="button" class="action-btn" id="gv-zoom-in" title="Zoom in" style="font-size: 1rem; font-weight: 700; width: 34px; padding: 0;">+</button>
+                <button type="button" class="action-btn" id="gv-zoom-out" title="Zoom out" style="font-size: 1rem; font-weight: 700; width: 34px; padding: 0;">&minus;</button>
+                <button type="button" class="action-btn" id="gv-fit" title="Fit the whole graph" style="display:inline-flex; align-items:center; gap:4px; padding:0 10px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                  <span>Fit</span>
+                </button>
               </div>
             </div>
           </div>
 
           <aside class="inspector-drawer" style="position: static; max-height: none;">
             <div class="inspector-header">
-              <div class="inspector-title">🎯 SELECTED NODE</div>
+              <div class="inspector-title">SELECTED NODE</div>
               <span class="metric-tag" id="graph-node-category">tree</span>
             </div>
             <div id="graph-node-details"></div>

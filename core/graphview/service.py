@@ -159,6 +159,7 @@ class GraphService:
                 0 if complete else int(any(c not in chosen for c in view.children.get(n, ())))
                 for n in selected
             ],
+            "uri": [view.uris.get(n, "") for n in selected],
             "x": [p[0] for p in pos],
             "y": [p[1] for p in pos],
             "x3": [p[2] for p in pos],

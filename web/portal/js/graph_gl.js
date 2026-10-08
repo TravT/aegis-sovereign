@@ -71,7 +71,15 @@ void main() { outColor = vColor; }`;
     let zx = eye[0] - target[0], zy = eye[1] - target[1], zz = eye[2] - target[2];
     let l = Math.hypot(zx, zy, zz) || 1; zx /= l; zy /= l; zz /= l;
     let xx = up[1] * zz - up[2] * zy, xy = up[2] * zx - up[0] * zz, xz = up[0] * zy - up[1] * zx;
-    l = Math.hypot(xx, xy, xz) || 1; xx /= l; xy /= l; xz /= l;
+    let xl = Math.hypot(xx, xy, xz);
+    if (xl < 0.0001) {
+      const fallbackUp = [0, 1, 0];
+      xx = fallbackUp[1] * zz - fallbackUp[2] * zy;
+      xy = fallbackUp[2] * zx - fallbackUp[0] * zz;
+      xz = fallbackUp[0] * zy - fallbackUp[1] * zx;
+      xl = Math.hypot(xx, xy, xz) || 1;
+    }
+    xx /= xl; xy /= xl; xz /= xl;
     const yx = zy * xz - zz * xy, yy = zz * xx - zx * xz, yz = zx * xy - zy * xx;
     const o = new Float32Array(16);
     o[0] = xx; o[1] = yx; o[2] = zx; o[4] = xy; o[5] = yy; o[6] = zy; o[8] = xz; o[9] = yz; o[10] = zz;
@@ -355,7 +363,7 @@ void main() { outColor = vColor; }`;
           prev.x = e.clientX; prev.y = e.clientY;
           if (this.mode === "3d" && prev.button === 0 && !prev.shift) {
             this.cam3.yaw -= dx * 0.006;
-            this.cam3.pitch = Math.max(-1.5, Math.min(1.5, this.cam3.pitch + dy * 0.006));
+            this.cam3.pitch = Math.max(-1.46, Math.min(1.46, this.cam3.pitch + dy * 0.006));
             this.requestRender();
           } else this._pan(dx, dy);
         }
@@ -388,8 +396,11 @@ void main() { outColor = vColor; }`;
       if (this.mode === "2d") { this.cam2.cx -= dx / this.cam2.scale; this.cam2.cy += dy / this.cam2.scale; }
       else {
         const c = this.cam3, k = c.r * 0.0016;
-        const rx = -Math.sin(c.yaw), ry = Math.cos(c.yaw);              // screen-right on the ground plane
-        c.tx -= (rx * dx) * k; c.ty -= (ry * dx) * k; c.tz += dy * k;
+        const rx = -Math.sin(c.yaw), ry = Math.cos(c.yaw);              // camera right
+        const ux = -Math.sin(c.pitch) * Math.cos(c.yaw), uy = -Math.sin(c.pitch) * Math.sin(c.yaw), uz = Math.cos(c.pitch); // camera up
+        c.tx -= (rx * dx - ux * dy) * k;
+        c.ty -= (ry * dx - uy * dy) * k;
+        c.tz += (uz * dy) * k;
       }
       this.requestRender();
     }

@@ -860,8 +860,57 @@ class SovereignApplianceManager:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_topic_edges_parent ON topic_edges(parent)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_topic_edges_child ON topic_edges(child)")
 
+        # Ensure navi.xml is indexed for UPCF and USC
+        cur.execute("SELECT COUNT(*) FROM topic_nodes WHERE package = 'UPCF' AND source = 'navi.xml'")
+        upcf_navi = cur.fetchone()[0]
+        if upcf_navi > 0:
+            cur.execute("""
+                INSERT OR REPLACE INTO package_books
+                (package, category, nav_item, book_id, book_name, book_source, topic_count, sort_order)
+                VALUES ('UPCF', 'Product Overview & Fast Navigation', 'Overview', 'navi', 'Product Overview & Navigation Guide', 'navi.xml', ?, 0)
+            """, (upcf_navi,))
+
+        cur.execute("SELECT COUNT(*) FROM topic_nodes WHERE package = 'USC' AND source = 'navi.xml'")
+        usc_navi = cur.fetchone()[0]
+        if usc_navi > 0:
+            cur.execute("""
+                INSERT OR REPLACE INTO package_books
+                (package, category, nav_item, book_id, book_name, book_source, topic_count, sort_order)
+                VALUES ('USC', 'Product Overview & Fast Navigation', 'Overview', 'navi', 'Product Overview & Navigation Guide', 'navi.xml', ?, 0)
+            """, (usc_navi,))
+
+        # Ensure REL_UPCF and REL_USC folders are indexed as manuals
+        for r_pkg in ('REL_UPCF', 'REL_USC'):
+            cur.execute("""
+                SELECT 
+                    CASE 
+                        WHEN path_text LIKE '% > %' THEN 
+                            SUBSTR(SUBSTR(path_text, INSTR(path_text, ' > ') + 3), 1, 
+                                   INSTR(SUBSTR(path_text, INSTR(path_text, ' > ') + 3) || ' > ', ' > ') - 1)
+                        ELSE path_text
+                    END AS folder,
+                    COUNT(*) as cnt
+                FROM topic_nodes
+                WHERE package = ?
+                GROUP BY folder
+                ORDER BY folder
+            """, (r_pkg,))
+            rows = cur.fetchall()
+            order = 0
+            for folder, cnt in rows:
+                if not folder or folder == r_pkg:
+                    continue
+                order += 1
+                b_id = folder.replace(' ', '_').lower()
+                cur.execute("""
+                    INSERT OR REPLACE INTO package_books
+                    (package, category, nav_item, book_id, book_name, book_source, topic_count, sort_order)
+                    VALUES (?, 'Release Documentation & Engineering Guides', 'Manuals', ?, ?, ?, ?, ?)
+                """, (r_pkg, b_id, folder, folder, cnt, order))
+
         row_cnt = cur.execute("SELECT COUNT(*) FROM package_books").fetchone()[0]
-        if row_cnt > 0:
+        if row_cnt > 30:
+            conn.commit()
             return
 
         import zipfile
@@ -920,10 +969,16 @@ class SovereignApplianceManager:
             try:
                 cur.execute("""
                     SELECT n.topic_id, n.name, n.depth,
-                           (SELECT doc_identifier FROM document_records WHERE topic_id = n.topic_id LIMIT 1) AS uri,
+                           COALESCE(
+                               NULLIF(json_extract(d.metadata, '$.virtual_uri'), ''),
+                               NULLIF(json_extract(d.metadata, '$.file_path'), ''),
+                               CASE WHEN d.doc_identifier LIKE 'archive://%' THEN d.doc_identifier ELSE '' END,
+                               ''
+                           ) AS uri,
                            (SELECT COUNT(*) FROM topic_edges WHERE parent = n.topic_id) AS child_count
                     FROM topic_edges e
                     JOIN topic_nodes n ON n.topic_id = e.child
+                    LEFT JOIN document_records d ON d.topic_id = n.topic_id
                     WHERE e.parent = ?
                     ORDER BY n.rowid ASC
                 """, (parent_id,))
@@ -990,10 +1045,17 @@ class SovereignApplianceManager:
             cur = conn.cursor()
             try:
                 like_pattern = f"%{query.strip()}%"
+                uri_sql = """
+                    COALESCE(
+                        NULLIF(json_extract(d.metadata, '$.virtual_uri'), ''),
+                        NULLIF(json_extract(d.metadata, '$.file_path'), ''),
+                        CASE WHEN d.doc_identifier LIKE 'archive://%' THEN d.doc_identifier ELSE '' END,
+                        ''
+                    ) AS uri
+                """
                 if package and source:
-                    cur.execute("""
-                        SELECT n.topic_id, n.name, n.depth, n.source, n.package,
-                               COALESCE(d.doc_identifier, '') AS uri
+                    cur.execute(f"""
+                        SELECT n.topic_id, n.name, n.depth, n.source, n.package, {uri_sql}
                         FROM topic_nodes n
                         LEFT JOIN document_records d ON d.topic_id = n.topic_id
                         WHERE n.name LIKE ? AND n.package = ? AND n.source = ?
@@ -1001,9 +1063,8 @@ class SovereignApplianceManager:
                         LIMIT ?
                     """, (like_pattern, package, source, limit))
                 elif package:
-                    cur.execute("""
-                        SELECT n.topic_id, n.name, n.depth, n.source, n.package,
-                               COALESCE(d.doc_identifier, '') AS uri
+                    cur.execute(f"""
+                        SELECT n.topic_id, n.name, n.depth, n.source, n.package, {uri_sql}
                         FROM topic_nodes n
                         LEFT JOIN document_records d ON d.topic_id = n.topic_id
                         WHERE n.name LIKE ? AND (n.package = ? OR n.package LIKE ?)
@@ -1011,9 +1072,8 @@ class SovereignApplianceManager:
                         LIMIT ?
                     """, (like_pattern, package, f"%{package}%", limit))
                 else:
-                    cur.execute("""
-                        SELECT n.topic_id, n.name, n.depth, n.source, n.package,
-                               COALESCE(d.doc_identifier, '') AS uri
+                    cur.execute(f"""
+                        SELECT n.topic_id, n.name, n.depth, n.source, n.package, {uri_sql}
                         FROM topic_nodes n
                         LEFT JOIN document_records d ON d.topic_id = n.topic_id
                         WHERE n.name LIKE ?
@@ -1105,18 +1165,26 @@ class SovereignApplianceManager:
                 if not topic_id and virtual_uri:
                     default_hua_dir = "/home/tlima/Enterprise_Hub/docs/Hua_Docs"
                     norm_uri = virtual_uri.replace("/tmp/docs_rag_gemini", default_hua_dir)
-                    row = cur.execute(
-                        "SELECT topic_id, title FROM document_records WHERE doc_identifier = ? OR doc_identifier = ? LIMIT 1",
-                        (virtual_uri, norm_uri)
-                    ).fetchone()
+                    row = cur.execute("""
+                        SELECT topic_id, title FROM document_records 
+                        WHERE doc_identifier = ? OR doc_identifier = ?
+                           OR json_extract(metadata, '$.virtual_uri') = ?
+                           OR json_extract(metadata, '$.file_path') = ?
+                           OR json_extract(metadata, '$.virtual_uri') = ?
+                           OR json_extract(metadata, '$.file_path') = ?
+                        LIMIT 1
+                    """, (virtual_uri, norm_uri, virtual_uri, virtual_uri, norm_uri, norm_uri)).fetchone()
                     if row and row["topic_id"]:
                         topic_id = row["topic_id"]
                     else:
                         entry_suffix = virtual_uri.split("#")[-1]
-                        row = cur.execute(
-                            "SELECT topic_id, title FROM document_records WHERE doc_identifier LIKE ? LIMIT 1",
-                            (f"%{entry_suffix}",)
-                        ).fetchone()
+                        row = cur.execute("""
+                            SELECT topic_id, title FROM document_records 
+                            WHERE doc_identifier LIKE ? 
+                               OR json_extract(metadata, '$.virtual_uri') LIKE ?
+                               OR json_extract(metadata, '$.file_path') LIKE ?
+                            LIMIT 1
+                        """, (f"%{entry_suffix}", f"%{entry_suffix}", f"%{entry_suffix}")).fetchone()
                         if row and row["topic_id"]:
                             topic_id = row["topic_id"]
 
@@ -1133,6 +1201,10 @@ class SovereignApplianceManager:
                     active_source = node["source"]
                     active_topic_id = node["topic_id"]
                     active_path = node["path_text"] or ""
+                    if active_package.startswith("REL_") and " > " in active_path:
+                        parts = active_path.split(" > ")
+                        if len(parts) > 1:
+                            active_source = parts[1]
                 else:
                     active_package = package or "USC"
                     active_source = source
@@ -1194,15 +1266,36 @@ class SovereignApplianceManager:
                 categories = list(categories_map.values())
 
                 # 4. Query all topics in active book with parent_id and child_count
-                nodes_rows = cur.execute("""
-                    SELECT n.topic_id, n.name, n.depth, n.path_text,
-                           (SELECT parent FROM topic_edges WHERE child = n.topic_id AND is_primary = 1 LIMIT 1) AS parent_id,
-                           (SELECT doc_identifier FROM document_records WHERE topic_id = n.topic_id LIMIT 1) AS uri,
-                           (SELECT COUNT(*) FROM topic_edges WHERE parent = n.topic_id) AS child_count
-                    FROM topic_nodes n
-                    WHERE n.source = ? AND n.package = ?
-                    ORDER BY n.rowid ASC
-                """, (active_source, active_package)).fetchall()
+                uri_sql = """
+                    COALESCE(
+                        NULLIF(json_extract(d.metadata, '$.virtual_uri'), ''),
+                        NULLIF(json_extract(d.metadata, '$.file_path'), ''),
+                        CASE WHEN d.doc_identifier LIKE 'archive://%' THEN d.doc_identifier ELSE '' END,
+                        ''
+                    ) AS uri
+                """
+                if active_package.startswith("REL_"):
+                    nodes_rows = cur.execute(f"""
+                        SELECT n.topic_id, n.name, n.depth, n.path_text,
+                               (SELECT parent FROM topic_edges WHERE child = n.topic_id AND is_primary = 1 LIMIT 1) AS parent_id,
+                               {uri_sql},
+                               (SELECT COUNT(*) FROM topic_edges WHERE parent = n.topic_id) AS child_count
+                        FROM topic_nodes n
+                        LEFT JOIN document_records d ON d.topic_id = n.topic_id
+                        WHERE n.package = ? AND (n.path_text LIKE ? OR n.path_text = ?)
+                        ORDER BY n.rowid ASC
+                    """, (active_package, f"{active_package} > {active_source} > %", f"{active_package} > {active_source}")).fetchall()
+                else:
+                    nodes_rows = cur.execute(f"""
+                        SELECT n.topic_id, n.name, n.depth, n.path_text,
+                               (SELECT parent FROM topic_edges WHERE child = n.topic_id AND is_primary = 1 LIMIT 1) AS parent_id,
+                               {uri_sql},
+                               (SELECT COUNT(*) FROM topic_edges WHERE parent = n.topic_id) AS child_count
+                        FROM topic_nodes n
+                        LEFT JOIN document_records d ON d.topic_id = n.topic_id
+                        WHERE n.source = ? AND n.package = ?
+                        ORDER BY n.rowid ASC
+                    """, (active_source, active_package)).fetchall()
 
                 # Build active ancestor chain
                 active_chain = []
