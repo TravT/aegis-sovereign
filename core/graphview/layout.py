@@ -8,6 +8,7 @@ in, so hidden nodes cannot influence any position.
 """
 
 import math
+from collections import defaultdict
 from typing import Dict, List, Sequence, Tuple
 
 # (x, y, x3, y3, z3)
@@ -100,83 +101,123 @@ def radial_layout(
             span[node] = (first[node], leaves)
     total = max(leaves, 1)
 
-    by_depth: Dict[int, List[str]] = {}
-    for node in sorted(span, key=lambda n: span[n][0]):  # each ring ordered by its leaf ranges
-        by_depth.setdefault(depths[node], []).append(node)
-    per_depth = {d: len(v) for d, v in by_depth.items()}
-    r2: Dict[int, float] = {}
-    r3: Dict[int, float] = {}
-    for d in range(0, max(per_depth, default=0) + 1):
-        n = per_depth.get(d, 0)
-        if d == 0:
-            r2[d] = r3[d] = CENTER_RADIUS
-        else:
-            r2[d] = max(r2[d - 1] + RING_GAP, RING_SLACK * n * SPACING / (2 * math.pi))
-            r3[d] = max(
-                r3[d - 1] + RING_GAP,
-                RING_SLACK * n * SPACING / math.sqrt(4 * math.pi * total),
-                # points on neighbouring turns of the spiral are ~r*sqrt(4*pi/total) apart, whatever
-                # their index distance: keep even that lattice spacing at or above SPACING
-                SPACING * math.sqrt(total) / math.sqrt(4 * math.pi),
-            )
-
-    # Map every node to its ancestor root for per-package 3D galaxy clustering
+    # Map every node to its ancestor root and direct parent for per-package clustering
     node_to_root: Dict[str, str] = {}
+    parent_map: Dict[str, str] = {}
     for r in roots:
         stack = [r]
         while stack:
             curr = stack.pop()
             node_to_root[curr] = r
-            stack.extend(children.get(curr, ()))
+            kids = children.get(curr, ())
+            for k in kids:
+                parent_map[k] = curr
+            stack.extend(kids)
 
-    root_centers: Dict[str, Tuple[float, float, float]] = {}
     K = len(roots)
-    R_sep = 750.0 if K > 1 else 0.0
+    R_sep_2d = 4500.0 if K > 1 else 0.0
+    R_sep_3d = 850.0 if K > 1 else 0.0
+    root_centers_2d: Dict[str, Tuple[float, float]] = {}
+    root_centers_3d: Dict[str, Tuple[float, float, float]] = {}
+
     for k, r in enumerate(roots):
         if K <= 1:
-            root_centers[r] = (0.0, 0.0, 0.0)
+            root_centers_2d[r] = (0.0, 0.0)
+            root_centers_3d[r] = (0.0, 0.0, 0.0)
         else:
+            # 2D: Distribute package roots in distinct quadrants / circular sectors
+            theta_2d = k * (2.0 * math.pi / K) - (math.pi / 2.0)
+            root_centers_2d[r] = (
+                round(R_sep_2d * math.cos(theta_2d), 1),
+                round(R_sep_2d * math.sin(theta_2d), 1),
+            )
+            # 3D: Volumetric Fibonacci sphere
             gz = 1.0 - 2.0 * (k + 0.5) / K
             gr = math.sqrt(max(0.0, 1.0 - gz * gz))
             gtheta = k * GOLDEN_ANGLE
-            root_centers[r] = (
-                round(R_sep * gr * math.cos(gtheta), 1),
-                round(R_sep * gr * math.sin(gtheta), 1),
-                round(R_sep * gz, 1),
+            root_centers_3d[r] = (
+                round(R_sep_3d * gr * math.cos(gtheta), 1),
+                round(R_sep_3d * gr * math.sin(gtheta), 1),
+                round(R_sep_3d * gz, 1),
             )
 
+    # Group nodes by package root and depth
+    nodes_by_pkg_depth = defaultdict(lambda: defaultdict(list))
+    for nid, d in depths.items():
+        r_pkg = node_to_root.get(nid, roots[0] if roots else "")
+        nodes_by_pkg_depth[r_pkg][d].append(nid)
+
+    angles_2d: Dict[str, float] = {}
+    coords_2d: Dict[str, Tuple[float, float]] = {}
+
+    for r_pkg in roots:
+        gx, gy = root_centers_2d.get(r_pkg, (0.0, 0.0))
+        angles_2d[r_pkg] = 0.0
+        coords_2d[r_pkg] = (gx, gy)
+
+        max_d = max(nodes_by_pkg_depth[r_pkg].keys(), default=0)
+        for d in range(1, max_d + 1):
+            d_nodes = nodes_by_pkg_depth[r_pkg][d]
+            if not d_nodes:
+                continue
+            R_d = max(80.0 + d * 90.0, len(d_nodes) * 24.0 / (2 * math.pi))
+            min_gap = 24.0 / R_d
+
+            # Sort nodes by parent's assigned angle then child index
+            def node_sort_key(n):
+                p = parent_map.get(n)
+                p_ang = angles_2d.get(p, 0.0)
+                p_kids = children.get(p, ())
+                idx = p_kids.index(n) if n in p_kids else 0
+                return (p_ang, idx)
+
+            d_nodes.sort(key=node_sort_key)
+
+            # Fan out initial angles around parent angle
+            raw_angles = []
+            for n in d_nodes:
+                p = parent_map.get(n)
+                p_ang = angles_2d.get(p, 0.0)
+                p_kids = children.get(p, ())
+                k = p_kids.index(n) if n in p_kids else 0
+                K_kids = len(p_kids)
+                fan = (k - (K_kids - 1) / 2.0) * min_gap
+                raw_angles.append((p_ang + fan) % (2 * math.pi))
+
+            spread = _spread_cyclic(raw_angles, min_gap, 2 * math.pi)
+            for i, (n, a) in enumerate(zip(d_nodes, spread)):
+                angles_2d[n] = a
+                # Alternate radial depth slightly for siblings to prevent text overlap
+                r_eff = R_d + (i % 2) * 18.0
+                x = round(gx + r_eff * math.cos(a), 1)
+                y = round(gy + r_eff * math.sin(a), 1)
+                coords_2d[n] = (x, y)
+
     out: Dict[str, Position] = {}
-    for d, nodes in by_depth.items():
-        mids = [(span[n][0] + span[n][1]) / 2.0 for n in nodes]
-        # a leaf slice can be far narrower than the spacing the ring can afford: spread the ring out
-        u2 = _ring_positions(mids, SPACING * total / (2 * math.pi * r2[d]), total)
-        for node, a in zip(nodes, u2):
-            angle = 2 * math.pi * a / total
-            x2 = round(r2[d] * math.cos(angle), 1)
-            y2 = round(r2[d] * math.sin(angle), 1)
+    for node in depths:
+        x2, y2 = coords_2d.get(node, (0.0, 0.0))
+        d = depths.get(node, 0)
+        r_pkg = node_to_root.get(node, roots[0] if roots else "")
+        gx3, gy3, gz3 = root_centers_3d.get(r_pkg, (0.0, 0.0, 0.0))
+        if d == 0 or node in roots:
+            x3, y3, z3 = gx3, gy3, gz3
+        else:
+            r_first = span[r_pkg][0] if r_pkg in span else 0
+            r_tot = max(1, (span[r_pkg][1] - span[r_pkg][0]) if r_pkg in span else total)
+            m_loc = (span[node][0] + span[node][1]) / 2.0 - r_first
+            loc_idx = m_loc % r_tot
+            z_norm = max(-0.96, min(0.96, 1.0 - 2.0 * (loc_idx + 0.5) / r_tot))
+            ring_3d = math.sqrt(max(0.0, 1.0 - z_norm * z_norm))
+            theta_3d = loc_idx * GOLDEN_ANGLE
 
-            # Volumetric 3D constellation layout per package
-            r_pkg = node_to_root.get(node, roots[0] if roots else "")
-            gx, gy, gz = root_centers.get(r_pkg, (0.0, 0.0, 0.0))
-            if d == 0 or node in roots:
-                x3, y3, z3 = gx, gy, gz
-            else:
-                r_first = span[r_pkg][0] if r_pkg in span else 0
-                r_tot = max(1, (span[r_pkg][1] - span[r_pkg][0]) if r_pkg in span else total)
-                m_loc = (span[node][0] + span[node][1]) / 2.0 - r_first
-                loc_idx = m_loc % r_tot
-                z_norm = max(-0.96, min(0.96, 1.0 - 2.0 * (loc_idx + 0.5) / r_tot))
-                ring_3d = math.sqrt(max(0.0, 1.0 - z_norm * z_norm))
-                theta_3d = loc_idx * GOLDEN_ANGLE
+            base_rad = 50.0 + d * 60.0
+            h = int(m_loc * 37 + d * 19) % 100
+            jitter = 0.88 + 0.24 * (h / 100.0)
+            r_eff_3d = base_rad * jitter
 
-                base_rad = 50.0 + d * 60.0
-                h = int(m_loc * 37 + d * 19) % 100
-                jitter = 0.88 + 0.24 * (h / 100.0)
-                r_eff = base_rad * jitter
+            x3 = round(gx3 + r_eff_3d * ring_3d * math.cos(theta_3d), 1)
+            y3 = round(gy3 + r_eff_3d * ring_3d * math.sin(theta_3d), 1)
+            z3 = round(gz3 + r_eff_3d * z_norm, 1)
 
-                x3 = round(gx + r_eff * ring_3d * math.cos(theta_3d), 1)
-                y3 = round(gy + r_eff * ring_3d * math.sin(theta_3d), 1)
-                z3 = round(gz + r_eff * z_norm, 1)
-
-            out[node] = (x2, y2, x3, y3, z3)
+        out[node] = (x2, y2, x3, y3, z3)
     return out

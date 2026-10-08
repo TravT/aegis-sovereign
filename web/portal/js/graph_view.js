@@ -69,6 +69,7 @@
       this.clearance = "restricted"; this.showAll = true; this.meta = null;
       this.selected = -1; this.hover = -1; this.only = null; this.hits = new Set();
       this.ready = false; this.busy = 0; this.force = null;
+      this.localMode = false; this.savedGlobalState = null;
     }
 
     // ---- lifecycle -----------------------------------------------------------------------------
@@ -100,6 +101,7 @@
       box.oninput = () => { clearTimeout(timer); timer = setTimeout(() => this.search(box.value), 180); };
       box.onkeydown = (e) => { if (e.key === "Enter") { const first = $("gv-results").querySelector("[data-id]"); if (first) first.click(); } if (e.key === "Escape") this.clearSearch(); };
       $("gv-legend").addEventListener("click", (e) => { const b = e.target.closest("[data-cat]"); if (b) this.toggleCategory(b.dataset.cat, e.shiftKey); });
+      window.addEventListener("keydown", (e) => { if (e.key === "Escape" && this.localMode) this.exitLocalGraph(); });
       this.edgesOn = true;
       return true;
     }
@@ -197,13 +199,13 @@
     rebuild(fit) {
       const s = this.store, n = s.size, c = s.col;
       this.stopForceOnly();
-      const pos = this.layer === "tree" ? this.positions() : new Float32Array(n * 3);
+      const pos = (this.layer === "tree" && !this.localMode) ? this.positions() : new Float32Array(n * 3);
       const color = new Float32Array(n * 3), size = new Float32Array(n);
       this.scale = this.makeScale();
       for (let i = 0; i < n; i++) {
         color.set(this.scale.rgb(i), i * 3);
         const isPkg = this.layer === "tree" && c.kind[i] === "package";
-        size[i] = isPkg ? 11 : this.layer === "tree" ? 2.4 + Math.log2(1 + c.n_desc[i]) * 0.6 : 3.4 + Math.min(11, Math.sqrt(c.degree[i]) * 1.1);
+        size[i] = isPkg ? 11 : this.localMode ? 6.0 : this.layer === "tree" ? 2.4 + Math.log2(1 + c.n_desc[i]) * 0.6 : 3.4 + Math.min(11, Math.sqrt(c.degree[i]) * 1.1);
       }
       const hierEdges = [];
       const ecoEdges = [];
@@ -230,7 +232,7 @@
       this.gl.setData({ pos, color, size, edges, ecosystemEdges, relationalEdges });
       this.applyFlags();
       this.renderLegend();
-      if (this.layer !== "tree") this.startForce();
+      if (this.layer !== "tree" || this.localMode) this.startForce();
       else if (fit) this.gl.fit();
     }
 
@@ -431,6 +433,7 @@
         <table class="gv-facts">${rows.map((r) => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join("")}</table>
         <div class="gv-actions">
           ${viewerUrl ? `<a href="${viewerUrl}" target="_blank" class="action-btn primary-gold" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:0.4rem; font-weight:700;" id="gv-view-doc">📖 Open Article in Viewer ↗</a>` : ""}
+          <button type="button" class="action-btn primary-cyan" id="gv-local-graph" style="border-color:#06b6d4; color:#38bdf8; display:inline-flex; align-items:center; justify-content:center; gap:0.4rem; font-weight:700;">🌐 Explore Local Graph</button>
           ${this.isExpandable(i) ? `<button type="button" class="action-btn" id="gv-expand">➕ Expand ${fmt(c.n_desc[i])} descendants</button>` : ""}
           <button type="button" class="action-btn" id="gv-center">⛶ Center Node</button>
           <button type="button" class="action-btn primary-emerald" id="gv-search-node">🔍 Run Search on Node</button>
@@ -440,6 +443,7 @@
         <div class="gv-conns">${connections || '<div class="gv-hint">No connections in the loaded view.</div>'}</div>`;
       const q = (id) => box.querySelector("#" + id);
       if (q("gv-expand")) q("gv-expand").onclick = () => this.expand(i);
+      if (q("gv-local-graph")) q("gv-local-graph").onclick = () => this.exploreLocalGraph(i);
       q("gv-center").onclick = () => this.gl.focusOn(i);
       q("gv-search-node").onclick = () => { if (typeof runPreset === "function") runPreset(String(c.label[i])); };
       box.querySelectorAll("[data-peer]").forEach((a) => { a.onclick = () => { const p = Number(a.dataset.peer); this.select(p); this.gl.focusOn(p); }; });
@@ -455,6 +459,176 @@
           a.textContent = "📄 " + hit[0].label.slice(0, 60) + "  (" + hit[0].path[0].replace("pkg:", "") + ")";
           a.onclick = () => this.openTopic(id); host.appendChild(a);
         } catch (e) { /* a topic that vanished is simply not listed */ }
+      }
+    }
+
+    exploreLocalGraph(i) {
+      if (i < 0 || i >= this.store.size) return;
+      const c = this.store.col;
+      const targetId = this.store.ids[i];
+      const targetLabel = String(c.label[i]);
+
+      // 1. If not already in local mode, backup full state
+      if (!this.localMode) {
+        this.savedGlobalState = {
+          layer: this.layer,
+          dims: this.dims,
+          selectedId: targetId,
+          storeIds: [...this.store.ids],
+          storeEdges: this.store.edges.map((e) => [...e]),
+          storeCol: {},
+          childCount: [...this.store.childCount],
+          pos: new Float32Array(this.gl.pos),
+        };
+        NODE_COLUMNS.forEach((col) => {
+          this.savedGlobalState.storeCol[col] = [...this.store.col[col]];
+        });
+      }
+
+      // 2. Discover local neighborhood:
+      const subIndices = new Set([i]);
+
+      // Walk ancestors up 4 levels
+      let curr = i;
+      for (let step = 0; step < 4; step++) {
+        let parentIdx = -1;
+        if (this.adj && this.adj[curr]) {
+          for (const edgeIdx of this.adj[curr]) {
+            const e = this.store.edges[edgeIdx];
+            if (e[0] === curr && e[2] === "CHILD_OF") {
+              parentIdx = e[1];
+              break;
+            }
+          }
+        }
+        if (parentIdx >= 0 && !subIndices.has(parentIdx)) {
+          subIndices.add(parentIdx);
+          curr = parentIdx;
+        } else {
+          break;
+        }
+      }
+
+      // Immediate parent and its children (siblings)
+      let immParent = -1;
+      if (this.adj && this.adj[i]) {
+        for (const edgeIdx of this.adj[i]) {
+          const e = this.store.edges[edgeIdx];
+          if (e[0] === i && e[2] === "CHILD_OF") {
+            immParent = e[1];
+            break;
+          }
+        }
+      }
+      if (immParent >= 0 && this.adj && this.adj[immParent]) {
+        for (const edgeIdx of this.adj[immParent]) {
+          const e = this.store.edges[edgeIdx];
+          if (e[1] === immParent && e[2] === "CHILD_OF") {
+            subIndices.add(e[0]); // sibling
+          }
+        }
+      }
+
+      // Direct children of target
+      if (this.adj && this.adj[i]) {
+        for (const edgeIdx of this.adj[i]) {
+          const e = this.store.edges[edgeIdx];
+          if (e[1] === i && e[2] === "CHILD_OF") {
+            subIndices.add(e[0]);
+          }
+        }
+      }
+
+      // Relational peers & cross-links
+      if (this.adj && this.adj[i]) {
+        for (const edgeIdx of this.adj[i]) {
+          const e = this.store.edges[edgeIdx];
+          const peer = e[0] === i ? e[1] : e[0];
+          subIndices.add(peer);
+        }
+      }
+
+      // 3. Build local store
+      const localStore = new Store();
+      const oldToNew = new Map();
+      const chosenArray = [...subIndices];
+
+      chosenArray.forEach((oldIdx, newIdx) => {
+        oldToNew.set(oldIdx, newIdx);
+        const nid = this.store.ids[oldIdx];
+        localStore.ids.push(nid);
+        localStore.idx.set(nid, newIdx);
+        localStore.childCount.push(0);
+        NODE_COLUMNS.forEach((col) => {
+          localStore.col[col].push(this.store.col[col][oldIdx]);
+        });
+      });
+
+      this.store.edges.forEach((e) => {
+        if (subIndices.has(e[0]) && subIndices.has(e[1])) {
+          const newSrc = oldToNew.get(e[0]);
+          const newTgt = oldToNew.get(e[1]);
+          const key = newSrc + "|" + newTgt + "|" + e[2];
+          if (!localStore.edgeKeys.has(key)) {
+            localStore.edgeKeys.add(key);
+            localStore.edges.push([newSrc, newTgt, e[2]]);
+            if (e[2] === "CHILD_OF") localStore.childCount[newTgt]++;
+          }
+        }
+      });
+
+      this.store = localStore;
+      this.localMode = true;
+
+      // 4. Update banner
+      const banner = $("gv-local-banner");
+      if (banner) {
+        banner.style.display = "flex";
+        banner.innerHTML = `<span class="gv-local-title">🌐 Local Subgraph: <b>${esc(targetLabel)}</b> (${localStore.size} nodes)</span> <button type="button" class="gv-exit-local-btn" id="gv-exit-local">← Exit to Full Constellation</button>`;
+        const exitBtn = $("gv-exit-local");
+        if (exitBtn) exitBtn.onclick = () => this.exitLocalGraph();
+      }
+
+      // 5. Rebuild with local force
+      this.rebuild(true);
+      const newTargetIdx = this.store.idx.get(targetId);
+      if (newTargetIdx !== undefined) {
+        this.select(newTargetIdx);
+      }
+    }
+
+    exitLocalGraph() {
+      if (!this.localMode || !this.savedGlobalState) return;
+      const saved = this.savedGlobalState;
+      this.localMode = false;
+      this.savedGlobalState = null;
+
+      const banner = $("gv-local-banner");
+      if (banner) banner.style.display = "none";
+
+      this.store.clear();
+      this.store.ids = saved.storeIds;
+      this.store.edges = saved.storeEdges;
+      this.store.childCount = saved.childCount;
+      saved.storeIds.forEach((id, idx) => {
+        this.store.idx.set(id, idx);
+      });
+      NODE_COLUMNS.forEach((col) => {
+        this.store.col[col] = saved.storeCol[col];
+      });
+      saved.storeEdges.forEach((e) => {
+        this.store.edgeKeys.add(e[0] + "|" + e[1] + "|" + e[2]);
+      });
+
+      this.rebuild(false);
+      this.gl.pos.set(saved.pos);
+      this.gl.updatePositions();
+      this.gl.fit(true);
+
+      const targetIdx = this.store.idx.get(saved.selectedId);
+      if (targetIdx !== undefined) {
+        this.select(targetIdx);
+        this.gl.focusOn(targetIdx);
       }
     }
   }

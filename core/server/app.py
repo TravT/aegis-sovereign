@@ -969,30 +969,42 @@ class SovereignApplianceManager:
             try:
                 cur.execute("""
                     SELECT n.topic_id, n.name, n.depth,
-                           COALESCE(
-                               NULLIF(json_extract(d.metadata, '$.virtual_uri'), ''),
-                               NULLIF(json_extract(d.metadata, '$.file_path'), ''),
-                               CASE WHEN d.doc_identifier LIKE 'archive://%' THEN d.doc_identifier ELSE '' END,
-                               ''
-                           ) AS uri,
+                           d.uri,
                            (SELECT COUNT(*) FROM topic_edges WHERE parent = n.topic_id) AS child_count
                     FROM topic_edges e
                     JOIN topic_nodes n ON n.topic_id = e.child
-                    LEFT JOIN document_records d ON d.topic_id = n.topic_id
-                    WHERE e.parent = ?
+                    LEFT JOIN (
+                        SELECT topic_id,
+                               COALESCE(
+                                   NULLIF(json_extract(metadata, '$.virtual_uri'), ''),
+                                   NULLIF(json_extract(metadata, '$.file_path'), ''),
+                                   CASE WHEN doc_identifier LIKE 'archive://%' THEN doc_identifier ELSE '' END,
+                                   ''
+                               ) AS uri
+                        FROM document_records
+                        WHERE topic_id IS NOT NULL
+                        GROUP BY topic_id
+                    ) d ON d.topic_id = n.topic_id
+                    WHERE e.parent = ? AND e.is_primary = 1
+                    GROUP BY n.topic_id
                     ORDER BY n.rowid ASC
                 """, (parent_id,))
                 rows = cur.fetchall()
-                return [
-                    {
-                        "topic_id": r["topic_id"],
+                seen_children = set()
+                result_children = []
+                for r in rows:
+                    cid = r["topic_id"]
+                    if cid in seen_children:
+                        continue
+                    seen_children.add(cid)
+                    result_children.append({
+                        "topic_id": cid,
                         "name": r["name"],
                         "depth": r["depth"],
                         "uri": r["uri"] or "",
                         "child_count": r["child_count"],
-                    }
-                    for r in rows
-                ]
+                    })
+                return result_children
             finally:
                 conn.close()
         except Exception as e:
@@ -1265,35 +1277,42 @@ class SovereignApplianceManager:
 
                 categories = list(categories_map.values())
 
-                # 4. Query all topics in active book with parent_id and child_count
-                uri_sql = """
-                    COALESCE(
-                        NULLIF(json_extract(d.metadata, '$.virtual_uri'), ''),
-                        NULLIF(json_extract(d.metadata, '$.file_path'), ''),
-                        CASE WHEN d.doc_identifier LIKE 'archive://%' THEN d.doc_identifier ELSE '' END,
-                        ''
-                    ) AS uri
+                doc_subquery = """
+                    LEFT JOIN (
+                        SELECT topic_id,
+                               COALESCE(
+                                   NULLIF(json_extract(metadata, '$.virtual_uri'), ''),
+                                   NULLIF(json_extract(metadata, '$.file_path'), ''),
+                                   CASE WHEN doc_identifier LIKE 'archive://%' THEN doc_identifier ELSE '' END,
+                                   ''
+                               ) AS uri
+                        FROM document_records
+                        WHERE topic_id IS NOT NULL
+                        GROUP BY topic_id
+                    ) d ON d.topic_id = n.topic_id
                 """
                 if active_package.startswith("REL_"):
                     nodes_rows = cur.execute(f"""
                         SELECT n.topic_id, n.name, n.depth, n.path_text,
                                (SELECT parent FROM topic_edges WHERE child = n.topic_id AND is_primary = 1 LIMIT 1) AS parent_id,
-                               {uri_sql},
+                               d.uri,
                                (SELECT COUNT(*) FROM topic_edges WHERE parent = n.topic_id) AS child_count
                         FROM topic_nodes n
-                        LEFT JOIN document_records d ON d.topic_id = n.topic_id
+                        {doc_subquery}
                         WHERE n.package = ? AND (n.path_text LIKE ? OR n.path_text = ?)
+                        GROUP BY n.topic_id
                         ORDER BY n.rowid ASC
                     """, (active_package, f"{active_package} > {active_source} > %", f"{active_package} > {active_source}")).fetchall()
                 else:
                     nodes_rows = cur.execute(f"""
                         SELECT n.topic_id, n.name, n.depth, n.path_text,
                                (SELECT parent FROM topic_edges WHERE child = n.topic_id AND is_primary = 1 LIMIT 1) AS parent_id,
-                               {uri_sql},
+                               d.uri,
                                (SELECT COUNT(*) FROM topic_edges WHERE parent = n.topic_id) AS child_count
                         FROM topic_nodes n
-                        LEFT JOIN document_records d ON d.topic_id = n.topic_id
+                        {doc_subquery}
                         WHERE n.source = ? AND n.package = ?
+                        GROUP BY n.topic_id
                         ORDER BY n.rowid ASC
                     """, (active_source, active_package)).fetchall()
 
@@ -1312,9 +1331,14 @@ class SovereignApplianceManager:
                 filter_large = len(nodes_rows) > 3000
 
                 nodes = []
+                seen_topic_ids = set()
                 for r in nodes_rows:
-                    p = r["path_text"] or ""
                     tid = r["topic_id"]
+                    if tid in seen_topic_ids:
+                        continue
+                    seen_topic_ids.add(tid)
+
+                    p = r["path_text"] or ""
                     is_active = (tid == active_topic_id)
                     is_ancestor = (tid in ancestor_set)
                     is_child_of_ancestor = (r["parent_id"] in ancestor_set)
