@@ -35,7 +35,7 @@ class LLMController:
         self.last_activity = time.time()
         self._lock = threading.Lock()
         self._daemon_started = False
-        self._active_engine = "ollama"
+        self._active_engine = "llama-cpp"
         self._start_idle_daemon()
 
     def record_activity(self):
@@ -129,7 +129,7 @@ class LLMController:
 
     def _get_llama_cpp_status(self) -> Dict[str, Any]:
         is_responding = False
-        model_name = "Phi-3-mini-4k-instruct-q4"
+        model_name = "qwen2.5vl:3b"
 
         try:
             req = urllib.request.Request(f"{self.llama_cpp_url}/health")
@@ -165,7 +165,7 @@ class LLMController:
             "engine": "llama-cpp",
             "service": "llama-cpp",
             "model": model_name,
-            "available_models": ["Phi-3-mini-4k-instruct-q4.gguf", "qwen2.5-1.5b-instruct.gguf"],
+            "available_models": ["qwen2.5vl:3b"],
             "target_url": self.llama_cpp_url,
             "idle_seconds": idle_seconds,
             "auto_stop_minutes": int(self.idle_timeout_seconds // 60),
@@ -181,7 +181,7 @@ class LLMController:
     def scale_engine(
         self,
         action: str,
-        engine: str = "ollama",
+        engine: str = "llama-cpp",
         timeout_seconds: float = 30.0,
     ) -> Dict[str, Any]:
         """Scales Nomad LLM job up (count=1) or down (count=0)."""

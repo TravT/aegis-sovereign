@@ -200,7 +200,7 @@ class DocumentViewer:
 
                     if child_count > 0:
                         cls_list.append("folder-node")
-                        is_expanded = is_act or is_anc or has_sublist
+                        is_expanded = is_act or is_anc
                         chevron = "▼" if is_expanded else "▶"
                         sub_html = _render_topic_sublist(tid, depth + 1)
                         disp = "display: block;" if is_expanded else "display: none;"
@@ -522,6 +522,74 @@ class DocumentViewer:
       border-color: var(--cyan);
       background: rgba(255, 255, 255, 0.07);
     }}
+    .tree-search-panel {{
+      background: #0E131C;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 6px;
+      margin-bottom: 0.75rem;
+      padding: 0.5rem;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    }}
+    .tree-search-header {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.2rem 0.4rem 0.4rem 0.4rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.72rem;
+      color: var(--cyan);
+      font-weight: 600;
+    }}
+    .tree-search-close {{
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.72rem;
+    }}
+    .tree-search-close:hover {{
+      color: #FFF;
+    }}
+    .tree-search-results-list {{
+      list-style: none;
+      max-height: 280px;
+      overflow-y: auto;
+      margin-top: 0.4rem;
+    }}
+    .tree-search-item {{
+      padding: 0.35rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      transition: background 0.15s;
+    }}
+    .tree-search-item:hover {{
+      background: rgba(56, 189, 248, 0.12);
+    }}
+    .tree-search-link {{
+      color: #E2E8F0;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .tree-search-link:hover {{
+      color: var(--gold-bright);
+      text-decoration: none;
+    }}
+    .tree-search-meta {{
+      font-size: 0.65rem;
+      color: #64748B;
+      font-family: var(--font-mono);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
     .sidebar-tree-container {{
       flex: 1;
       overflow-y: auto;
@@ -818,11 +886,17 @@ class DocumentViewer:
     img {{
       max-width: 100%;
       height: auto;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      margin: 1rem 0;
-      background: #000;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      margin: 1.25rem 0;
+      background: #FFFFFF;
+      padding: 14px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
       display: inline-block;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }}
+    img:hover {{
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65);
     }}
     .topic-bottom-nav {{
       margin-top: 3.5rem;
@@ -882,10 +956,17 @@ class DocumentViewer:
           <span title="{html.escape(package_name)} Library">{html.escape(package_name)} Documentation Library</span>
         </div>
         <div class="sidebar-search">
-          <input type="text" id="tree-search" placeholder="🔍 Filter manuals &amp; topics..." oninput="filterTreeTopics(this.value)" />
+          <input type="text" id="tree-search" placeholder="🔍 Filter &amp; search all manual topics..." oninput="handleTreeSearch(this.value)" />
         </div>
       </div>
       <div class="sidebar-tree-container">
+        <div id="tree-search-panel" class="tree-search-panel" style="display: none;">
+          <div class="tree-search-header">
+            <span id="tree-search-count">0 manual matches</span>
+            <button type="button" class="tree-search-close" onclick="closeSearchPanel()">✕ Close</button>
+          </div>
+          <ul id="tree-search-results-list" class="tree-search-results-list"></ul>
+        </div>
         {sidebar_tree_html}
       </div>
     </aside>
@@ -907,6 +988,7 @@ class DocumentViewer:
 
   <script>
     const VIRTUAL_URI = "{html.escape(virtual_uri)}";
+    const CURRENT_PACKAGE = "{html.escape(package_name)}";
 
     function showToast(msg) {{
       const toast = document.getElementById("doc-toast");
@@ -1073,6 +1155,54 @@ class DocumentViewer:
       if (q) {{
         document.querySelectorAll(".cat-details, .book-details").forEach(d => d.open = true);
       }}
+    }}
+
+    let searchDebounceTimer = null;
+    function handleTreeSearch(query) {{
+      filterTreeTopics(query);
+      clearTimeout(searchDebounceTimer);
+      const q = (query || "").trim();
+      const panel = document.getElementById("tree-search-panel");
+      const listEl = document.getElementById("tree-search-results-list");
+      const countEl = document.getElementById("tree-search-count");
+      if (q.length < 2) {{
+        if (panel) panel.style.display = "none";
+        return;
+      }}
+      searchDebounceTimer = setTimeout(() => {{
+        fetch("/topic/tree?mode=search&q=" + encodeURIComponent(q) + "&package=" + encodeURIComponent(CURRENT_PACKAGE))
+          .then(res => res.json())
+          .then(data => {{
+            const results = data.results || [];
+            if (results.length === 0) {{
+              if (panel) panel.style.display = "none";
+              return;
+            }}
+            if (panel && listEl) {{
+              countEl.innerText = results.length + " manual topic matches";
+              let itemsHtml = "";
+              results.forEach(r => {{
+                const url = r.uri ? ("/archive/view?uri=" + encodeURIComponent(r.uri)) : "#";
+                itemsHtml += `
+                  <li class="tree-search-item">
+                    <a href="${{url}}" class="tree-search-link" title="${{escapeHtml(r.name)}}">
+                      <span>📄</span> <span>${{escapeHtml(r.name)}}</span>
+                    </a>
+                    <span class="tree-search-meta">${{escapeHtml(r.package || "")}} • depth ${{r.depth}}</span>
+                  </li>
+                `;
+              }});
+              listEl.innerHTML = itemsHtml;
+              panel.style.display = "block";
+            }}
+          }})
+          .catch(err => console.debug("Topic search error:", err));
+      }}, 350);
+    }}
+
+    function closeSearchPanel() {{
+      const panel = document.getElementById("tree-search-panel");
+      if (panel) panel.style.display = "none";
     }}
 
     // Auto-scroll active topic into center view on load

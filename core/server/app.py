@@ -979,6 +979,65 @@ class SovereignApplianceManager:
             logger.warning(f"Error fetching book root nodes: {e}")
             return []
 
+    def search_topics(self, query: str, package: str = "", source: str = "", limit: int = 50) -> List[Dict[str, Any]]:
+        """Searches topic titles across package/manual with sub-millisecond SQLite index scan."""
+        db_path = getattr(self.router, "db_path", None)
+        if not db_path or db_path == ":memory:" or not Path(db_path).exists() or not query.strip():
+            return []
+        try:
+            conn = sqlite3.connect(db_path, timeout=5.0)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            try:
+                like_pattern = f"%{query.strip()}%"
+                if package and source:
+                    cur.execute("""
+                        SELECT n.topic_id, n.name, n.depth, n.source, n.package,
+                               COALESCE(d.doc_identifier, '') AS uri
+                        FROM topic_nodes n
+                        LEFT JOIN document_records d ON d.topic_id = n.topic_id
+                        WHERE n.name LIKE ? AND n.package = ? AND n.source = ?
+                        ORDER BY n.depth ASC, n.name ASC
+                        LIMIT ?
+                    """, (like_pattern, package, source, limit))
+                elif package:
+                    cur.execute("""
+                        SELECT n.topic_id, n.name, n.depth, n.source, n.package,
+                               COALESCE(d.doc_identifier, '') AS uri
+                        FROM topic_nodes n
+                        LEFT JOIN document_records d ON d.topic_id = n.topic_id
+                        WHERE n.name LIKE ? AND (n.package = ? OR n.package LIKE ?)
+                        ORDER BY n.depth ASC, n.name ASC
+                        LIMIT ?
+                    """, (like_pattern, package, f"%{package}%", limit))
+                else:
+                    cur.execute("""
+                        SELECT n.topic_id, n.name, n.depth, n.source, n.package,
+                               COALESCE(d.doc_identifier, '') AS uri
+                        FROM topic_nodes n
+                        LEFT JOIN document_records d ON d.topic_id = n.topic_id
+                        WHERE n.name LIKE ?
+                        ORDER BY n.depth ASC, n.name ASC
+                        LIMIT ?
+                    """, (like_pattern, limit))
+                rows = cur.fetchall()
+                return [
+                    {
+                        "topic_id": r["topic_id"],
+                        "name": r["name"],
+                        "depth": r["depth"],
+                        "uri": r["uri"] or "",
+                        "source": r["source"] or "",
+                        "package": r["package"] or "",
+                    }
+                    for r in rows
+                ]
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Error searching topics: {e}")
+            return []
+
     def get_package_catalog(self, package: str) -> List[Dict[str, Any]]:
         """Returns full category and book catalog for a package."""
         db_path = getattr(self.router, "db_path", None)
@@ -1292,7 +1351,7 @@ class SovereignApplianceManager:
             "actions_dispatched": dispatched,
         }
 
-    def control_llm(self, action: str, engine: str = "ollama") -> Dict[str, Any]:
+    def control_llm(self, action: str, engine: str = "llama-cpp") -> Dict[str, Any]:
         return self.llm_controller.scale_engine(action=action, engine=engine)
 
     @property

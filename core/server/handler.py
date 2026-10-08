@@ -250,6 +250,13 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"package": package, "source": source, "nodes": root_nodes})
                 return
 
+            if mode == "search":
+                q = query_params.get("q", [""])[0]
+                limit_val = int(query_params.get("limit", [50])[0])
+                results = self.manager.search_topics(query=q, package=package, source=source, limit=limit_val)
+                self._send_json(200, {"query": q, "package": package, "results": results})
+                return
+
             if mode == "catalog":
                 catalog = self.manager.get_package_catalog(package=package)
                 self._send_json(200, {"package": package, "catalog": catalog})
@@ -520,7 +527,7 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
 
         elif parsed.path == "/llm/control":
             action = payload.get("action", "start")
-            engine = payload.get("engine", "ollama")
+            engine = payload.get("engine", "llama-cpp")
             try:
                 res = self.manager.control_llm(action=action, engine=engine)
                 self._send_json(200, res)
