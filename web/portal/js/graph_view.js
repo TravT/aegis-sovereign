@@ -253,7 +253,8 @@
       const edges = new Uint32Array(this.store.edges.length * 2);
       this.store.edges.forEach((e, k) => { edges[k * 2] = e[0]; edges[k * 2 + 1] = e[1]; });
       const pos = this.gl.pos, dims = this.dims === "3d" ? 3 : 2;
-      this.force = new AegisGraphForce(pos, edges, dims);
+      const k = this.localMode ? 140 : 42;
+      this.force = new AegisGraphForce(pos, edges, dims, k);
       const force = this.force;
       this.status(`Laying out ${fmt(n)} nodes…`);
       const tick = () => {
@@ -261,7 +262,7 @@
         const t0 = performance.now();                    // as many steps as fit a 30 ms frame budget
         do { force.step(); } while (!force.done && performance.now() - t0 < 30);
         this.gl.updatePositions();
-        if (force.tick <= 3 || force.tick % 25 === 0 || force.done) this.gl.fit(true);
+        if (force.tick <= 3 || force.tick % 25 === 0 || force.done) this.gl.fit(!this.localMode);
         if (force.done) { this.status(`${fmt(n)} nodes · ${fmt(this.store.edges.length)} edges`); this.force = null; }
         else requestAnimationFrame(tick);
       };
@@ -379,8 +380,10 @@
     updateLabels() {
       const host = $("gv-labels"); if (!host || !this.gl || !this.order) return;
       const gl = this.gl, out = { x: 0, y: 0, w: 0 }, taken = [], wanted = [];
+      const placed = new Set();
       const place = (i, cls) => {
         if (typeof i !== "number" || i < 0 || i >= this.store.size) return;
+        if (placed.has(i)) return; // Strictly prevent duplicate labels for the same node
         const rawLabel = this.store.col.label ? this.store.col.label[i] : null;
         if (!rawLabel || rawLabel === "undefined" || rawLabel === "null") return;
         if (!gl.project(i, out)) return;
@@ -389,14 +392,30 @@
         const text = String(rawLabel).trim().slice(0, 28);
         if (!text || text === "undefined" || text === "null") return;
         const w = text.length * 6.4 + 10;
-        const box = [out.x + 6, out.y - 9, out.x + 6 + w, out.y + 9];
-        if (cls === "gv-label" && taken.some((t) => box[0] < t[2] && box[2] > t[0] && box[1] < t[3] && box[3] > t[1])) return;
-        taken.push(box); wanted.push([text, Math.round(out.x), Math.round(out.y), cls]);
+
+        // In local mode or small subgraphs, orient labels outward from cluster center
+        let toLeft = this.localMode ? (out.x < gl.w * 0.48) : (out.x > gl.w - 200);
+        let lx = toLeft ? (out.x - 8 - w) : (out.x + 8);
+        let box = [lx, out.y - 9, lx + w, out.y + 9];
+
+        // Collision check
+        let collides = taken.some((t) => box[0] < t[2] && box[2] > t[0] && box[1] < t[3] && box[3] > t[1]);
+        if (collides && this.localMode) {
+          toLeft = !toLeft;
+          lx = toLeft ? (out.x - 8 - w) : (out.x + 8);
+          box = [lx, out.y - 9, lx + w, out.y + 9];
+          collides = taken.some((t) => box[0] < t[2] && box[2] > t[0] && box[1] < t[3] && box[3] > t[1]);
+        }
+        if (collides && cls === "gv-label") return;
+
+        placed.add(i);
+        taken.push(box);
+        wanted.push([text, Math.round(lx), Math.round(out.y - 8), cls]);
       };
       if (this.selected >= 0 && this.selected < this.store.size) place(this.selected, "gv-label gv-sel");
-      if (this.hover >= 0 && this.hover < this.store.size) place(this.hover, "gv-label gv-sel");
+      if (this.hover >= 0 && this.hover < this.store.size && this.hover !== this.selected) place(this.hover, "gv-label gv-sel");
       this.hits.forEach((i) => {
-        if (typeof i === "number" && i >= 0 && i < this.store.size && wanted.length < 14) {
+        if (i !== this.selected && i !== this.hover && typeof i === "number" && i >= 0 && i < this.store.size && wanted.length < 14) {
           place(i, "gv-label gv-hit");
         }
       });
@@ -418,7 +437,7 @@
         el.style.display = "";
         el.className = w[3];
         el.textContent = w[0];
-        el.style.transform = `translate(${w[1] + 7}px, ${w[2] - 8}px)`;
+        el.style.transform = `translate(${w[1]}px, ${w[2]}px)`;
       }
     }
 

@@ -14,16 +14,18 @@
      * @param {Float32Array} pos  xyz per node, updated in place
      * @param {Uint32Array} edges node index pairs
      * @param {number} dims 2 or 3
+     * @param {number} [k=42] ideal edge length
      */
-    constructor(pos, edges, dims) {
+    constructor(pos, edges, dims, k = 42) {
       this.pos = pos; this.edges = edges; this.dims = dims;
       this.n = pos.length / 3;
-      this.k = 42;                                       // ideal edge length
+      this.k = (this.n < 35 && k === 42) ? 140 : k;       // ideal edge length (spacious breathing room for subgraphs)
       this.tick = 0;
       this.disp = new Float32Array(pos.length);
       const spread = Math.sqrt(this.n) * this.k * 0.9;
       this.temp = spread * 0.08; this.floor = 1.5;
       this.cellsPerAxis = dims === 3 ? 8 : 20;
+      this.gravity = this.n < 35 ? 0.08 : 0.15;
       this.seed(spread);
     }
 
@@ -97,8 +99,9 @@
         disp[i * 3] -= dx * f; disp[i * 3 + 1] -= dy * f; disp[i * 3 + 2] -= dz * f;
         disp[j * 3] += dx * f; disp[j * 3 + 1] += dy * f; disp[j * 3 + 2] += dz * f;
       }
+      const grav = this.gravity || 0.15;
       for (let i = 0; i < n; i++) {                       // gravity + capped move
-        let dx = disp[i * 3] - pos[i * 3] * 0.15, dy = disp[i * 3 + 1] - pos[i * 3 + 1] * 0.15, dz = three ? disp[i * 3 + 2] - pos[i * 3 + 2] * 0.15 : 0;
+        let dx = disp[i * 3] - pos[i * 3] * grav, dy = disp[i * 3 + 1] - pos[i * 3 + 1] * grav, dz = three ? disp[i * 3 + 2] - pos[i * 3 + 2] * grav : 0;
         const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (len > 0) { const s = Math.min(len, this.temp) / len; pos[i * 3] += dx * s; pos[i * 3 + 1] += dy * s; pos[i * 3 + 2] += dz * s; }
       }
