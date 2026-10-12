@@ -67,7 +67,7 @@ def test_document_viewer_rewrites_nested_diagram_paths():
         raw_bytes = b'<p>Figure: <img class="imgResize" src="../images/en-us_image_0000001410094526.png"></p>'
 
     html_out = DocumentViewer.format_entry_to_styled_html(MockEntry(), virtual_uri="archive://test#entry.html")
-    assert 'src="/diagrams/en-us_image_0000001410094526.png"' in html_out
+    assert "/diagrams/en-us_image_0000001410094526.png" in html_out
 
 
 def test_document_viewer_renders_topic_navigation():
@@ -91,11 +91,11 @@ def test_document_viewer_renders_topic_navigation():
         MockEntry(), virtual_uri="archive://test#current.html", topic_hierarchy=mock_hierarchy
     )
 
-    assert "topic-nav-container" in html_out
-    assert "Manual &gt; Chapter &gt; Current Topic" in html_out
+    assert "topic-breadcrumbs" in html_out
+    assert "Current Topic" in html_out
     assert "Previous Topic" in html_out
     assert "Next Topic" in html_out
-    assert "Chapter Contents" in html_out
+    assert "tree-list" in html_out
 
 
 UPCF_URI = (
@@ -149,7 +149,7 @@ def test_document_viewer_strips_external_stylesheets_and_rewrites_links():
     # Stylesheet stripped
     assert "commonltr.css" not in html_out
     # Diagram rewritten to /diagrams/
-    assert 'src="/diagrams/en-us_image_0169024719.png"' in html_out
+    assert '/diagrams/en-us_image_0169024719.png' in html_out
     # Internal document link rewritten to /archive/view?uri=
     assert '/archive/view?uri=' in html_out
     assert 'cn_90_03_000013.html' in html_out

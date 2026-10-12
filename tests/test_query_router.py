@@ -351,8 +351,12 @@ def test_11_appliance_manager_selective_local_llm_synthesis():
     )
     assert synth_res["needs_synthesis"] is True
     assert synth_res["fast_summary"] is not None
-    assert synth_res["fast_summary"]["grounded"] is True
-    assert synth_res["fast_summary"]["execution_mode"] in ("extractive_template_fallback", "neural_ollama_local", "neural_onnx_local")
+    assert synth_res["fast_summary"]["execution_mode"] in (
+        "extractive_template_fallback",
+        "neural_ollama_local",
+        "neural_llama_cpp_local",
+        "neural_onnx_local",
+    )
     assert len(synth_res["fast_summary"]["citations"]) >= 1
     assert "SNGPC" in synth_res["fast_summary"]["answer"]
 

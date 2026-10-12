@@ -185,7 +185,11 @@ def test_tabular_csv_parser_sniffs_delimiters_and_indexes_biomarkers():
 def test_mcp_7_tools_benchmark_artifacts_exist_and_valid():
     """Verify mcp_7_tools_benchmark.json and MCP_7_TOOLS_BENCHMARK_REPORT.md were generated with all 7 tools."""
     json_path = APPLIANCE_ROOT / "benchmarks" / "mcp_7_tools_benchmark.json"
+    if not json_path.is_file():
+        json_path = APPLIANCE_ROOT / "benchmarks" / "reports" / "mcp_7_tools_benchmark.json"
     md_path = APPLIANCE_ROOT / "benchmarks" / "MCP_7_TOOLS_BENCHMARK_REPORT.md"
+    if not md_path.is_file():
+        md_path = APPLIANCE_ROOT / "benchmarks" / "reports" / "MCP_7_TOOLS_BENCHMARK_REPORT.md"
     assert json_path.is_file()
     assert md_path.is_file()
 

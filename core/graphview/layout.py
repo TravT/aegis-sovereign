@@ -160,7 +160,7 @@ def radial_layout(
             d_nodes = nodes_by_pkg_depth[r_pkg][d]
             if not d_nodes:
                 continue
-            R_d = max(80.0 + d * 90.0, len(d_nodes) * 24.0 / (2 * math.pi))
+            R_d = max(80.0 + d * 90.0, len(d_nodes) * 26.0 / (2 * math.pi))
             min_gap = 24.0 / R_d
 
             # Sort nodes by parent's assigned angle then child index
@@ -184,7 +184,7 @@ def radial_layout(
                 fan = (k - (K_kids - 1) / 2.0) * min_gap
                 raw_angles.append((p_ang + fan) % (2 * math.pi))
 
-            spread = _spread_cyclic(raw_angles, min_gap, 2 * math.pi)
+            spread = _ring_positions(raw_angles, min_gap, 2 * math.pi)
             for i, (n, a) in enumerate(zip(d_nodes, spread)):
                 angles_2d[n] = a
                 # Alternate radial depth slightly for siblings to prevent text overlap
@@ -210,9 +210,10 @@ def radial_layout(
             ring_3d = math.sqrt(max(0.0, 1.0 - z_norm * z_norm))
             theta_3d = loc_idx * GOLDEN_ANGLE
 
-            base_rad = 50.0 + d * 60.0
+            n_depth = len(nodes_by_pkg_depth[r_pkg][d])
+            base_rad = 50.0 + d * 60.0 + math.sqrt(n_depth) * 5.0
             h = int(m_loc * 37 + d * 19) % 100
-            jitter = 0.88 + 0.24 * (h / 100.0)
+            jitter = 0.94 + 0.12 * (h / 100.0)
             r_eff_3d = base_rad * jitter
 
             x3 = round(gx3 + r_eff_3d * ring_3d * math.cos(theta_3d), 1)

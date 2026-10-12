@@ -102,11 +102,12 @@ class SemanticBridgeEngine:
     - Option C: Hybrid Tiered Bridges (Static Macro + Dynamic Micro)
     """
 
-    def __init__(self, db_path: str, threshold: float = 0.65):
+    def __init__(self, db_path: str, threshold: float = 0.65, ensure_schema: bool = False):
         self.db_path = db_path
         self.threshold = threshold
         self.encoder = VectorSpaceEncoder()
-        self._ensure_schema()
+        if ensure_schema:
+            self._ensure_schema()
         self._vector_cache: Dict[str, Dict[str, float]] = {}
         self._node_meta: Dict[str, Dict[str, Any]] = {}
 
@@ -229,6 +230,7 @@ class SemanticBridgeEngine:
                         rationale
                     ))
 
+        self._ensure_schema()
         conn = self._get_connection()
         try:
             with conn:
@@ -247,6 +249,9 @@ class SemanticBridgeEngine:
         conn = self._get_connection()
         try:
             cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='semantic_bridges'")
+            if not cur.fetchone():
+                return []
             rows = cur.execute("""
                 SELECT b.source_id, b.target_id, b.similarity, b.rationale,
                        s.name AS source_name, t.name AS target_name
@@ -280,6 +285,9 @@ class SemanticBridgeEngine:
         conn = self._get_connection()
         try:
             cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='semantic_bridges'")
+            if not cur.fetchone():
+                return []
             rows = cur.execute("""
                 SELECT b.source_id, b.target_id, b.similarity, b.rationale,
                        s.name AS source_name, t.name AS target_name

@@ -152,10 +152,6 @@ class TreeLayer:
                 from .semantic_engine import SemanticBridgeEngine
                 sem_engine = SemanticBridgeEngine(self._router_db, threshold=0.25)
                 sem_bridges = sem_engine.get_offline_bridges(min_similarity=0.25)
-                if not sem_bridges:
-                    # Auto-compute once if table is empty
-                    sem_engine.compute_and_store_offline_bridges(k=3, threshold=0.25)
-                    sem_bridges = sem_engine.get_offline_bridges(min_similarity=0.25)
             except Exception as se:
                 logger.warning(f"Could not load semantic vector bridges: {se}")
 

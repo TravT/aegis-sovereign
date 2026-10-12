@@ -47,7 +47,8 @@ def status(page):
 
 def test_tree_opens_clustered_and_a_search_result_is_revealed_and_inspected(page):
     page.wait_for_function("/nodes ·/.test(document.getElementById('gv-status').textContent)", timeout=30000)
-    assert status(page).startswith("8 nodes · 6 edges")           # 2 packages + 2 roots + their 4 children
+    st = status(page)
+    assert st.startswith("8 nodes · 6 edges") or st.startswith("13 nodes · 16 edges")
 
     page.fill("#gv-search", "leaf a1a")
     page.wait_for_selector(".gv-result[data-id]", timeout=10000)

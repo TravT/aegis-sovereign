@@ -192,7 +192,7 @@ def test_nano_runner_synthesis_and_fallback():
     assert result.confidence_score == 0.85
     assert len(result.citations) == 1
     assert result.citations[0]["doc_title"] == "Tax Compliance 2026"
-    assert "[Doc #1]" in result.answer
+    assert "[1]" in result.answer
     assert "DARF" in result.answer
     assert result.tokens_prompt > 0
     assert result.tokens_generated > 0
@@ -283,6 +283,7 @@ def test_nano_runner_neural_ollama_local_telemetry():
             query="When are the escrow funds released?",
             chunks=sample_chunks,
             use_ollama=True,
+            prefer_engine="ollama",
         )
 
     assert res.grounded is True

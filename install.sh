@@ -59,7 +59,7 @@ echo "======================================================================"
 echo "[Stage 1/6] Hardware SIMD & Runtime Audit..."
 SIMD_PROFILE="SCALAR_FALLBACK"
 if [ -f /proc/cpuinfo ]; then
-    if grep -q -i "avx512" /proc/cpuinfo; then
+    if grep -q -i "avx512_vnni" /proc/cpuinfo || grep -q -i "avx512" /proc/cpuinfo; then
         SIMD_PROFILE="AVX-512_VNNI_INT8_TURBO"
     elif grep -q -i "avx2" /proc/cpuinfo; then
         SIMD_PROFILE="AVX2_FMA_INT8_SIMD"

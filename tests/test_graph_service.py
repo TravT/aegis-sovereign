@@ -60,7 +60,7 @@ def test_higher_clearance_reveals_more_including_second_parent_edges(svc):
     assert {"t:t8", "t:t9"} <= node_ids(restricted)
     assert len(node_ids(restricted)) == 13
     # every edge endpoint is a sent node
-    assert len(edge_set(restricted)) == 12  # 11 CHILD_OF (incl. 2 package roots) + 1 SECOND_PARENT
+    assert len(edge_set(restricted)) == 16  # 11 CHILD_OF (incl. 2 package roots) + 1 SECOND_PARENT + 4 NEXT_TOPIC
 
 
 def column(res, name):
@@ -152,9 +152,13 @@ def test_layout_is_finite_distinct_and_radial(svc, cols):
     assert len(set(pos.values())) == len(pos)  # no two nodes on the same spot
     assert all(v == v and abs(v) != float("inf") for p in pos.values() for v in p)
     ids = res["nodes"]["id"]
+    pkg_of = dict(zip(res["nodes"]["id"], res["nodes"]["group"]))
     for s, t, k in zip(res["edges"]["s"], res["edges"]["t"], res["edges"]["k"]):
-        if k == "CHILD_OF":  # a child sits farther out than its parent
-            assert norm(pos[ids[s]]) > norm(pos[ids[t]])
+        if k == "CHILD_OF":  # a child sits farther out from its package center than its parent
+            pkg_center = pos["pkg:" + pkg_of[ids[s]]]
+            d_s = norm(tuple(a - b for a, b in zip(pos[ids[s]], pkg_center)))
+            d_t = norm(tuple(a - b for a, b in zip(pos[ids[t]], pkg_center)))
+            assert d_s > d_t
 
 
 def test_layout_is_deterministic_and_the_same_for_clustered_and_all(tmp_path):
@@ -485,7 +489,7 @@ def test_meta_describes_layers_counts_themes_and_reserved_edge_kinds_within_clea
 def test_meta_lists_only_the_layers_that_exist(svc):
     assert [layer["id"] for layer in svc.meta("restricted")["layers"]] == ["tree", "entity"]
     tree = {layer["id"]: layer for layer in svc.meta("restricted")["layers"]}["tree"]
-    assert tree["edge_kinds"] == {"CHILD_OF": 11, "SECOND_PARENT": 1}
+    assert tree["edge_kinds"] == {"CHILD_OF": 11, "SECOND_PARENT": 1, "NEXT_TOPIC": 4}
 
 
 def test_find_by_node_id_returns_that_node_with_its_path_only_if_visible(svc):

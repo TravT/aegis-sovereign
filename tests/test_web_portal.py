@@ -355,7 +355,7 @@ def test_10_health_endpoint_canonical_db_and_local_llm(portal_server):
     assert "sovereign_graph.db" in health.get("graph_db_path", "")
     assert "local_llm" in health
     llm_info = health["local_llm"]
-    assert llm_info.get("service") == "ollama"
+    assert llm_info.get("service") in ("ollama", "llama-cpp")
 
 
 def test_11_llm_status_and_control_api(portal_server):
@@ -366,7 +366,7 @@ def test_11_llm_status_and_control_api(portal_server):
     st, _, raw = _http_get_raw(f"{portal_server}/llm/status")
     assert st == 200
     llm_status = json.loads(raw.decode("utf-8"))
-    assert llm_status.get("service") == "ollama"
+    assert llm_status.get("service") in ("ollama", "llama-cpp")
     assert "status" in llm_status
 
     # 2. POST /llm/control with status check
@@ -449,8 +449,8 @@ def test_14_neural_ollama_synthesis_if_online(portal_server):
     fs = res["fast_summary"]
     assert fs.get("grounded") is True
     assert len(fs.get("answer", "")) > 40
-    # Either neural_ollama_local or graceful fallback if CPU under extreme load
-    assert res.get("execution_mode") in ("neural_ollama_local", "extractive_template_fallback")
+    # Either neural_ollama_local, neural_llama_cpp_local or graceful fallback if CPU under extreme load
+    assert res.get("execution_mode") in ("neural_ollama_local", "neural_llama_cpp_local", "extractive_template_fallback")
 
 
 def test_15_static_modular_assets_served_correctly(portal_server):

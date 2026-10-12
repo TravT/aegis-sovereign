@@ -44,7 +44,9 @@ def test_every_topic_of_the_real_tree_is_reachable_and_placed_apart(svc):
     topics = _scalar("SELECT count(*) FROM topic_nodes")
     packages = _scalar("SELECT count(DISTINCT package) FROM topic_nodes")
     assert len(res["nodes"]["id"]) == topics + packages
-    assert len(res["edges"]["s"]) == _scalar("SELECT count(*) FROM topic_edges")  # roots link to their package
+    tree_edges = sum(1 for k in res["edges"]["k"] if k in ("CHILD_OF", "SECOND_PARENT"))
+    assert tree_edges == _scalar("SELECT count(*) FROM topic_edges")  # roots link to their package
+    assert len(res["edges"]["s"]) >= tree_edges  # includes horizontal NEXT_TOPIC and bridges
 
     n = res["nodes"]
     assert len(set(zip(n["x"], n["y"]))) == len(n["id"])

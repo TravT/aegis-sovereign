@@ -43,7 +43,7 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
     manager: Any
 
     def _send_json(self, status_code: int, data: Dict[str, Any]):
-        body = json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")
+        body = json.dumps(data, indent=2, ensure_ascii=False, default=str).encode("utf-8")
         try:
             self.send_response(status_code)
             self.send_header("Content-Type", "application/json; charset=utf-8")

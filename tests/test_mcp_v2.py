@@ -200,6 +200,7 @@ def test_all_7_mcp_tools_against_live_appliance_server(live_appliance_server, tm
     assert synth_data["fast_summary"]["execution_mode"] in (
         "extractive_template_fallback",
         "neural_ollama_local",
+        "neural_llama_cpp_local",
         "neural_onnx_local",
     )
 

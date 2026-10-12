@@ -129,6 +129,9 @@ def test_the_idle_screen_tells_the_user_what_to_do(page):
 
 
 def test_a_search_does_not_preview_and_a_tap_previews_exactly_once(page):
+    accordion = page.locator("#presets-accordion")
+    if accordion.count() > 0 and not accordion.get_attribute("open"):
+        page.click("#presets-accordion summary")
     page.click(".preset-chip >> nth=0")
     page.wait_for_selector(".source-card .action-btn", timeout=10000)
     page.wait_for_timeout(2000)
