@@ -1,0 +1,123 @@
+{
+ "keyword": {
+  "all": {
+   "n": 200,
+   "hit@1": 0.455,
+   "hit@5": 0.94,
+   "hit@10": 0.985,
+   "mrr@10": 0.6676170634920635
+  },
+  "mml": {
+   "n": 150,
+   "hit@1": 0.44,
+   "hit@5": 0.9333333333333333,
+   "hit@10": 0.9866666666666667,
+   "mrr@10": 0.6580820105820105
+  },
+  "alarm": {
+   "n": 50,
+   "hit@1": 0.5,
+   "hit@5": 0.96,
+   "hit@10": 0.98,
+   "mrr@10": 0.6962222222222222
+  }
+ },
+ "hybrid": {
+  "all": {
+   "n": 200,
+   "hit@1": 0.495,
+   "hit@5": 0.97,
+   "hit@10": 0.99,
+   "mrr@10": 0.7116666666666667
+  },
+  "mml": {
+   "n": 150,
+   "hit@1": 0.49333333333333335,
+   "hit@5": 0.9666666666666667,
+   "hit@10": 0.9866666666666667,
+   "mrr@10": 0.7071111111111111
+  },
+  "alarm": {
+   "n": 50,
+   "hit@1": 0.5,
+   "hit@5": 0.98,
+   "hit@10": 1.0,
+   "mrr@10": 0.7253333333333333
+  }
+ },
+ "examples_gain": [
+  {
+   "q": "list tls parameter",
+   "target": "USC 26.1.0: List TLS Parameter(LST TLSPARA)",
+   "keyword_rank": 5,
+   "hybrid_rank": 2
+  },
+  {
+   "q": "display static route iid information",
+   "target": "USC 26.1.0: Display Static Route IID Information (DSP SRIIDINFO)",
+   "keyword_rank": 6,
+   "hybrid_rank": 3
+  },
+  {
+   "q": "list sepp bind group",
+   "target": "USC 26.1.0: List SEPP Bind Group(LST SEPPBINDGRP)",
+   "keyword_rank": 2,
+   "hybrid_rank": 1
+  },
+  {
+   "q": "display ospf neighbor state",
+   "target": "USC 26.1.0: Display OSPF Neighbor State (DSP OSPFPEER)",
+   "keyword_rank": 5,
+   "hybrid_rank": 3
+  },
+  {
+   "q": "clear ipv6 send nonce",
+   "target": "UPCF 26.1.0: Clear IPv6 SEND Nonce (RTR NDSECURITYNONCE)",
+   "keyword_rank": 3,
+   "hybrid_rank": 1
+  },
+  {
+   "q": "display ldp interface",
+   "target": "UPCF 26.1.0: Display LDP Interface (DSP LDPIF)",
+   "keyword_rank": 6,
+   "hybrid_rank": 2
+  },
+  {
+   "q": "set route sequence",
+   "target": "USC 26.1.0: Set Route Sequence (SET RTSEQ)",
+   "keyword_rank": 2,
+   "hybrid_rank": 1
+  },
+  {
+   "q": "list route import to ospfv3",
+   "target": "UPCF 26.1.0: List Route Import to OSPFv3 (LST OSPFV3IMPORTROUTE)",
+   "keyword_rank": 2,
+   "hybrid_rank": 1
+  },
+  {
+   "q": "check me version",
+   "target": "UPCF 26.1.0: Check ME Version (CHK MEVER)",
+   "keyword_rank": 6,
+   "hybrid_rank": 2
+  },
+  {
+   "q": "remove ntp server",
+   "target": "UPCF 26.1.0: Remove NTP Server (RMV NTPSVR)",
+   "keyword_rank": 2,
+   "hybrid_rank": 1
+  },
+  {
+   "q": "test message rule matching",
+   "target": "USC 26.1.0: Test Message Rule Matching (TST MMRESULT)",
+   "keyword_rank": 3,
+   "hybrid_rank": 2
+  },
+  {
+   "q": "set priority configuration for cslb fragment reassembly",
+   "target": "USC 26.1.0: Set Priority Configuration for CSLB Fragment Reassembly (SET LBFRAGRSCFG)",
+   "keyword_rank": 2,
+   "hybrid_rank": 1
+  }
+ ],
+ "losses": 42
+}
