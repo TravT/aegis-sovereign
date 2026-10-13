@@ -17,6 +17,22 @@ from typing import Any, Dict, List, Optional
 import urllib.request
 import urllib.error
 
+# Register NVIDIA CUDA 13 and cuDNN DLL directories on Windows if present
+if sys.platform == "win32":
+    cuda_candidates = [
+        r"C:\Users\tiago\llama_win",
+        r"C:\Users\tiago\gpu_worker_venv\Lib\site-packages\nvidia\cudnn\bin",
+        r"C:\Users\tiago\gpu_worker_venv\Lib\site-packages\nvidia\cublas\bin",
+        r"C:\Users\tiago\gpu_worker_venv\Lib\site-packages\nvidia\cuda_runtime\bin",
+    ]
+    for c_dir in cuda_candidates:
+        if os.path.isdir(c_dir):
+            try:
+                os.add_dll_directory(c_dir)
+            except Exception:
+                pass
+            os.environ["PATH"] = c_dir + ";" + os.environ.get("PATH", "")
+
 import numpy as np
 import onnxruntime as ort
 from tokenizers import Tokenizer
@@ -190,7 +206,7 @@ if __name__ == "__main__":
     parser.add_argument("--model-dir", type=str, required=True, help="Directory containing model_q4.onnx and tokenizer.json")
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size (default 64)")
     parser.add_argument("--threads", type=int, default=8, help="Threads for ONNX (default 8)")
-    parser.add_argument("--provider", type=str, default="CPUExecutionProvider", choices=["CPUExecutionProvider", "DmlExecutionProvider"])
+    parser.add_argument("--provider", type=str, default="CPUExecutionProvider", choices=["CPUExecutionProvider", "DmlExecutionProvider", "CUDAExecutionProvider"])
     parser.add_argument("--worker-id", type=str, default="worker-1", help="Identifier for this worker instance")
     args = parser.parse_args()
 
