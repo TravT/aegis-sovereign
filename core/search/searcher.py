@@ -19,6 +19,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import SparseVector, Filter, FieldCondition, MatchAny
 from fastembed import TextEmbedding, SparseTextEmbedding
 from core.security import ClearanceLevel
+from core.search.confidence import hybrid_confidence
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +302,10 @@ class SovereignSearcher:
             dense_weight=dense_weight,
             sparse_weight=sparse_weight
         )
+
+        # The RRF score ranks; it is not a confidence (findings register U8). Calibrate from the dense cosine.
+        for h in fused:
+            h["confidence_score"] = hybrid_confidence(h.get("meta") or {}, dense_dim=coll_dim)
 
         # Filter by confidence floor
         if confidence_floor > 0.0:

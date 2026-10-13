@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 
 from ..search.searcher import SovereignSearcher
+from ..search.confidence import top_confidence
 from ..proxy.context_condenser import ContextCondenser
 from ..graph.store import GraphStore
 from ..graph.indexer import GraphIndexer
@@ -344,10 +345,34 @@ class SovereignApplianceManager:
             user_clearance=user_clearance,
             analytical_depth=analytical_depth,
         )
+        exact = self._exact_mml_pages(query, user_clearance, limit)
+        if exact:
+            seen = {h.get("doc_identifier") for h in exact}
+            hits = exact + [h for h in hits if h.get("doc_identifier") not in seen]
+            return hits[:limit]
         if not hits:
             clr_int = ClearanceLevel.from_string(user_clearance).value
             hits = self.router._fallback_fts_search(query=query, clearance_int=clr_int, limit=limit)
         return hits
+
+    def _exact_mml_pages(self, query: str, user_clearance: str, limit: int) -> List[Dict[str, Any]]:
+        """Pages whose title code is the MML command the query names (e.g. `LST DMPEER`), for the top of `/query`.
+
+        Hybrid search keeps 10 candidates per leg at the default limit and missed the exact page for
+        `LST DMPEER` (LST DSTVER and RMV DMPEER ranked first); the exact-ID router path finds it.
+        """
+        ident = self.router.analyze_query(query).extracted_identifier
+        if ident is None or ident.id_type != "mml_command":
+            return []
+        code = " ".join(ident.normalized_value.upper().split())
+        pages = []
+        for h in self.router.execute_deterministic_lookup(ident, user_clearance, limit=max(limit, 5) * 2):
+            m = re.search(r"\(([^()]*)\)\s*$", h.get("title") or "")
+            if m and " ".join(m.group(1).upper().split()) == code:
+                item = dict(h)
+                item.update({"score": 0.99, "confidence_score": 0.99, "confidence_band": "HIGH_DETERMINISTIC_EXACT (99%)", "source": "exact_mml_name"})
+                pages.append(item)
+        return pages
 
     def analyze_route(self, query: str) -> Dict[str, Any]:
         return self.router.analyze_query(query).to_dict()
@@ -497,10 +522,8 @@ class SovereignApplianceManager:
             routed["confidence_level"] = "UNVERIFIED_SUGGESTIONS_AVAILABLE" if routed.get("suggestions") else ("PARTIAL_DISCOVERY" if enriched_results else "LOW_UNVERIFIED")
             routed["confidence_band"] = "SUGGESTIONS_AVAILABLE" if routed.get("suggestions") else ("RELATED_TOPICS_FOUND" if enriched_results else "NOT_FOUND")
         else:
-            top_sc = max(
-                (float(r.get("confidence_score") or r.get("score") or 0.88) for r in enriched_results),
-                default=0.0,
-            )
+            # Calibrated per-hit confidence, never the raw RRF score (findings register U8)
+            top_sc = top_confidence(enriched_results, default=0.88 if enriched_results else 0.0)
             routed["confidence_score"] = round(top_sc, 4)
             if top_sc >= 0.75:
                 routed["confidence_level"] = "HIGH_VERIFIED"
@@ -523,6 +546,7 @@ class SovereignApplianceManager:
                     "heading": r.get("heading") or r.get("source_tier") or "Primary Record",
                     "chunk_index": idx,
                     "score": float(r.get("score") or r.get("rrf_score") or 0.85),
+                    "confidence_score": r.get("confidence_score"),
                     "text": (r.get("text") or r.get("content") or "")[:3000],
                 })
             # Finding R1: Neural synthesis is strictly opt-in (prefer_neural=True).

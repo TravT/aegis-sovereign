@@ -263,8 +263,11 @@ class NanoRunner:
 
         for idx, c in enumerate(chunks, start=1):
             raw_score = float(c.get("score") or c.get("rrf_score") or 0.0)
+            if c.get("confidence_score") is not None:
+                # Already calibrated (findings register U8): never rescale it as an RRF score.
+                norm_score = float(c["confidence_score"])
             # RRF scores with k=60 are in range [0, 0.033]. Normalize to [0, 1.0] scale for confidence thresholding.
-            if 0.0 < raw_score <= 0.05:
+            elif 0.0 < raw_score <= 0.05:
                 norm_score = min(1.0, raw_score * 30.5)
             else:
                 norm_score = raw_score

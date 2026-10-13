@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
+from core.search.confidence import top_confidence
 from core.security import (
     ClearanceLevel,
     PlanTier,
@@ -889,11 +890,7 @@ class SovereignQueryRouter:
 
         latency_ms = (time.perf_counter() - t0) * 1000.0
 
-        top_score = 0.0
-        for r in results:
-            sc = float(r.get("confidence_score") or r.get("score") or 0.0)
-            if sc > top_score:
-                top_score = sc
+        top_score = top_confidence(results)  # calibrated, not the RRF score (findings register U8)
 
         if not results and decision.route_type == QueryRouteType.DETERMINISTIC_DIRECT:
             top_score = 0.0
