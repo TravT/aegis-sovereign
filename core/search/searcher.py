@@ -6,6 +6,7 @@ Aegis Sovereign Knowledge Appliance.
 Supports both remote Qdrant (HTTP) and embedded local path storage (Serverless).
 """
 
+import logging
 import os
 import sys
 import warnings
@@ -18,6 +19,8 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import SparseVector, Filter, FieldCondition, MatchAny
 from fastembed import TextEmbedding, SparseTextEmbedding
 from core.security import ClearanceLevel
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_COLLECTION = os.getenv("SOVEREIGN_COLLECTION", "sovereign_chunks")
 DEFAULT_DENSE_MODEL = os.getenv("SOVEREIGN_DENSE_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
@@ -224,8 +227,11 @@ class SovereignSearcher:
                 is_code = any(kw in query.lower() for kw in ["mml", "alm", "kpi", "dsp", "mod", "lst", "set", "port", "ip", "sctp"])
                 task_name = "code retrieval" if is_code else "search result"
                 query_dense = self._gemma_768.encode_queries([query], task=task_name)[0]
-            except Exception:
-                query_dense = list(self.dense_model.embed([query]))[0].tolist()
+            except Exception as e:
+                # A MiniLM (384-d) query can never match a 768-d collection: fail loudly (Finding O1)
+                raise RuntimeError(
+                    f"EmbeddingGemma (768-d) query encoder unavailable for '{target_collection}': {e}"
+                ) from e
         elif coll_dim == 256:
             try:
                 from scripts.embedding_gemma_onnx import EmbeddingGemmaONNX
@@ -234,8 +240,10 @@ class SovereignSearcher:
                 is_code = any(kw in query.lower() for kw in ["code", "config", "port", "ansible", "nomad", "traefik", "yaml", "script", "bash", "ip", "rule", "adr", "socket"])
                 task_name = "code retrieval" if is_code else "search result"
                 query_dense = self._gemma_256.encode_queries([query], task=task_name)[0]
-            except Exception:
-                query_dense = list(self.dense_model.embed([query]))[0].tolist()
+            except Exception as e:
+                raise RuntimeError(
+                    f"EmbeddingGemma (256-d) query encoder unavailable for '{target_collection}': {e}"
+                ) from e
         else:
             query_dense = list(self.dense_model.embed([query]))[0].tolist()
         try:
@@ -255,7 +263,8 @@ class SovereignSearcher:
                     query_filter=clearance_filter,
                     limit=limit * 2
                 )
-        except Exception:
+        except Exception as e:
+            logger.error("Dense search on '%s' failed, serving keyword hits only: %s", target_collection, e)
             dense_hits = []
 
         # 2. Sparse BM25 search
