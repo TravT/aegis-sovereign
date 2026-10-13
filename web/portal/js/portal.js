@@ -260,7 +260,7 @@ function showPortalToast(msg) {
 
       if (useProng1) {
         box.className = "live-route-predictor";
-        label.textContent = "PRONG 1 • Deterministic B-Tree Identifier Match (<0.8ms • 0 LLM Tokens)";
+        label.textContent = "PRONG 1 • Deterministic B-Tree Identifier Match (Exact • 0 LLM Tokens)";
       } else {
         box.className = "live-route-predictor prong2-pred";
         label.textContent = "PRONG 2 • Neural NanoRunner Synthesis + Multi-Hop GraphRAG Dossier";
@@ -617,7 +617,9 @@ function showPortalToast(msg) {
       const routeType = data.route_type || data.route || "deterministic_direct";
       const status = data.status || "success";
       const needsSynth = currentRouterMode === "prong2" ? true : (currentRouterMode === "prong1" ? false : Boolean(data.needs_synthesis));
-      const latency = Number(data.latency_ms || 0.8).toFixed(2);
+      const latency = data.latency_ms != null ? Number(data.latency_ms).toFixed(2) : "—";
+      const telLat = document.getElementById("tel-latency");
+      if (telLat) telLat.textContent = latency !== "—" ? latency + "ms" : "—";
       const isDeterministicMiss = (!needsSynth && routeType === "deterministic_direct" && status !== "success");
       const confLevel = data.confidence_level || (isDeterministicMiss ? "UNVERIFIED_SUGGESTIONS_AVAILABLE" : (needsSynth ? "HIGH_VERIFIED" : "HIGH_DETERMINISTIC_EXACT"));
       const confScore = Number(data.confidence_score || (isDeterministicMiss ? 0.35 : 0.99)).toFixed(2);
@@ -633,7 +635,7 @@ function showPortalToast(msg) {
           `⚠️ <strong>PRONG 1: IDENTIFIER NOT FOUND IN CATALOG</strong> • Safe Failure Guardrail &amp; Suggestions Active`;
         bannerMetrics.innerHTML = `
           <span class="metric-tag">Route: ${escapeHtml(routeType)} (miss)</span>
-          <span class="metric-tag">Latency: ${latency}ms</span>
+          <span class="metric-tag">Latency: ${latency !== "—" ? latency + "ms" : "—"}</span>
           <span class="metric-tag">0 Hallucinations</span>
           <span class="metric-tag">Confidence: ${escapeHtml(confLevel)} (${confScore})</span>
         `;
@@ -643,8 +645,8 @@ function showPortalToast(msg) {
           `⚡ <strong>PRONG 1: DETERMINISTIC B-TREE / FTS5 FAST-PATH</strong> • Static Verified Lookup Active`;
         bannerMetrics.innerHTML = `
           <span class="metric-tag">Route: ${escapeHtml(routeType)}</span>
-          <span class="metric-tag">Latency: ${latency}ms</span>
-          <span class="metric-tag">0 LLM Tokens (98.2% Saved)</span>
+          <span class="metric-tag">Latency: ${latency !== "—" ? latency + "ms" : "—"}</span>
+          <span class="metric-tag">0 LLM Tokens (Exact Fast-Path)</span>
           <span class="metric-tag">Confidence: ${escapeHtml(confLevel)} (${confScore})</span>
         `;
       } else {
@@ -653,7 +655,7 @@ function showPortalToast(msg) {
           `🧠 <strong>PRONG 2: SEMANTIC &amp; RELATIONAL SYNTHESIS</strong> • Minimal LLM Summary Active (${escapeHtml(routeType)})`;
         bannerMetrics.innerHTML = `
           <span class="metric-tag">Route: ${escapeHtml(routeType)}</span>
-          <span class="metric-tag">Latency: ${latency}ms</span>
+          <span class="metric-tag">Latency: ${latency !== "—" ? latency + "ms" : "—"}</span>
           <span class="metric-tag">Mode: ${escapeHtml(data.execution_mode || "neural_ollama_local")}</span>
           <span class="metric-tag">Confidence: ${escapeHtml(confLevel)} (${confScore})</span>
         `;

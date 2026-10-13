@@ -411,7 +411,7 @@ class NanoRunner:
         chunks: List[Dict[str, Any]],
         citations: List[Citation],
         graph_dossier: Optional[Dict[str, Any]] = None,
-        timeout: float = 120.0,
+        timeout: float = 15.0,
     ) -> Optional[str]:
         """
         Executes live local neural synthesis via llama.cpp OpenAI-compatible API
@@ -478,6 +478,9 @@ class NanoRunner:
             "max_tokens": 420,
         }
 
+        effective_timeout = min(
+            timeout, float(os.getenv("SOVEREIGN_LLM_TIMEOUT", "15.0"))
+        )
         try:
             req = urllib.request.Request(
                 f"{self.llama_cpp_url}/v1/chat/completions",
@@ -488,7 +491,7 @@ class NanoRunner:
                 },
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=effective_timeout) as resp:
                 if resp.status != 200:
                     return None
                 data = json.loads(resp.read().decode("utf-8"))
@@ -509,7 +512,7 @@ class NanoRunner:
         chunks: List[Dict[str, Any]],
         citations: List[Citation],
         graph_dossier: Optional[Dict[str, Any]] = None,
-        timeout: float = 90.0,
+        timeout: float = 15.0,
     ) -> Optional[str]:
         """
         Executes live local neural synthesis via Ollama HTTP API (http://127.0.0.1:11434/api/generate).
@@ -580,6 +583,9 @@ class NanoRunner:
             },
         }
 
+        effective_timeout = min(
+            timeout, float(os.getenv("SOVEREIGN_LLM_TIMEOUT", "15.0"))
+        )
         try:
             req = urllib.request.Request(
                 f"{self.ollama_url}/api/generate",
@@ -590,7 +596,7 @@ class NanoRunner:
                 },
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=effective_timeout) as resp:
                 if resp.status != 200:
                     return None
                 data = json.loads(resp.read().decode("utf-8"))

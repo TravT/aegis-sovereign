@@ -116,6 +116,21 @@ class SovereignApplianceManager:
             graph_store=self.graph_store,
             plan_enforcer=self.plan_enforcer,
         )
+        demo_db_path = (
+            Path(effective_router_db).parent / "sovereign_demo_router.db"
+            if effective_router_db != ":memory:"
+            else None
+        )
+        self.demo_router: Optional[SovereignQueryRouter] = (
+            SovereignQueryRouter(
+                db_path=str(demo_db_path),
+                searcher=self.searcher,
+                graph_store=self.graph_store,
+                plan_enforcer=self.plan_enforcer,
+            )
+            if demo_db_path and demo_db_path.exists()
+            else None
+        )
         self._seed_demo_records_if_empty(is_mock_searcher=is_mock_searcher)
 
         self.nano_runner = nano_runner or NanoRunner()
@@ -200,7 +215,7 @@ class SovereignApplianceManager:
                 if not cur.fetchone():
                     meta = json.dumps({"virtual_uri": v_uri, "file_path": v_uri, "domain": "homelab_and_huawei"})
                     cur.execute(
-                        "INSERT INTO document_records (doc_identifier, title, content, clearance_level, metadata) VALUES (?, ?, ?, ?, ?)",
+                        "INSERT INTO document_records (doc_identifier, title, content, clearance_level, metadata, record_kind) VALUES (?, ?, ?, ?, ?, 'native')",
                         (doc_id, title, content, 0, meta),
                     )
                     inserted = True
@@ -341,11 +356,13 @@ class SovereignApplianceManager:
         force_synthesize: Optional[bool] = None,
         prefer_neural: Optional[bool] = None,
         domain_filter: Optional[str] = "all",
+        demo: bool = False,
     ) -> Dict[str, Any]:
         with self._lock:
             self.status["total_queries"] += 1
 
-        routed = self.router.route_and_execute(
+        active_router = self.demo_router if (demo and self.demo_router) else self.router
+        routed = active_router.route_and_execute(
             query=query,
             user_clearance=user_clearance,
             plan=plan,
@@ -361,7 +378,7 @@ class SovereignApplianceManager:
 
         results = list(routed.get("results") or [])
         if route_type != "deterministic_direct" and not is_mock_searcher:
-            fts_hits = self.router._fallback_fts_search(
+            fts_hits = active_router._fallback_fts_search(
                 query=query,
                 clearance_int=clr_int,
                 limit=limit,
@@ -503,10 +520,11 @@ class SovereignApplianceManager:
                     "score": float(r.get("score") or r.get("rrf_score") or 0.85),
                     "text": (r.get("text") or r.get("content") or "")[:3000],
                 })
+            # Finding R1: Neural synthesis is strictly opt-in (prefer_neural=True).
+            # When prefer_neural is omitted/False, default to extractive synthesis (<1s latency).
             use_ollama_flag = (
-                prefer_neural
-                if prefer_neural is not None
-                else self.llm_controller.get_status().get("running", False)
+                bool(prefer_neural)
+                and self.llm_controller.get_status().get("running", False)
             )
             synth = self.nano_runner.synthesize(
                 query=query,

@@ -82,7 +82,7 @@
           </div>
           <div class="diag-pill-card">
             <span class="diag-pill-label">Query Latency:</span>
-            <strong style="color: var(--emerald-bright);">&lt;0.8ms B-Tree</strong>
+            <strong id="tel-latency" style="color: var(--emerald-bright);">—</strong>
           </div>
           <div class="diag-pill-card">
             <span class="diag-pill-label">Platform License:</span>
@@ -209,7 +209,7 @@
         <div class="live-route-strip-centered">
           <div id="live-route-predictor" class="live-route-predictor" style="display: none;">
             <span>⚡ Route:</span>
-            <strong id="live-route-predictor-label">PRONG 1 • Deterministic B-Tree Identifier Match (&lt;0.8ms)</strong>
+            <strong id="live-route-predictor-label">PRONG 1 • Deterministic B-Tree Identifier Match</strong>
           </div>
         </div>
 
@@ -294,14 +294,8 @@
 
       <!-- Dynamic Route Banner (Hidden on idle) -->
       <div id="route-banner" class="route-banner prong1" style="display: none;">
-        <div id="route-banner-title">
-          ⚡ <strong>PRONG 1: DETERMINISTIC B-TREE / FTS5 FAST-PATH</strong> • Ready for sub-2ms exact verification
-        </div>
-        <div class="banner-metrics" id="route-banner-metrics">
-          <span class="metric-tag">Latency: 0.8ms</span>
-          <span class="metric-tag">LLM Tokens: 0 (98.2% Saved)</span>
-          <span class="metric-tag">Confidence: HIGH_DETERMINISTIC_EXACT (0.99)</span>
-        </div>
+        <div id="route-banner-title"></div>
+        <div class="banner-metrics" id="route-banner-metrics"></div>
       </div>
 
       <!-- Main Centered Results Workspace (Google-Style) -->
