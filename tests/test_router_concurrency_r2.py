@@ -6,8 +6,8 @@ Tests concurrent write and read operations across multiple worker threads
 sharing a single SovereignQueryRouter instance. Because SQLite connections
 do not natively support concurrent transactional write interleaving on a
 single connection handle without a connection pool or write serialization mutex,
-this test demonstrates the requirement for connection pooling or write serialization.
-Marked @pytest.mark.xfail per Wave 2 specification.
+the router opens one connection per thread (Wave 4, 13 Oct 2026); this test was an expected
+failure from Wave 2 until then.
 """
 
 import concurrent.futures
@@ -19,7 +19,6 @@ from core.router.query_router import SovereignQueryRouter
 from core.security import ClearanceLevel
 
 
-@pytest.mark.xfail(reason="Concurrent router access requires connection pool / write serialization")
 def test_concurrent_router_writes_and_reads(tmp_path):
     """
     Simulates concurrent writers and readers hitting SovereignQueryRouter.
@@ -59,12 +58,10 @@ def test_concurrent_router_writes_and_reads(tmp_path):
     def worker_read(thread_id: int):
         for i in range(iterations_per_thread):
             try:
-                results = router.search_documents(
-                    query_text="telemetry content",
-                    user_clearance="public",
-                    limit=5,
-                )
-                assert isinstance(results, list)
+                # The router has no `search_documents` (the Wave 2 draft named one); plain-language reads go
+                # through route_and_execute, which runs the FTS5 search on the router's connection.
+                res = router.route_and_execute(query="telemetry content", user_clearance="public", limit=5)
+                assert isinstance(res["results"], list)
             except Exception as exc:
                 errors.append(exc)
 
@@ -81,7 +78,7 @@ def test_concurrent_router_writes_and_reads(tmp_path):
     router.close()
 
     if errors:
-        # Re-raise the first error so xfail records the failure mode
+        # Re-raise the first error so the failure mode is visible
         raise errors[0]
 
     # If by chance it did not fail, ensure all documents were safely written

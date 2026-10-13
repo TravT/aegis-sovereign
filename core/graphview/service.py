@@ -1,5 +1,7 @@
 """GraphService: the single interface of the graph viewer module (slice / find, meta to follow)."""
 
+import contextlib
+import gc
 import hashlib
 import os
 import threading
@@ -12,6 +14,37 @@ from .flat import EntityLayer, FlatView
 from .model import columnar
 from .tree import TreeLayer, TreeView
 from .wiki import WikiLayer
+
+_gc_lock = threading.Lock()
+_gc_pausers = 0
+
+
+@contextlib.contextmanager
+def gc_paused():
+    """Pause the cyclic garbage collector while a view is built (reference-counted across threads).
+
+    A tree build allocates millions of small tuples and dicts; each full collection rescans the whole live heap,
+    which is large in the server (the query encoders are loaded). Measured 13 Oct 2026: first build 20.7 s with
+    collections, 11.9 s without, in a process that had loaded the models. Reference counting still frees
+    everything; cycles are collected once collection resumes.
+    """
+    global _gc_pausers
+    with _gc_lock:
+        _gc_pausers += 1
+        if _gc_pausers == 1:
+            was_enabled = gc.isenabled()
+            gc.disable()
+            _gc_state["restore"] = was_enabled
+    try:
+        yield
+    finally:
+        with _gc_lock:
+            _gc_pausers -= 1
+            if _gc_pausers == 0 and _gc_state.get("restore"):
+                gc.enable()
+
+
+_gc_state: Dict[str, bool] = {}
 
 Clearance = Union[str, int, ClearanceLevel]
 
@@ -87,6 +120,10 @@ class GraphService:
         The tree layer is level-of-detail: ``clustered`` returns the package roots plus ``levels``
         levels (or ``focus`` plus ``levels`` levels below it), ``all`` returns every visible node.
         Flat layers (entity, wiki) are always returned whole."""
+        with gc_paused():
+            return self._slice(layer, clearance, focus, mode, levels)
+
+    def _slice(self, layer: str, clearance: Clearance, focus: Optional[str], mode: str, levels: int) -> Dict[str, Any]:
         level = int(ClearanceLevel.from_string(clearance))
         if mode not in MODES:
             raise ValueError(f"unknown mode {mode!r}")

@@ -24,9 +24,12 @@ def test_app():
         clearance_level=ClearanceLevel.PUBLIC,
         metadata={"virtual_uri": "archive://manuals/usc_diameter.html", "domain": "telecom_vendor"},
     )
-    # Warm up searcher to isolate query execution latency from one-time model initialization
+    # Warm up the searcher to isolate query latency from one-time model initialization. Warm the search
+    # path itself: a 768-d collection uses the EmbeddingGemma encoder, not `dense_model` (MiniLM), and a
+    # cold Gemma load inside the timed query made these tests fail after any test that puts the
+    # Enterprise_Hub root on sys.path (test_anti_loop_and_packaging.py does).
     try:
-        _ = app.searcher.dense_model
+        app.searcher.search(query="warm up the query encoder", limit=1)
     except Exception:
         pass
     yield app

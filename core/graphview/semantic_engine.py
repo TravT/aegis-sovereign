@@ -331,20 +331,16 @@ class SemanticBridgeEngine:
 
         norm_source_id = f"t:{raw_tid}"
 
-        # Fetch source topic
+        # Fetch source topic. Each row looks up its own record through idx_doc_records_topic_id: a GROUP BY over
+        # every record with a topic_id (46,694 manual pages since O1/O6) took 2-16 s per click.
         conn = self._get_connection()
         try:
             cur = conn.cursor()
             source_row = cur.execute("""
                 SELECT n.topic_id, n.package, n.name, n.depth, n.path_text,
-                       d.title AS doc_title, SUBSTR(d.content, 1, 500) AS content_sample
+                       (SELECT d.title FROM document_records d WHERE d.topic_id = n.topic_id LIMIT 1) AS doc_title,
+                       (SELECT SUBSTR(d.content, 1, 500) FROM document_records d WHERE d.topic_id = n.topic_id LIMIT 1) AS content_sample
                 FROM topic_nodes n
-                LEFT JOIN (
-                    SELECT topic_id, title, content
-                    FROM document_records
-                    WHERE topic_id IS NOT NULL
-                    GROUP BY topic_id
-                ) d ON d.topic_id = n.topic_id
                 WHERE n.topic_id = ?
             """, (raw_tid,)).fetchone()
 
@@ -373,14 +369,9 @@ class SemanticBridgeEngine:
 
             query = f"""
                 SELECT n.topic_id, n.package, n.name, n.depth, n.path_text,
-                       d.title AS doc_title, SUBSTR(d.content, 1, 500) AS content_sample
+                       (SELECT d.title FROM document_records d WHERE d.topic_id = n.topic_id LIMIT 1) AS doc_title,
+                       (SELECT SUBSTR(d.content, 1, 500) FROM document_records d WHERE d.topic_id = n.topic_id LIMIT 1) AS content_sample
                 FROM topic_nodes n
-                LEFT JOIN (
-                    SELECT topic_id, title, content
-                    FROM document_records
-                    WHERE topic_id IS NOT NULL
-                    GROUP BY topic_id
-                ) d ON d.topic_id = n.topic_id
                 WHERE n.package = ? AND n.depth <= 3 AND ({word_clauses})
             """
             target_rows = cur.execute(query, [target_pkg] + word_params).fetchall()

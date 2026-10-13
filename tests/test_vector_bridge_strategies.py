@@ -5,6 +5,7 @@ Comprehensive Benchmark & Verification Suite for Vector Bridge Strategies:
 - Option C: Hybrid Tiered Bridges (Tier 2: Edge Turnkey 1U)
 """
 
+import sqlite3
 import time
 import pytest
 from pathlib import Path
@@ -13,10 +14,22 @@ from core.graphview.semantic_engine import SemanticBridgeEngine, TOPIC_PREFIX
 ROUTER_DB_PATH = "/home/tlima/Enterprise_Hub/docs/.aegis_vault/sovereign_router.db"
 
 
-@pytest.fixture
-def engine():
+@pytest.fixture(scope="module")
+def vault_copy(tmp_path_factory):
+    """A private copy of the production vault: Option A rewrites `semantic_bridges`, which the live tree reads."""
     assert Path(ROUTER_DB_PATH).exists(), f"Router DB must exist at {ROUTER_DB_PATH}"
-    return SemanticBridgeEngine(ROUTER_DB_PATH, threshold=0.25)
+    dst = tmp_path_factory.mktemp("vault") / "sovereign_router.db"
+    src_conn = sqlite3.connect(f"file:{ROUTER_DB_PATH}?mode=ro", uri=True)
+    dst_conn = sqlite3.connect(dst)
+    src_conn.backup(dst_conn)
+    dst_conn.close()
+    src_conn.close()
+    return str(dst)
+
+
+@pytest.fixture
+def engine(vault_copy):
+    return SemanticBridgeEngine(vault_copy, threshold=0.25)
 
 
 def test_strategy_a_offline_precomputation_and_retrieval(engine):

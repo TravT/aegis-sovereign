@@ -128,7 +128,10 @@ def test_unified_server_vault_cross_domain_queries():
     assert skill_decision.extracted_identifier.normalized_value == "manage-sovereign-vault"
     skill_hits = router.execute_deterministic_lookup("manage-sovereign-vault")
     assert len(skill_hits) >= 1, "manage-sovereign-vault must be indexed in unified sovereign_router.db"
-    assert "manage-sovereign-vault" in skill_hits[0]["doc_identifier"]
+    # The duplicate `manage-sovereign-vault` record was removed by the O3/O5 vault cleanup (13 Oct 2026); the
+    # canonical skill record is `SKILL-SOVEREIGN-VAULT`, titled with the skill name.
+    assert skill_hits[0]["doc_identifier"] in ("SKILL-SOVEREIGN-VAULT", "manage-sovereign-vault")
+    assert "manage-sovereign-vault" in skill_hits[0]["title"]
 
     # 4. Verify GraphStore cross-domain dossiers
     hub_dossier = gs.compile_dossier("Enterprise_Hub")

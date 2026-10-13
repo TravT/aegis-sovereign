@@ -14,6 +14,7 @@ import math
 import os
 import re
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
@@ -97,19 +98,56 @@ class SovereignQueryRouter:
         if self.db_path != ":memory:":
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
-        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA foreign_keys = ON;")
+        # Finding R2: one connection per thread for a file database. Threads that shared one connection
+        # interleaved transactions (`cannot start a transaction within a transaction`, lost rows); WAL lets the
+        # per-thread connections read concurrently while writers wait on the busy timeout. An in-memory
+        # database exists only inside its connection, so it keeps one shared connection.
+        self._conns_lock = threading.Lock()
+        self._thread_conns: Dict[threading.Thread, sqlite3.Connection] = {}
+        self._shared_conn: Optional[sqlite3.Connection] = (
+            self._open_connection() if self.db_path == ":memory:" else None
+        )
         if self.db_path != ":memory:":
             self._conn.execute("PRAGMA journal_mode = WAL;")
-            self._conn.execute("PRAGMA synchronous = NORMAL;")
 
         self.init_db()
 
+    def _open_connection(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        if self.db_path != ":memory:":
+            conn.execute("PRAGMA synchronous = NORMAL;")
+        return conn
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        """The calling thread's connection (opened on first use; connections of finished threads are closed)."""
+        if self._shared_conn is not None:
+            return self._shared_conn
+        me = threading.current_thread()
+        conn = self._thread_conns.get(me)
+        if conn is None:
+            conn = self._open_connection()
+            with self._conns_lock:
+                for th in [t for t in self._thread_conns if not t.is_alive()]:
+                    self._thread_conns.pop(th).close()
+                self._thread_conns[me] = conn
+        return conn
+
+    @_conn.setter
+    def _conn(self, conn: sqlite3.Connection) -> None:
+        """Pin one connection for every thread (tests wrap or replace it)."""
+        self._shared_conn = conn
+
     def close(self) -> None:
-        """Closes the underlying SQLite database connection."""
-        if self._conn:
-            self._conn.close()
+        """Closes every connection this router opened."""
+        if self._shared_conn is not None:
+            self._shared_conn.close()
+        with self._conns_lock:
+            for conn in self._thread_conns.values():
+                conn.close()
+            self._thread_conns.clear()
 
     def init_db(self) -> None:
         """

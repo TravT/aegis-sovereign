@@ -184,7 +184,7 @@ rel_cnt = g_conn.execute('SELECT COUNT(*) FROM entity_relations').fetchone()[0]
 t0 = time.perf_counter()
 hit = r_conn.execute(\"SELECT doc_identifier, title FROM document_records WHERE doc_identifier LIKE 'ALM-20104%' LIMIT 1\").fetchone()
 adr_hit = r_conn.execute(\"SELECT doc_identifier, title FROM document_records WHERE doc_identifier = 'ADR-40' LIMIT 1\").fetchone()
-skill_hit = r_conn.execute(\"SELECT doc_identifier, title FROM document_records WHERE doc_identifier = 'manage-sovereign-vault' LIMIT 1\").fetchone()
+skill_hit = r_conn.execute(\"SELECT doc_identifier, title FROM document_records WHERE doc_identifier IN ('SKILL-SOVEREIGN-VAULT', 'manage-sovereign-vault') LIMIT 1\").fetchone()
 dt_ms = (time.perf_counter() - t0) * 1000.0
 assert doc_cnt >= 48900, f'Expected >= 48900 docs, got {doc_cnt}'
 assert ent_cnt >= 8500, f'Expected >= 8500 entities, got {ent_cnt}'
