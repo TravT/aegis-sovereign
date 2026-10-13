@@ -53,6 +53,7 @@ class IngestOptions:
     max_file_bytes: int = 200 * 1024 * 1024
     max_depth: int = 2  # nested archive depth
     dry_run: bool = False
+    record_kind: str = "native"
 
 
 @dataclass
@@ -292,12 +293,12 @@ def ingest_source(db_path: Path, source: Path, opts: IngestOptions) -> Dict[str,
                         opts.clearance,
                         json.dumps(meta, ensure_ascii=False),
                         keys.get(c.path, keys[()]),
-                        "native",
+                        opts.record_kind,
                     )
                 )
             conn.executemany(
-                "INSERT INTO document_records (doc_identifier, title, content, clearance_level, metadata, topic_id, record_kind) "
-                "VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO document_records (doc_identifier, title, content, clearance_level, metadata, topic_id, record_kind, created_at) "
+                "VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",
                 rows,
             )
     if not opts.dry_run:

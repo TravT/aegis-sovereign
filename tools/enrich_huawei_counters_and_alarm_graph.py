@@ -248,9 +248,14 @@ def enrich_alarms_and_counters() -> Dict[str, int]:
 
                     rcur.execute(
                         """
-                        INSERT OR REPLACE INTO document_records
-                        (doc_identifier, title, content, clearance_level, metadata)
-                        VALUES (?, ?, ?, 1, ?)
+                        INSERT INTO document_records
+                        (doc_identifier, title, content, clearance_level, metadata, record_kind)
+                        VALUES (?, ?, ?, 1, ?, 'native')
+                        ON CONFLICT(doc_identifier) DO UPDATE SET
+                            title = excluded.title,
+                            content = excluded.content,
+                            clearance_level = excluded.clearance_level,
+                            metadata = excluded.metadata
                         """,
                         (
                             doc_id_str,

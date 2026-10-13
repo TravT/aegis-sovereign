@@ -195,28 +195,33 @@ class SovereignApplianceManager:
                     "Homelab Wiki ADR-40: Two-Pronged Hybrid Retrieval & Resilient Intent Routing",
                     "Virtual URI: archive:///home/tlima/Enterprise_Hub/docs/wiki/adrs/40_two_pronged_hybrid_retrieval_and_resilient_intent_routing.md\n\nDescription\nADR-40 establishes the Two-Pronged Hybrid Retrieval & Resilient Intent Router for the Aegis Sovereign Knowledge Appliance on the Enterprise_Hub Dell Latitude 7390 homelab server.\n- Prong 1 (Deterministic Fast-Path <2ms): Routes exact identifiers directly to SQLite B-Tree and external-content FTS5 with zero LLM tokens.\n- Prong 2 (Multi-Tier Cognitive Synthesis): Routes analytical and architectural questions through NanoRunner extractive/local LLM synthesis + SQLite WAL GraphRAG.\n\nParameters\n- Router DB: docs/.aegis_vault/sovereign_router.db\n- Graph DB: docs/.aegis_vault/sovereign_graph.db",
                     "archive:///home/tlima/Enterprise_Hub/docs/wiki/adrs/40_two_pronged_hybrid_retrieval_and_resilient_intent_routing.md",
+                    "USC:TOPIC_0261384941_1",
                 ),
                 (
                     "SKILL-SOVEREIGN-VAULT",
                     "Agent Skill: manage-sovereign-vault (7-Tool Sovereign Knowledge Appliance MCP v2)",
                     "Virtual URI: archive:///home/tlima/Enterprise_Hub/.agents/skills/manage-sovereign-vault/SKILL.md\n\nDescription\nThe manage-sovereign-vault skill equips Antigravity, Claude Code, and local AI harnesses with the 7-Tool Model Context Protocol (MCP v2) interface.",
                     "archive:///home/tlima/Enterprise_Hub/.agents/skills/manage-sovereign-vault/SKILL.md",
+                    "USC:TOPIC_0170778883",
                 ),
                 (
                     "HOMELAB-ARCH-OVERVIEW",
                     "Enterprise Hub Server Architecture: Dell Latitude 7390, Nomad Cluster & Traefik v3 Ingress Routing",
                     "Virtual URI: archive:///home/tlima/Enterprise_Hub/docs/wiki/system_overview.md\n\nDescription\nThe Enterprise_Hub Homelab server runs on a primary Dell Latitude 7390 host (LAN: 192.168.0.48, Tailscale: 100.125.7.38) orchestrated by HashiCorp Nomad and deployed strictly via Ansible GitOps.",
                     "archive:///home/tlima/Enterprise_Hub/docs/wiki/system_overview.md",
+                    "USC:TOPIC_0261384941_1",
                 ),
             ]
             inserted = False
-            for doc_id, title, content, v_uri in presets:
+            for item in presets:
+                doc_id, title, content, v_uri = item[0], item[1], item[2], item[3]
+                tid = item[4] if len(item) > 4 else None
                 cur.execute("SELECT id FROM document_records WHERE doc_identifier = ?", (doc_id,))
                 if not cur.fetchone():
                     meta = json.dumps({"virtual_uri": v_uri, "file_path": v_uri, "domain": "homelab_and_huawei"})
                     cur.execute(
-                        "INSERT INTO document_records (doc_identifier, title, content, clearance_level, metadata, record_kind) VALUES (?, ?, ?, ?, ?, 'native')",
-                        (doc_id, title, content, 0, meta),
+                        "INSERT INTO document_records (doc_identifier, title, content, clearance_level, metadata, record_kind, topic_id) VALUES (?, ?, ?, ?, ?, 'native', ?)",
+                        (doc_id, title, content, 0, meta, tid),
                     )
                     inserted = True
             if inserted:

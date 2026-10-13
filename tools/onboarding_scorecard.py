@@ -17,29 +17,36 @@ for z in sorted(glob.glob(f"{HUB}/docs/Hua_Docs/*.zip")):
         entries += n; pk.append((os.path.basename(z), n, round(os.path.getsize(z) / 2**20, 1)))
 con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True); c = con.cursor()
 one = lambda s: c.execute(s).fetchone()[0]
+
+existing_cols = {col["name"] for col in q("/collections")["collections"]}
+manual_vectors = q("/collections/sovereign_chunks")["points_count"] if "sovereign_chunks" in existing_cols else 0
+
 out["manuals"] = dict(packages=pk, source_entries=entries,
     native=one("select count(*) from document_records where record_kind='native'"),
-    native_no_topic=one("select count(*) from document_records where record_kind='native' and topic_id is null"),
+    native_no_topic=one("select count(*) from document_records where record_kind='native' and (topic_id is null or topic_id <= 0)"),
     composite=one("select count(*) from document_records where record_kind='composite'"),
-    topic_nodes=one("select count(*) from topic_nodes"), vectors=0)
+    topic_nodes=one("select count(*) from topic_nodes"), vectors=manual_vectors)
 # --- wiki
 notes = [p for p in glob.glob(f"{HUB}/docs/wiki/**/*.md", recursive=True) if "/.obsidian/" not in p]
 uris = [r[0] for r in c.execute("select distinct json_extract(metadata,'$.virtual_uri') from document_records where record_kind='external' and (doc_identifier like '%.md%' or metadata like '%docs/wiki%')")]
 snap = one("select max(created_at) from document_records where record_kind='external' and (doc_identifier like '%.md%' or metadata like '%docs/wiki%')")
-snap_ts = datetime.datetime.fromisoformat(snap).replace(tzinfo=datetime.timezone.utc).timestamp()
-pts = q("/collections/wiki_chunks")["points_count"]
+snap_ts = datetime.datetime.fromisoformat(snap).replace(tzinfo=datetime.timezone.utc).timestamp() if snap else 0
+
+wiki_col = "wiki_chunks_v2" if "wiki_chunks_v2" in existing_cols else "wiki_chunks"
+pts = q(f"/collections/{wiki_col}")["points_count"]
 files = set(); off = None
 while True:
-    r = q("/collections/wiki_chunks/points/scroll", {"limit": 256, "with_payload": ["file_path"], "with_vector": False, **({"offset": off} if off else {})})
+    r = q(f"/collections/{wiki_col}/points/scroll", {"limit": 256, "with_payload": ["file_path"], "with_vector": False, **({"offset": off} if off else {})})
     files |= {p["payload"].get("file_path") for p in r["points"]}; off = r.get("next_page_offset")
     if not off: break
 out["wiki"] = dict(notes=len(notes),
     sqlite_records=one("select count(*) from document_records where record_kind='external' and (doc_identifier like '%.md%' or metadata like '%docs/wiki%')"),
-    sqlite_paths=len(uris), sqlite_missing=sum(1 for u in uris if u and not os.path.exists(u.replace("file://", ""))),
+    sqlite_paths=len([u for u in uris if u and "/docs/wiki/" in u]), sqlite_missing=sum(1 for u in uris if u and not os.path.exists(u.replace("file://", ""))),
     sqlite_obsidian=sum(1 for u in uris if u and "/.obsidian/" in u), sqlite_snapshot=snap,
     changed_since_snapshot=sum(1 for p in notes if os.path.getmtime(p) > snap_ts),
     qdrant_points=pts, qdrant_files=len(files - {None}), graph_notes=len(notes))
 out["fixtures"] = one("select count(*) from document_records where record_kind='external' and not (doc_identifier like '%.md%' or metadata like '%docs/wiki%')")
-out["paperless_vectors"] = q("/collections/paperless_chunks")["points_count"]
+out["paperless_vectors"] = q("/collections/paperless_chunks")["points_count"] if "paperless_chunks" in existing_cols else 0
 out["total_records"] = one("select count(*) from document_records")
-print(json.dumps(out, indent=1)); json.dump(out, open("scorecard.json", "w"), indent=1)
+report_path = os.path.join(os.path.dirname(__file__), "scorecard.json")
+print(json.dumps(out, indent=1)); json.dump(out, open(report_path, "w"), indent=1)

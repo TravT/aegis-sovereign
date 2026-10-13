@@ -152,11 +152,9 @@ flowchart TD
 - **Legally Irrefutable Immutability**: Full compliance with international WORM standards (SEC Rule 17a-4, BACEN, LGPD).
 - **Infinite Scalability**: Horizontally scalable from 10,000 documents to 500,000,000+ documents without changing API contracts.
 
-### Negative & Mitigations
-- **Substantial Capital Expenditure**: Multi-GPU racks and InfiniBand switches cost between $250,000 and $1,200,000+.
-  - *Mitigation*: Packaged into structured enterprise CapEx financing or provided as a private, dedicated Sovereign Bare-Metal Cloud lease.
-- **Operational Complexity**: Managing Ceph, Ray, and vLLM clusters requires specialized SRE capabilities.
-  - *Mitigation*: Bundled with our high-margin Annual Managed Operations Retainer (Tier 4 monetization ladder).
+### Host Reality Note (homelab Dell Latitude 7390)
+> [!NOTE]
+> **Not enabled on this host**: The Tier-3 / Tier-4 Enterprise Datacenter architecture, ColPali distributed Ray workers, Ceph S3 WORM, and 400G InfiniBand fabric are architectural specifications and enterprise policy configurations. The current cluster node (`node: homelab`, Dell Latitude 7390, 15W i5 CPU, 16 GB RAM) operates strictly as a Tier-2 edge appliance (`AEGIS_SIZE_PROFILE="edge"`). Datacenter scale features are intentionally dormant and not enabled on this host.
 
 ---
 

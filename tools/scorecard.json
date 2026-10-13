@@ -1,0 +1,47 @@
+{
+ "manuals": {
+  "packages": [
+   [
+    "HUAWEI USC Unified Signaling Controller 26.1.0 Product Documentation (VM) 02.zip",
+    29860,
+    329.7
+   ],
+   [
+    "UPCF 26.1.0 Product Documentation (Virtual Machine Container) 02 (Online Information Center).zip",
+    28400,
+    330.5
+   ],
+   [
+    "UPCF 26.1.0.5_ReleaseDoc_EN (Virtual Machine Container).zip",
+    16,
+    18.3
+   ],
+   [
+    "USC 26.1.0_ReleaseDoc_EN (VM).zip",
+    119,
+    135.7
+   ]
+  ],
+  "source_entries": 58395,
+  "native": 46693,
+  "native_no_topic": 0,
+  "composite": 7654,
+  "topic_nodes": 47578,
+  "vectors": 1005
+ },
+ "wiki": {
+  "notes": 157,
+  "sqlite_records": 1613,
+  "sqlite_paths": 157,
+  "sqlite_missing": 0,
+  "sqlite_obsidian": 0,
+  "sqlite_snapshot": "2026-10-13 03:11:47",
+  "changed_since_snapshot": 0,
+  "qdrant_points": 2164,
+  "qdrant_files": 157,
+  "graph_notes": 157
+ },
+ "fixtures": 0,
+ "paperless_vectors": 848,
+ "total_records": 55973
+}

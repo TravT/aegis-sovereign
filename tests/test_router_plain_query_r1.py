@@ -24,6 +24,11 @@ def test_app():
         clearance_level=ClearanceLevel.PUBLIC,
         metadata={"virtual_uri": "archive://manuals/usc_diameter.html", "domain": "telecom_vendor"},
     )
+    # Warm up searcher to isolate query execution latency from one-time model initialization
+    try:
+        _ = app.searcher.dense_model
+    except Exception:
+        pass
     yield app
     app.router.close()
 

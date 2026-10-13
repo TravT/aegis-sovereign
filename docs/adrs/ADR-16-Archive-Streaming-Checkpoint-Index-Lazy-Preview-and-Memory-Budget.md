@@ -70,6 +70,12 @@ Differences from the prototype, found while porting: an archive evicted or repla
 
 Still open: the diagram path (phase 2) reads the whole inner package, so `POST /archive/inspect` with `extract_diagram_to_artifact` (or an image entry) keeps a one-at-a-time lock in `core/server/handler.py`; the listing budget and the secondary readers (`hdx_parser`, `openxml_parser`) are phases 3 and 4; `memory_max` goes back to 768 MB only after a soak.
 
+## Milestone Roadmap (Finding R3)
+- **Phase 0 & 1 (Current / Deployed)**: Lazy preview on tap is active in the web portal (ADR-15). The random-access streaming core with indexed inflate adapter (`IndexedInflateFile`), per-process `ArchiveCache`, and connection-isolated `ArchiveInspector` database lookups is verified and deployed.
+- **Phase 2 (Next Milestone — Diagrams)**: Stream the 353 MB inner package in memory during `extract_diagram_to_artifact` calls without materializing the full inner archive or writing temporary PNG files to the host disk.
+- **Phase 3 (Next Milestone — Listing Budget)**: Bounded memory budget for massive archive directories containing >10,000 member files.
+- **Phase 4 (Next Milestone — Secondary Readers)**: Port `hdx_parser` and `openxml_parser` to the streaming core.
+
 ## Consequences
 - The page-load crash is fixed twice over: the preview no longer fires on load, and when it does it needs tens of megabytes, not a gigabyte.
 - A module-level cache adds state to the server; it is bounded (about 3.3 MB per archive plus the LRU budget) and invalidated by modification time and size.

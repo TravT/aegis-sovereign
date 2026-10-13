@@ -57,6 +57,9 @@ Accepted (engine on branch `feat/topic-tree`; Stage 1 schema applied to the live
 ### 5. Tier size profiles — never truncate
 `core/structure/policy.py`: profiles `desktop` (Tier 1), `edge` (Tier 2), `datacenter` (Tier 3) set chunk size and overlap, whether `path_text` is stored (desktop derives paths from the `topic_paths` view instead) and whether search collapses derived records. Text longer than a chunk is split into overlapping spans that cover every character; nothing is ever dropped to fit a limit.
 
+> [!NOTE]
+> **Host Scope (homelab)**: The `datacenter` profile (`chunk_chars=4000, collapse_derived=False`) is fully defined in `core/structure/policy.py` for enterprise deployments. However, it is **not enabled on this host**; the homelab Dell Latitude 7390 appliance runs strictly under the `edge` profile (`AEGIS_SIZE_PROFILE="edge"`).
+
 ### 6. Search-time de-duplication before any deletion
 `core/structure/search.fold_duplicates()` folds a curated `composite` record under the `native` record of the same topic **only when their text is near-identical** (shared tokens relative to the larger text >= 0.85, measured on the live vault: 99.9% of the 7,653 composite/native pairs qualify and the median is exactly 1.0). Curated records that add information (e.g. the `ALM-1003` root-alarm dossier) always stay visible. The native keeps its rank, gets `collapsed = n`, and the result carries `topic_id` / `record_kind`. It is wired into `SovereignQueryRouter.route_and_execute` (which fetches twice the limit and slices back after folding, so folding never returns fewer distinct answers) and into the in-process MCP search; the hybrid `/query` path is not wired yet. The tier is chosen with `AEGIS_SIZE_PROFILE` (desktop | edge | datacenter, default edge; datacenter keeps everything). It is a no-op on vaults without the structure columns. Duplicates are not deleted: they are removed only after a measured, per-topic review.
 

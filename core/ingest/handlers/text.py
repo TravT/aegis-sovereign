@@ -60,6 +60,10 @@ class MarkdownHandler(FormatHandler):
         if text.startswith("---\n"):  # YAML front matter stays with the first section
             end = text.find("\n---", 4)
             if end != -1:
+                fm = text[4:end]
+                m_title = re.search(r"^title:\s*[\"']?(.*?)[\"']?\s*$", fm, re.M)
+                if m_title and m_title.group(1).strip():
+                    doc.title = m_title.group(1).strip()
                 lines.append(text[: end + 4])
                 text = text[end + 4 :]
         for line in text.splitlines():

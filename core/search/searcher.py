@@ -84,12 +84,14 @@ def reciprocal_rank_fusion(
 
     fused_results = []
     for point_id, rrf_score in sorted_points:
-        fused_results.append({
-            "id": point_id,
-            "rrf_score": rrf_score,
-            "payload": payloads.get(point_id, {}),
-            "meta": meta.get(point_id, {})
-        })
+        p = payloads.get(point_id, {})
+        item = dict(p)
+        item["id"] = point_id
+        item["rrf_score"] = rrf_score
+        item["score"] = rrf_score
+        item["payload"] = p
+        item["meta"] = meta.get(point_id, {})
+        fused_results.append(item)
 
     return fused_results
 
@@ -183,24 +185,59 @@ class SovereignSearcher:
         elif analytical_depth == "relational_audit":
             limit = max(limit, 7)
 
-        # Fast-exit if no dense model is loaded yet and the real Qdrant collection is empty or non-existent
-        if (
-            self._dense_model is None
-            and not hasattr(self.client, "_mock_name")
-            and type(self.client).__name__ != "MagicMock"
-        ):
+        # Finding O1: Explicit exception if target collection does not exist in Qdrant
+        if hasattr(self.client, "collection_exists"):
             try:
-                if hasattr(self.client, "collection_exists") and not self.client.collection_exists(target_collection):
+                if self.client.collection_exists(target_collection) is False:
+                    raise RuntimeError(f"Qdrant collection '{target_collection}' does not exist")
+            except RuntimeError:
+                raise
+            except Exception as e:
+                err_str = str(e).lower()
+                if "not found" in err_str or "doesn't exist" in err_str or "404" in err_str:
+                    raise RuntimeError(f"Qdrant collection '{target_collection}' does not exist") from e
+        if hasattr(self.client, "count"):
+            try:
+                cnt_res = self.client.count(collection_name=target_collection, exact=False)
+                if getattr(cnt_res, "count", 0) == 0:
                     return []
-                if hasattr(self.client, "count"):
-                    cnt_res = self.client.count(collection_name=target_collection, exact=False)
-                    if getattr(cnt_res, "count", 0) == 0:
-                        return []
-            except Exception:
-                return []
+            except Exception as e:
+                err_str = str(e).lower()
+                if "not found" in err_str or "doesn't exist" in err_str or "404" in err_str:
+                    raise RuntimeError(f"Qdrant collection '{target_collection}' does not exist") from e
 
         # 1. Dense search
-        query_dense = list(self.dense_model.embed([query]))[0].tolist()
+        coll_dim = 384
+        try:
+            if hasattr(self.client, "get_collection"):
+                coll_info = self.client.get_collection(target_collection)
+                vecs = coll_info.config.params.vectors
+                coll_dim = vecs["dense"].size if isinstance(vecs, dict) else getattr(vecs, "size", 384)
+        except Exception:
+            coll_dim = 384
+
+        if coll_dim == 768:
+            try:
+                from scripts.embedding_gemma_onnx import EmbeddingGemmaONNX
+                if not hasattr(self, "_gemma_768") or self._gemma_768 is None:
+                    self._gemma_768 = EmbeddingGemmaONNX(mrl_dim=768)
+                is_code = any(kw in query.lower() for kw in ["mml", "alm", "kpi", "dsp", "mod", "lst", "set", "port", "ip", "sctp"])
+                task_name = "code retrieval" if is_code else "search result"
+                query_dense = self._gemma_768.encode_queries([query], task=task_name)[0]
+            except Exception:
+                query_dense = list(self.dense_model.embed([query]))[0].tolist()
+        elif coll_dim == 256:
+            try:
+                from scripts.embedding_gemma_onnx import EmbeddingGemmaONNX
+                if not hasattr(self, "_gemma_256") or self._gemma_256 is None:
+                    self._gemma_256 = EmbeddingGemmaONNX(mrl_dim=256)
+                is_code = any(kw in query.lower() for kw in ["code", "config", "port", "ansible", "nomad", "traefik", "yaml", "script", "bash", "ip", "rule", "adr", "socket"])
+                task_name = "code retrieval" if is_code else "search result"
+                query_dense = self._gemma_256.encode_queries([query], task=task_name)[0]
+            except Exception:
+                query_dense = list(self.dense_model.embed([query]))[0].tolist()
+        else:
+            query_dense = list(self.dense_model.embed([query]))[0].tolist()
         try:
             if hasattr(self.client, "query_points"):
                 resp = self.client.query_points(
