@@ -29,14 +29,17 @@ orig = s.client.query_points
 def sparse_only(*a, **kw):
     if kw.get("using") == "dense": return type("R", (), {"points": []})()
     return orig(*a, **kw)
-res = {"keyword": [], "hybrid": []}
+res = {"keyword": [], "hybrid": []}; cres = {}
 for mode in ("keyword", "hybrid"):
     s.client.query_points = sparse_only if mode == "keyword" else orig
     t0 = time.time()
     for kind, doc, title, q in sample:
         hits = s.search(q, limit=10)
         ids = [h.get("doc_identifier") for h in hits]
+        code = re.search(r"\(([^()]*)\)\s*$", title); code = code.group(1).strip() if code else None
+        codes = [(re.search(r"\(([^()]*)\)\s*$", h.get("title") or "") or [None, None])[1] for h in hits]
         res[mode].append(ids.index(doc) + 1 if doc in ids else None)
+        cres.setdefault(mode, []).append(next((i + 1 for i, c in enumerate(codes) if code and c and c.strip() == code), None))
     print(mode, f"{time.time()-t0:.1f}s", file=sys.stderr)
 def summ(r, sel=None):
     r = [x for x, smp in zip(r, sample) if sel is None or smp[0] == sel]; n = len(r)
@@ -46,4 +49,5 @@ out = {m: {"all": summ(res[m]), "mml": summ(res[m], "mml"), "alarm": summ(res[m]
 gains = [(smp[3], smp[2], k, h) for smp, k, h in zip(sample, res["keyword"], res["hybrid"]) if (h or 99) < (k or 99)]
 out["examples_gain"] = [{"q": q, "target": t, "keyword_rank": k, "hybrid_rank": h} for q, t, k, h in gains[:12]]
 out["losses"] = sum(1 for k, h in zip(res["keyword"], res["hybrid"]) if (h or 99) > (k or 99))
+out["same_command_any_product"] = {m: summ(cres[m], "mml") for m in cres}
 print(json.dumps(out, indent=1))
