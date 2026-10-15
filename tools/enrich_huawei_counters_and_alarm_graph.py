@@ -313,5 +313,7 @@ def enrich_alarms_and_counters() -> Dict[str, int]:
 
 
 if __name__ == "__main__":
+    from tools.bounded_run import require
+    require("alarm and counter graph enrichment")  # step 12.6: capped, not 03:30-05:30
     res = enrich_alarms_and_counters()
     print(json.dumps(res, indent=2))

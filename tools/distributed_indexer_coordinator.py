@@ -278,6 +278,8 @@ def run_coordinator(port: int = DEFAULT_PORT):
 
 
 if __name__ == "__main__":
+    from tools.bounded_run import require
+    require("distributed indexing coordinator")  # step 12.6: capped, not 03:30-05:30
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Port to listen on (default {DEFAULT_PORT})")
     args = parser.parse_args()

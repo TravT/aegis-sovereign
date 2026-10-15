@@ -87,3 +87,54 @@ def test_concurrent_router_writes_and_reads(tmp_path):
     con.close()
     expected = 1 + (num_threads // 2) * iterations_per_thread
     assert count == expected, f"Expected {expected} records, found {count}"
+
+
+class _LockCheckedDict(dict):
+    """A dict that records any access made without the router's connection lock held (step 12.6)."""
+
+    def __init__(self, lock, violations):
+        super().__init__()
+        self._lock, self._violations = lock, violations
+
+    def _check(self, op):
+        if not self._lock.locked():
+            self._violations.append(op)
+
+    def get(self, *a):
+        self._check("get")
+        return super().get(*a)
+
+    def __getitem__(self, k):
+        self._check("getitem")
+        return super().__getitem__(k)
+
+    def __setitem__(self, k, v):
+        self._check("setitem")
+        return super().__setitem__(k, v)
+
+    def pop(self, *a):
+        self._check("pop")
+        return super().pop(*a)
+
+    def __iter__(self):
+        self._check("iter")
+        return super().__iter__()
+
+
+def test_thread_connection_map_is_only_touched_under_its_lock(tmp_path):
+    """Step 12.6: every read and write of the per-thread connection map holds `_conns_lock`.
+
+    On CPython with the GIL an unlocked dict.get cannot corrupt the map, but the invariant must not depend on the
+    interpreter build (free-threaded Python drops the GIL)."""
+    router = SovereignQueryRouter(db_path=tmp_path / "lock.db")
+    violations: list = []
+    router._thread_conns = _LockCheckedDict(router._conns_lock, violations)
+
+    def work(_):
+        router._conn.execute("SELECT 1").fetchone()
+        return router._conn is router._conn
+
+    with concurrent.futures.ThreadPoolExecutor(8) as ex:
+        assert all(ex.map(work, range(64)))
+    router.close()
+    assert violations == [], sorted(set(violations))

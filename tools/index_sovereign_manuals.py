@@ -237,6 +237,8 @@ def main():
     parser.add_argument("--benchmark", action="store_true", help="Run 1,000-record benchmark and report estimate")
     parser.add_argument("--threads", type=int, default=2, help="ONNXRuntime threads (default: 2)")
     args = parser.parse_args()
+    from tools.bounded_run import require
+    require("manual indexing")  # step 12.6: capped, not 03:30-05:30
 
     if args.benchmark:
         limit = args.limit or 1000

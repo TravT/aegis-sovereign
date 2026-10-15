@@ -1375,6 +1375,8 @@ def populate_graph_from_router_db(router: SovereignQueryRouter, graph_store: Gra
 
 
 if __name__ == "__main__":
+    from tools.bounded_run import require
+    require("Huawei corpus indexing")  # step 12.6: capped, not 03:30-05:30
     if "--graph-only" in sys.argv and ROUTER_DB_PATH.exists():
         if GRAPH_DB_PATH.exists():
             GRAPH_DB_PATH.unlink()

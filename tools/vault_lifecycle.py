@@ -37,6 +37,7 @@ from core.router.query_router import SovereignQueryRouter
 from core.graph.store import GraphStore
 from core.security import ClearanceLevel, PlanTier
 from tools.adr_identity import adr_identity
+from tools.bounded_run import require
 
 PROD_VAULT_DIR = REPO_ROOT / "docs" / ".aegis_vault"
 DEFAULT_ROUTER_DB = PROD_VAULT_DIR / "sovereign_router.db"
@@ -602,6 +603,7 @@ def main():
     parser.add_argument("--domain", type=str, default="custom_corpus", help="Domain tag when using --ingest")
     parser.add_argument("--purge", type=str, help="Source path or identifier prefix to purge from router DB, FTS5, and GraphStore")
     args = parser.parse_args()
+    require("vault lifecycle (writes the vault)")  # step 12.6: capped, not 03:30-05:30
 
     if args.consolidate_all:
         res = consolidate_all_server_knowledge()

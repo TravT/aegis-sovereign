@@ -126,7 +126,10 @@ class SovereignQueryRouter:
         if self._shared_conn is not None:
             return self._shared_conn
         me = threading.current_thread()
-        conn = self._thread_conns.get(me)
+        # Every access to the map holds the lock (step 12.6): with the GIL an unlocked get cannot corrupt it, but
+        # the invariant must not depend on the interpreter build. The connection is opened outside the lock.
+        with self._conns_lock:
+            conn = self._thread_conns.get(me)
         if conn is None:
             conn = self._open_connection()
             with self._conns_lock:

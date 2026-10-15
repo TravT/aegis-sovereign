@@ -134,6 +134,9 @@ def main() -> None:
     ap.add_argument("--wiki-dir", required=True)
     ap.add_argument("--apply", action="store_true", help="write (default: dry run, vault opened read-only)")
     args = ap.parse_args()
+    if args.apply:
+        from tools.bounded_run import require
+        require("ADR identity sync (writes the vault)")
     rep = sync_adr_records(args.router_db, args.wiki_dir, apply=args.apply)
     print(json.dumps({k: rep[k] for k in ("applied", "upsert", "delete", "unchanged")}, indent=1))
     for code in rep["upsert"]:
