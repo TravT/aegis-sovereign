@@ -50,7 +50,7 @@ from .constants import (
     _detect_and_parse_markdown_tables,
 )
 from .llm_controller import LLMController
-from .viewer import DocumentViewer
+from .viewer import MARKDOWN_SUFFIXES, DocumentViewer
 from .topology import build_enriched_graph_dossier, build_graph_topology
 from .sources import SourcesManager
 from .license_handler import LicenseHandler
@@ -604,12 +604,29 @@ class SovereignApplianceManager:
 
     def render_archive_document_html(self, virtual_uri: str) -> str:
         """Extracts and renders an authentic HTML/OpenXML archive document with Dark Obsidian styling and topic navigation."""
+        # Wiki chunk ids carry "::part::nnnn"; the viewer shows the whole file.
+        wiki_uri = re.sub(r"::part::\d+$", "", virtual_uri)
+        if "#" not in wiki_uri and wiki_uri.lower().endswith(MARKDOWN_SUFFIXES):
+            return self._render_wiki_markdown_html(wiki_uri)
         entry = self.archive_streamer.resolve_virtual_uri(virtual_uri)
         topic_hierarchy = self.get_topic_hierarchy(virtual_uri=virtual_uri)
         bookmap_tree = self.get_package_bookmap_tree(virtual_uri=virtual_uri)
         return DocumentViewer.format_entry_to_styled_html(
             entry, virtual_uri, topic_hierarchy=topic_hierarchy, bookmap_tree=bookmap_tree
         )
+
+    def _render_wiki_markdown_html(self, virtual_uri: str) -> str:
+        """A wiki file (archive://<wiki dir>/x.md, no '#entry'): answer citations link here (Phase 12.2, was a 500).
+        Only files inside the wiki directory are served; anything else is "not found" (KeyError -> 404)."""
+        raw_path = virtual_uri.removeprefix("archive://")
+        if not self._wiki_dir:
+            raise KeyError(f"No wiki directory configured for {raw_path}")
+        wiki_root = Path(self._wiki_dir).resolve()
+        target = Path(raw_path).resolve()
+        if not target.is_relative_to(wiki_root) or not target.is_file():
+            raise KeyError(f"Wiki document not found: {raw_path}")
+        text = target.read_text(encoding="utf-8", errors="replace")
+        return DocumentViewer.render_markdown_page(text, f"archive://{target}", str(target.relative_to(wiki_root)))
 
     def stream_diagram(self, filename: str, uri: Optional[str] = None) -> Optional[Tuple[str, bytes]]:
         """Resolves and streams an embedded diagram/image purely from archive in-memory, caching to disk."""

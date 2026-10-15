@@ -8,6 +8,7 @@ and zero intrusive raw URI clutter.
 import base64
 import html
 import io
+import json
 import posixpath
 import re
 import urllib.parse
@@ -16,8 +17,74 @@ import zipfile
 from typing import Any, Optional, Dict, List, Tuple
 
 
+MARKDOWN_SUFFIXES = (".md", ".markdown")
+
+_MARKDOWN_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title} · Aegis</title>
+  <link rel="stylesheet" href="/portal/css/variables.css">
+  <link rel="stylesheet" href="/portal/css/cards.css?v=2.3.0">
+  <link rel="stylesheet" href="/portal/css/markdown.css?v=2.3.0">
+  <style>
+    .doc-shell {{ max-width: 920px; margin: 0 auto; padding: 1rem 1rem 3rem; }}
+    .doc-bar {{ display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; align-items: baseline; font-family: var(--font-mono);
+      font-size: 0.74rem; color: var(--text-secondary); margin-bottom: 0.8rem; overflow-wrap: anywhere; }}
+    .doc-bar a {{ color: var(--cyan-bright); text-decoration: none; }}
+    #doc-content.inspector-content-rendered {{ max-height: none; overflow: visible; font-size: 0.92rem; padding: 1.25rem; }}
+  </style>
+</head>
+<body>
+  <main class="doc-shell">
+    <nav class="doc-bar"><a href="/portal">← Aegis portal</a><span>{path}</span></nav>
+    <article id="doc-content" class="inspector-content-rendered" data-render-state="loading">Rendering…</article>
+  </main>
+  <script type="application/json" id="doc-source">{source}</script>
+  <script src="/portal/js/markdown.js?v=2.3.0"></script>
+  <script>
+    (function () {{
+      const doc = JSON.parse(document.getElementById("doc-source").textContent);
+      const el = document.getElementById("doc-content");
+      window.currentInspectedUri = doc.uri;
+      el.innerHTML = renderMarkdown(doc.text, doc.uri);
+      enhanceRenderedMarkdown(el).finally(() => {{ el.dataset.renderState = "done"; }});
+    }})();
+  </script>
+</body>
+</html>
+"""
+
+
+def _json_for_script(value: Any) -> str:
+    """JSON safe inside <script>: no "</" (ends the block) and no "<!--" survives."""
+    return json.dumps(value, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
+def _markdown_title(text: str, fallback: str) -> str:
+    front = re.match(r"\s*---\s*\n(.*?)\n---", text, re.S)
+    if front:
+        m = re.search(r'^title:\s*["\']?(.+?)["\']?\s*$', front.group(1), re.M)
+        if m:
+            return m.group(1)
+    m = re.search(r"^#\s+(.+?)\s*#*\s*$", text, re.M)
+    return m.group(1) if m else fallback
+
+
 class DocumentViewer:
     """Renders virtual container archive entries as sanitized, responsive Dark Obsidian HTML with a full HedEx tree sidebar."""
+
+    @staticmethod
+    def render_markdown_page(text: str, virtual_uri: str, display_path: str = "") -> str:
+        """A whole page for one markdown document, drawn in the browser by the portal's own renderer
+        (web/portal/js/markdown.js), so the viewer and the inspector show a document the same way (Phase 12.2)."""
+        name = (display_path or virtual_uri).rstrip("/").split("/")[-1]
+        return _MARKDOWN_PAGE.format(
+            title=html.escape(_markdown_title(text, name)),
+            path=html.escape(display_path or virtual_uri),
+            source=_json_for_script({"uri": virtual_uri, "text": text}),
+        )
 
     @staticmethod
     def _render_docx(entry: Any, virtual_uri: str) -> str:
@@ -449,7 +516,11 @@ class DocumentViewer:
             is_custom_rendered = True
         elif hasattr(entry, "raw_bytes") and entry.raw_bytes and name_lower.endswith((".html", ".htm", ".xhtml")):
             raw_body_html = entry.raw_bytes.decode("utf-8", errors="replace")
+        elif name_lower.endswith(MARKDOWN_SUFFIXES) and getattr(entry, "content_text", None):
+            return DocumentViewer.render_markdown_page(entry.content_text, virtual_uri, getattr(entry, "entry_name", ""))
         elif getattr(entry, "content_text", None):
+            # Plain text (PDF, EPUB): paragraphs only. Markdown goes through the shared renderer above; read as
+            # markdown, stray "*" and "_" in extracted text would turn into emphasis.
             paras = entry.content_text.split("\n\n")
             formatted_paras = []
             for p in paras:
