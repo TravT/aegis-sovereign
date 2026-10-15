@@ -102,6 +102,17 @@ python3 -m tools.vault_lifecycle --ingest /path/to/directory --domain custom_doc
 python3 -m tools.vault_lifecycle --purge "/path/to/directory_or_prefix"
 ```
 
+### 4. Tests and batch jobs on the reference host (Dell 7390)
+The serving task can take ~1.5 GB at any moment (the Gemma query encoder loads on the first plain-language query) and
+the host has about 2 GB free. On that host (`homelab`), pytest and the vault-writing tools (`vault_lifecycle`, every
+action including `--status`, which rewrites the sources manifest; `adr_identity --apply`; the indexers) refuse to run
+unless capped, and never 03:30-05:30 (nightly backup). `tools/bounded_run.py`; `AEGIS_UNBOUNDED_OK=1` overrides.
+```bash
+systemd-run --user --scope -p MemoryMax=2.5G -p CPUQuota=150% ../../.venv/bin/pytest tests -q
+# keep the production vault read-only while the suite runs (step 13.3 makes this the default):
+systemd-run --user --scope -p MemoryMax=2.5G -p CPUQuota=150% ../../.venv/bin/pytest -p tests.vault_guard tests -q
+```
+
 ---
 
 ## 🧰 The 7-Tool Model Context Protocol (MCP v2) Matrix
