@@ -82,6 +82,8 @@ CRM_PATTERN = re.compile(r'\b(CRM[-/\s]*([A-Z]{2})[\s-]*(\d{4,7}))\b', re.IGNORE
 
 # 4. Homelab / Server Infrastructure
 ADR_PATTERN = re.compile(r'\b(ADR-\d{1,3})\b', re.IGNORECASE)
+# Aegis ADRs share numbers with the homelab series and are named "Aegis ADR-nn" (Phase 12.3, R-g).
+AEGIS_ADR_PATTERN = re.compile(r'\bAegis\s+ADR[-\s]?(\d{1,3})\b', re.IGNORECASE)
 SKILL_PATTERN = re.compile(
     r'\b((?:manage|trigger|prowlarr|pihole|nomad|download)-[a-z0-9]+(?:-[a-z0-9]+)+)\b',
     re.IGNORECASE,
@@ -191,6 +193,7 @@ __all__ = [
     "CID10_PATTERN",
     "CRM_PATTERN",
     "ADR_PATTERN",
+    "AEGIS_ADR_PATTERN",
     "SKILL_PATTERN",
     "SKILL_ID_PATTERN",
     "SYNTHESIS_INTENT_PATTERN",

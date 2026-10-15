@@ -699,20 +699,22 @@ class SovereignQueryRouter:
         limit: int = 5,
         domain_filter: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Route, execute and fold near-identical curated duplicates (ADR-12) out of the results.
+        """Route, execute, fold near-identical curated duplicates (ADR-12) and keep one hit per document (12.3).
 
         Fetches twice the requested limit, folds composites under their native (`core.structure.search`),
         and returns at most `limit` results, so folding never leaves fewer distinct answers than asked for.
         """
-        from core.structure.search import active_policy, fold_duplicates
+        from core.structure.search import active_policy, fold_duplicates, one_per_document
 
         widen = active_policy().collapse_derived and self.db_path != ":memory:"
         res = self._route_and_execute(
             query, user_clearance=user_clearance, plan=plan, limit=limit * 2 if widen else limit, domain_filter=domain_filter
         )
         results = res.get("results") if isinstance(res, dict) else None
-        if widen and isinstance(results, list) and results and all(isinstance(r, dict) for r in results):
-            res["results"] = fold_duplicates(self.db_path, results, limit)
+        if isinstance(results, list) and results and all(isinstance(r, dict) for r in results):
+            if widen:
+                results = fold_duplicates(self.db_path, results, len(results))
+            res["results"] = one_per_document(results)[:limit]
         return res
 
     def _route_and_execute(

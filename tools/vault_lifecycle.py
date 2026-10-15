@@ -36,6 +36,7 @@ if str(REPO_ROOT) not in sys.path:
 from core.router.query_router import SovereignQueryRouter
 from core.graph.store import GraphStore
 from core.security import ClearanceLevel, PlanTier
+from tools.adr_identity import adr_identity
 
 PROD_VAULT_DIR = REPO_ROOT / "docs" / ".aegis_vault"
 DEFAULT_ROUTER_DB = PROD_VAULT_DIR / "sovereign_router.db"
@@ -280,12 +281,12 @@ def ingest_directory(
         g_doc_id = gcur.fetchone()[0]
 
         # 3. Domain-specific deterministic ID & Graph enrichment
-        # Case A: ADR files (e.g., ADR-01-Hypervisor.md, ADR-30-..., or 30_...)
-        adr_match = re.match(r"^(?:ADR-)?(\d{2})[-_]", fpath.name, re.IGNORECASE)
-        if ("/adrs/" in str(fpath) or domain == "homelab_wiki") and adr_match and "/adrs/" in str(fpath):
-            adr_num = adr_match.group(1)
-            adr_code = f"ADR-{adr_num}"
-            adr_meta = {**meta, "adr_id": adr_code}
+        # Case A: ADR files. Homelab ADRs are "ADR-nn", Aegis ADRs "Aegis ADR-nn" (tools/adr_identity.py, Phase 12.3):
+        # the id used to come from the file name alone, so the two series overwrote each other's records.
+        adr_ident = adr_identity(fpath, title)
+        if adr_ident:
+            adr_code, adr_title, adr_series = adr_ident
+            adr_meta = {**meta, "adr_id": adr_code, "adr_series": adr_series}
             rcur.execute(
                 """
                 INSERT INTO document_records (doc_identifier, title, content, clearance_level, metadata)
@@ -295,7 +296,7 @@ def ingest_directory(
                     content=excluded.content,
                     metadata=excluded.metadata
                 """,
-                (adr_code, f"{adr_code}: {title}", raw_text[:25000], json.dumps(adr_meta)),
+                (adr_code, adr_title, raw_text[:25000], json.dumps(adr_meta)),
             )
             indexed_aliases += 1
 
@@ -314,26 +315,6 @@ def ingest_directory(
                 (homelab_entity_id, adr_eid, g_doc_id),
             )
             indexed_relations += 1
-
-        # Also extract ADR-40 from Chapter 24 / system_overview if present
-        if "ADR-40" in raw_text and ("24_sovereign" in fpath.name or "system_overview" in fpath.name):
-            adr40_meta = {**meta, "adr_id": "ADR-40"}
-            rcur.execute(
-                """
-                INSERT INTO document_records (doc_identifier, title, content, clearance_level, metadata)
-                VALUES ('ADR-40', ?, ?, 0, ?)
-                ON CONFLICT(doc_identifier) DO UPDATE SET
-                    title=excluded.title,
-                    content=excluded.content,
-                    metadata=excluded.metadata
-                """,
-                (f"ADR-40: Two-Pronged Hybrid Retrieval & Resilient Intent Router ({title})", raw_text[:25000], json.dumps(adr40_meta)),
-            )
-            indexed_aliases += 1
-            gcur.execute(
-                "INSERT OR IGNORE INTO document_entities (doc_id, entity_id, count, context) VALUES (?, ?, 1, ?)",
-                (g_doc_id, adr40_eid, title),
-            )
 
         # Case B: Agent Skills (.agents/skills/<skill_name>/SKILL.md)
         if fpath.name == "SKILL.md" or domain == "agent_skills":

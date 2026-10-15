@@ -32,6 +32,7 @@ from .grammars import (
     CID10_PATTERN,
     CRM_PATTERN,
     ADR_PATTERN,
+    AEGIS_ADR_PATTERN,
     SKILL_PATTERN,
     SKILL_ID_PATTERN,
     SYNTHESIS_INTENT_PATTERN,
@@ -390,6 +391,18 @@ def classify_query_intent(raw_query: str) -> RouteDecision:
 
     # --- Vertical 4: Homelab, Server Architecture & Agent Skills ---
     # Check Homelab Architectural Decision Record (e.g. ADR-40, ADR-30, ADR-20)
+    if not extracted_id:
+        aegis_match = AEGIS_ADR_PATTERN.search(clean_q)
+        if aegis_match:
+            raw_val = f"Aegis ADR-{int(aegis_match.group(1)):02d}"
+            extracted_id = ExtractedIdentifier(
+                id_type="wiki_adr",
+                raw_value=raw_val,
+                normalized_value=raw_val,
+                confidence=1.0,
+                entropy=calculate_shannon_entropy(raw_val),
+                domain="homelab_wiki",
+            )
     if not extracted_id:
         adr_match = ADR_PATTERN.search(clean_q)
         if adr_match:

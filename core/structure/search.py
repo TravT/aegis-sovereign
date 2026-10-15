@@ -12,6 +12,7 @@ is near-identical, so duplicate pages stop occupying result slots. Records that 
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -48,6 +49,40 @@ def _annotations(db_path: str, ids: Sequence[int]) -> Optional[Dict[int, Tuple[O
         return None
     finally:
         conn.close()
+
+
+_PART_SUFFIX = re.compile(r"::part::\d+$")
+
+
+def document_key(hit: dict) -> str:
+    """The document a hit comes from: wiki chunks (`x.md::part::0003`) and an ADR's identity record share it."""
+    for field in ("virtual_uri", "file_path", "source_uri", "doc_identifier"):
+        val = hit.get(field)
+        if isinstance(val, str) and val:
+            return _PART_SUFFIX.sub("", val.removeprefix("archive://"))
+    return f"id:{hit.get('id')}"
+
+
+def one_per_document(hits: List[dict]) -> List[dict]:
+    """One slot per document, at its best rank (Phase 12.3: one wiki note took 4 of the top 5 slots for "ADR-16").
+
+    The slot shows the document's whole record when one is among its hits (e.g. an ADR's identity record, with the
+    canonical title), else its best-ranked chunk.
+    """
+    order: List[str] = []
+    best: Dict[str, dict] = {}
+    for h in hits:
+        key = document_key(h)
+        if key not in best:
+            order.append(key)
+            best[key] = h
+        elif _is_chunk(best[key]) and not _is_chunk(h):
+            best[key] = h
+    return [best[k] for k in order]
+
+
+def _is_chunk(hit: dict) -> bool:
+    return bool(_PART_SUFFIX.search(str(hit.get("doc_identifier") or "")))
 
 
 def fold_duplicates(db_path: Optional[str], hits: List[dict], limit: int) -> List[dict]:
