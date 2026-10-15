@@ -945,8 +945,11 @@ function showPortalToast(msg) {
       const contentEl = document.getElementById("inspector-content");
       const diagBox = document.getElementById("inspector-diagram-container");
 
+      const renderToken = ++inspectorRenderSeq;
       contentEl.className = "inspector-content-pre";
+      contentEl.dataset.renderState = "loading";
       contentEl.textContent = "Streaming document in-memory (O_RDONLY)...";
+      document.getElementById("inspector-more").style.display = "none";
 
       const rawName = virtualUri.split("#").pop().split("/").pop() || "Document";
       metaEl.innerHTML = `Streaming <strong style="color: var(--gold-bright);">${escapeHtml(rawName)}</strong> in-memory (O_RDONLY)...`;
@@ -959,10 +962,11 @@ function showPortalToast(msg) {
             virtual_uri: virtualUri,
             section_filter: sectionFilter,
             extract_diagram_to_artifact: extractDiagram,
-            max_chars: 8000
+            max_chars: inspectorPageSize(virtualUri)
           })
         });
         const data = await resp.json();
+        if (renderToken !== inspectorRenderSeq) return;  // another document was opened meanwhile
         const entryDisplay = data.entry_name || rawName;
         const detectedArch = detectArchetype({ doc_identifier: entryDisplay, metadata: { file_path: virtualUri } }, virtualUri);
         currentInspectedArchetype = detectedArch;
@@ -983,13 +987,11 @@ function showPortalToast(msg) {
         `;
         const rawContent = data.content_text || data.extracted_text || "No text content in entry.";
         const isMarkdownDoc = virtualUri.endsWith(".md") || rawContent.startsWith("#") || rawContent.startsWith("---") || rawContent.includes("|") || (detectedArch === "homelab_wiki");
-        if (typeof renderMarkdown === "function" && isMarkdownDoc) {
-          contentEl.className = "inspector-content-rendered";
-          contentEl.innerHTML = renderMarkdown(rawContent, virtualUri);
-        } else {
-          contentEl.className = "inspector-content-pre";
-          contentEl.textContent = rawContent;
-        }
+        inspectorPaging = {
+          uri: virtualUri, sectionFilter, isMarkdownDoc, text: rawContent,
+          nextOffset: data.next_offset ?? null, total: data.total_chars ?? rawContent.length,
+        };
+        await renderInspectorText(contentEl, renderToken);
 
         if (data.diagram_url) {
           diagBox.style.display = "block";
@@ -1005,6 +1007,64 @@ function showPortalToast(msg) {
         loadTopicNavigation(virtualUri);
       } catch (err) {
         metaEl.textContent = "Error inspecting archive entry: " + err;
+        contentEl.dataset.renderState = "error";
+      }
+    }
+
+    // R-b: wiki files are small (largest 43 KB) and arrive whole; archive entries arrive in pages with "Load more".
+    let inspectorPaging = null;
+    let inspectorRenderSeq = 0;
+
+    function inspectorPageSize(virtualUri) {
+      return virtualUri.endsWith(".md") && !virtualUri.includes("#") ? 0 : 8000;
+    }
+
+    async function renderInspectorText(contentEl, renderToken) {
+      const pg = inspectorPaging;
+      if (typeof renderMarkdown === "function" && pg.isMarkdownDoc) {
+        contentEl.className = "inspector-content-rendered";
+        contentEl.dataset.renderState = "drawing";
+        contentEl.innerHTML = renderMarkdown(pg.text, pg.uri);
+        if (typeof enhanceRenderedMarkdown === "function") await enhanceRenderedMarkdown(contentEl);
+      } else {
+        contentEl.className = "inspector-content-pre";
+        contentEl.textContent = pg.text;
+      }
+      if (renderToken !== inspectorRenderSeq) return;
+      const moreEl = document.getElementById("inspector-more");
+      if (pg.nextOffset !== null) {
+        moreEl.style.display = "flex";
+        moreEl.innerHTML = `
+          <span>Showing ${pg.text.length.toLocaleString()} of ${pg.total.toLocaleString()} characters</span>
+          <button type="button" class="action-btn" onclick="loadMoreInspector()">Load more</button>
+        `;
+      } else {
+        moreEl.style.display = "none";
+        moreEl.innerHTML = "";
+      }
+      contentEl.dataset.renderState = "done";
+    }
+
+    async function loadMoreInspector() {
+      const pg = inspectorPaging;
+      if (!pg || pg.nextOffset === null) return;
+      const contentEl = document.getElementById("inspector-content");
+      const renderToken = inspectorRenderSeq;
+      const scrollTop = contentEl.scrollTop;
+      try {
+        const resp = await fetch("/archive/inspect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ virtual_uri: pg.uri, section_filter: pg.sectionFilter, char_offset: pg.nextOffset, max_chars: 8000 })
+        });
+        const data = await resp.json();
+        if (renderToken !== inspectorRenderSeq || pg !== inspectorPaging) return;
+        pg.text += data.content_text || "";
+        pg.nextOffset = data.next_offset ?? null;
+        await renderInspectorText(contentEl, renderToken);
+        contentEl.scrollTop = scrollTop;
+      } catch (err) {
+        showPortalToast("Could not load more of this entry: " + escapeHtml(String(err)));
       }
     }
 

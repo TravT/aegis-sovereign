@@ -162,9 +162,12 @@ class ArchiveInspector:
                 if idx != -1:
                     sliced_txt = sliced_txt[max(0, idx - 10):]
 
-            if char_offset > 0 and char_offset < len(sliced_txt):
-                sliced_txt = sliced_txt[char_offset:]
-            trimmed_txt = sliced_txt[:max_chars] if max_chars > 0 else sliced_txt
+            # Paging (R-b): the caller sees how much is left; max_chars <= 0 returns the rest whole.
+            total_chars = len(sliced_txt)
+            page_start = min(max(char_offset, 0), total_chars)
+            page_end = min(page_start + max_chars, total_chars) if max_chars > 0 else total_chars
+            trimmed_txt = sliced_txt[page_start:page_end]
+            next_offset: Optional[int] = page_end if page_end < total_chars else None
 
             extracted_diagrams: List[Dict[str, Any]] = []
             diagram_url: Optional[str] = None
@@ -256,6 +259,10 @@ class ArchiveInspector:
                 "sha256_hash": sha_hash,
                 "content_text": trimmed_txt,
                 "extracted_text": trimmed_txt,
+                "total_chars": total_chars,
+                "char_offset": page_start,
+                "truncated": next_offset is not None,
+                "next_offset": next_offset,
                 "has_table": table_info["has_table"],
                 "table_headers": table_info["table_headers"],
                 "metadata": metadata_dict,

@@ -13,7 +13,7 @@ import posixpath
 import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 
 from ..containers.archive_streamer import ArchiveSecurityError
 from ..license import LicenseError
@@ -140,10 +140,12 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
 
-    def _send_bytes(self, status_code: int, content_type: str, body: bytes):
+    def _send_bytes(self, status_code: int, content_type: str, body: bytes, extra_headers: Optional[Dict[str, str]] = None):
         self.send_response(status_code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        for name, value in (extra_headers or {}).items():
+            self.send_header(name, value)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -158,7 +160,7 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                 self._send_bytes(200, "text/html; charset=utf-8", html_bytes)
             else:
                 self._send_json(404, {"error": "Web portal index.html not found", "path": str(WEB_PORTAL_INDEX)})
-        elif parsed.path.startswith("/portal/css/") or parsed.path.startswith("/portal/js/"):
+        elif parsed.path.startswith(("/portal/css/", "/portal/js/", "/portal/vendor/")):
             rel_subpath = parsed.path[len("/portal/"):].lstrip("/")
             if ".." in rel_subpath or "\\" in rel_subpath:
                 self._send_json(403, {"error": "Path traversal blocked"})
@@ -168,12 +170,14 @@ class SovereignHTTPHandler(BaseHTTPRequestHandler):
                 self._send_json(403, {"error": "Access forbidden outside portal directory"})
                 return
             if target_file.exists() and target_file.is_file():
-                ctype = "text/plain"
-                if target_file.suffix == ".css":
-                    ctype = "text/css; charset=utf-8"
-                elif target_file.suffix == ".js":
-                    ctype = "application/javascript; charset=utf-8"
-                self._send_bytes(200, ctype, target_file.read_bytes())
+                ctype = {
+                    ".css": "text/css; charset=utf-8",
+                    ".js": "application/javascript; charset=utf-8",
+                    ".woff2": "font/woff2",
+                }.get(target_file.suffix, "text/plain")
+                # Vendored libraries carry their version in the path, so a cached copy never goes stale.
+                cache = {"Cache-Control": "public, max-age=31536000, immutable"} if rel_subpath.startswith("vendor/") else None
+                self._send_bytes(200, ctype, target_file.read_bytes(), cache)
                 return
             self._send_json(404, {"error": f"Portal asset '{rel_subpath}' not found"})
             return
