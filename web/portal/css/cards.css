@@ -151,6 +151,11 @@
     }
 
     .entity-pill {
+      max-width: 100%;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       font-family: var(--font-mono);
       font-size: 0.75rem;
       padding: 0.28rem 0.58rem;

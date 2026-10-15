@@ -126,6 +126,7 @@ void main() { outColor = vColor; }`;
       this.pos = new Float32Array(0); this.flags = new Uint8Array(0);
       this.mode = "2d";
       this.cam2 = { cx: 0, cy: 0, scale: 1, fit: 1 };
+      this.insetTop = 0;   // px at the top that overlays cover (a number, or a function returning one); fit() keeps nodes below it
       this.cam3 = { tx: 0, ty: 0, tz: 0, r: 1000, yaw: 0.8, pitch: 0.5, fit: 1000 };
       this.edgeAlpha = 0.16;
       this.dirty = true; this.frames = 0; this.mvp = new Float32Array(16);
@@ -250,8 +251,10 @@ void main() { outColor = vColor; }`;
       const minx = q(xs, 0.01 * (robust ? 1 : 0)), maxx = q(xs, robust ? 0.99 : 1), miny = q(ys, 0.01 * (robust ? 1 : 0)), maxy = q(ys, robust ? 0.99 : 1);
       const far = Math.max(1, q(rs, robust ? 0.99 : 1));
       const c2 = this.cam2, c3 = this.cam3;
-      c2.cx = (minx + maxx) / 2; c2.cy = (miny + maxy) / 2;
-      c2.scale = c2.fit = Math.min(this.w / Math.max(1, maxx - minx), this.h / Math.max(1, maxy - miny)) * 0.92;
+      const top = Math.min(this.h * 0.4, Math.max(0, typeof this.insetTop === "function" ? this.insetTop() : this.insetTop));
+      c2.scale = c2.fit = Math.min(this.w / Math.max(1, maxx - minx), (this.h - top) / Math.max(1, maxy - miny)) * 0.92;
+      // centre the graph in the area below the overlays: screen y = h/2 - (y - cy) * scale
+      c2.cx = (minx + maxx) / 2; c2.cy = (miny + maxy) / 2 + top / (2 * c2.scale);
       c3.tx = c3.ty = c3.tz = 0; c3.r = c3.fit = far * 2.6;
       this.requestRender(); this._emitView();
     }

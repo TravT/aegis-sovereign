@@ -26,7 +26,7 @@ _MARKDOWN_PAGE = """<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{title} · Aegis</title>
   <link rel="stylesheet" href="/portal/css/variables.css">
-  <link rel="stylesheet" href="/portal/css/cards.css?v=2.3.0">
+  <link rel="stylesheet" href="/portal/css/cards.css?v=2.4.0">
   <link rel="stylesheet" href="/portal/css/markdown.css?v=2.3.0">
   <style>
     .doc-shell {{ max-width: 920px; margin: 0 auto; padding: 1rem 1rem 3rem; }}

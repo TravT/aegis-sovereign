@@ -89,6 +89,17 @@
           onDblClick: (i) => this.onDouble(i), onView: () => this.updateLabels(),
         });
       } catch (err) { this.status("The graph viewer needs WebGL2: " + err.message, true); return false; }
+      // U6: the node/edge count box and the local-graph banner sit over the top of the stage; frame the graph below them.
+      this.gl.insetTop = () => {
+        const stage = canvas.parentElement && canvas.parentElement.getBoundingClientRect();
+        let bottom = 0;
+        for (const id of ["gv-status", "gv-local-banner"]) {
+          const el = $(id);
+          if (!el || !stage || !el.offsetParent || !el.textContent.trim()) continue;
+          bottom = Math.max(bottom, el.getBoundingClientRect().bottom - stage.top + 6);
+        }
+        return bottom;
+      };
       $("gv-layers").addEventListener("click", (e) => { const b = e.target.closest("[data-layer]"); if (b) this.setLayer(b.dataset.layer); });
       $("gv-dim2").onclick = () => this.setDims("2d"); $("gv-dim3").onclick = () => this.setDims("3d");
       $("gv-colorby").onchange = (e) => { this.colorBy = e.target.value; this.recolor(); };

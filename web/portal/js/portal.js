@@ -652,11 +652,11 @@ function showPortalToast(msg) {
       } else {
         banner.className = "route-banner prong2";
         bannerTitle.innerHTML =
-          `🧠 <strong>PRONG 2: SEMANTIC &amp; RELATIONAL SYNTHESIS</strong> • Minimal LLM Summary Active (${escapeHtml(routeType)})`;
+          `🧠 <strong>PRONG 2: SEMANTIC &amp; RELATIONAL SYNTHESIS</strong> • ${escapeHtml(answerModeLabel(data.execution_mode))} (${escapeHtml(routeType)})`;
         bannerMetrics.innerHTML = `
           <span class="metric-tag">Route: ${escapeHtml(routeType)}</span>
           <span class="metric-tag">Latency: ${latency !== "—" ? latency + "ms" : "—"}</span>
-          <span class="metric-tag">Mode: ${escapeHtml(data.execution_mode || "neural_ollama_local")}</span>
+          <span class="metric-tag">Mode: ${escapeHtml(data.execution_mode || "—")}</span>
           <span class="metric-tag">Confidence: ${escapeHtml(confLevel)} (${confScore})</span>
         `;
       }
@@ -670,7 +670,7 @@ function showPortalToast(msg) {
           <div class="nano-summary-box">
             <div class="nano-summary-header">
               <div class="nano-summary-title">
-                <span>🧠 Minimal LLM Executive Summary (NanoRunner)</span>
+                <span>🧠 ${escapeHtml(answerModeLabel(fs.execution_mode || data.execution_mode))}</span>
               </div>
               <div style="display: flex; gap: 0.45rem; flex-wrap: wrap;">
                 <span class="mode-badge">Mode: ${escapeHtml(fs.execution_mode || "extractive_template_fallback")}</span>
@@ -874,6 +874,38 @@ function showPortalToast(msg) {
       }
     }
 
+    // What produced the answer, in words: the Dell runs no LLM, so most answers are extractive (cited sentences).
+    function answerModeLabel(mode) {
+      const m = String(mode || "");
+      if (m.startsWith("neural")) return "Local LLM Summary";
+      if (m === "epistemic_refusal") return "Refused: Low Confidence";
+      return "Extractive Answer · No LLM";
+    }
+
+    // U5: one figure arrives as a caption plate, a "caption (file.png)" entity and one raw archive path per product.
+    // Group them by image file ("Figure N" captions join their file), drop Huawei's caution/note icons, and label
+    // each figure by its caption.
+    function dedupeDiagrams(items, rootName) {
+      const img = (s) => { const m = String(s).match(/([\w.-]+\.(?:png|jpe?g|gif|svg))(?![\w.-])/gi); return m ? m[m.length - 1] : ""; };
+      const fig = (s) => { const m = String(s).match(/Figure\s+(\d+)/i); return m ? m[1] : ""; };
+      const names = items.map(it => it.name || (it.entity && it.entity.name) || "")
+        .filter(n => n && !/public_sys-resources|(?:^|\/)(?:caution|note|notice|warning|danger|tip)[\w.-]*\.(?:png|gif)$/i.test(n));
+      const figImage = {};
+      names.forEach(n => { if (fig(n) && img(n)) figImage[fig(n)] = img(n); });
+      const groups = new Map();
+      names.forEach(n => {
+        const key = img(n) || figImage[fig(n)] || (fig(n) ? "figure " + fig(n) : n);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(n);
+      });
+      const prefix = new RegExp("^" + String(rootName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s+");
+      return Array.from(groups.entries()).map(([key, members]) => {
+        const caption = members.find(n => fig(n) && !n.includes("/") && !img(n)) || members.find(n => fig(n)) || "";
+        const label = caption ? caption.replace(/\s*\([^)]*\.(?:png|jpe?g|gif|svg)\)\s*$/i, "").replace(prefix, "") : key.split("/").pop();
+        return { label, title: members.join("\n") };
+      });
+    }
+
     function renderGraphDossier(dossier) {
       const container = document.getElementById("graph-dossier-container");
       if (!dossier || (!dossier.neighbors || !dossier.neighbors.length)) {
@@ -893,6 +925,19 @@ function showPortalToast(msg) {
       const boxesHtml = groups.map(g => {
         const items = byRel[g.key] || [];
         if (!items.length) return "";
+        if (g.isDiag) {
+          const figures = dedupeDiagrams(items, rootName);
+          if (!figures.length) return "";
+          const diagPills = figures.slice(0, 6).map(f =>
+            `<button type="button" class="entity-pill diag-pill" title="${escapeHtml(f.title)}" onclick="inspectCurrentSource('', true)">🖼️ ${escapeHtml(f.label)}</button>`
+          ).join("");
+          return `
+          <div class="relation-box">
+            <div class="relation-label">${g.label}</div>
+            <div class="entity-pills">${diagPills}</div>
+          </div>
+        `;
+        }
         const pills = items.slice(0, 6).map(item => {
           const rawName = item.name || (item.entity && item.entity.name) || "";
           if (g.isMml) {

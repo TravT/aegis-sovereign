@@ -583,7 +583,8 @@
       margin: 0 auto 1rem auto;
     }
     .search-bar-row.google-style .search-input {
-      padding: 0.95rem 1rem 0.95rem 3.1rem;
+      padding: 0.95rem 7rem 0.95rem 3.1rem;   /* right: clear button + shortcut badge (U7) */
+      text-overflow: ellipsis;
       font-size: 1.05rem;
       border-radius: 12px;
       background: rgba(10, 14, 22, 0.75);
@@ -782,6 +783,9 @@
       }
       .btn-clear-query {
         right: 0.8rem !important;
+      }
+      .search-bar-row.google-style .search-input {
+        padding-right: 2.6rem;   /* the shortcut badge is hidden here; clear button only */
       }
       .search-btn {
         width: 100% !important;
